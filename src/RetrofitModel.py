@@ -29,7 +29,7 @@ class RetrofitModel:
             raise ValueError(f"n_samples must be positive, got {self.n_samples}")
         
         if self.n_samples < 100:
-            print(f"Warning: n_samples={self.n_samples} is low. Consider using 100+ for stable results.")
+            logger.warning(f"Warning: n_samples={self.n_samples} is low. Consider using 100+ for stable results.")
 
         logger.debug(f"Regional multipliers: {list(self.regional_multipliers.keys())}")
         logger.debug(f"Available scenarios: {list(self.retrofit_packages.keys())}")
@@ -576,13 +576,14 @@ class RetrofitModel:
                         elif 'electricity' in samples:
                             electricity_samples_list.append(samples['electricity'])
                         else:
-                            print('samples ', samples)
+                            logger.info('samples seem strange ')
+                            logger.info( samples)
                         
                             raise Exception('Samples not as expected')
          
                 except Exception as e:
                     # Handle errors appropriately
-                    print(f"Error processing intervention {intervention}: {e}")
+                    logger.warning(f"Error processing intervention {intervention}: {e}")
                     continue
         
         savings_stats = {}
@@ -702,7 +703,7 @@ class RetrofitModel:
                     all_samples.append(samples)
                 
             except ValueError as ve:
-                logging.warning(f"Cost calculation skipped for {intervention}: {ve}")
+                # logging.warning(f"Cost calculation skipped for {intervention}: {ve}")
                 for stat in return_statistics:
                     col_name = f'{intervention}_{stat}'
                     cost_stats[col_name] = np.nan
@@ -1150,7 +1151,7 @@ class RetrofitModel:
         #     prob_external, region, scenario, return_statistics
         # )
         op_cols = [col for col in energy_results_df.columns.tolist() if scenario in col]
-        print(op_cols)
+ 
         energy_results_df=energy_results_df[op_cols]
         energy_results_df = expand_dict_columns(energy_results_df)
 

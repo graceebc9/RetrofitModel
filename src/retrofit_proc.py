@@ -1,9 +1,11 @@
-import pandas as pd 
-import os 
-from src.retrofit_calc import process_postcodes_for_retrofit_with_uncertainty
+# At the top of retrofit_calc.py
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
+
+import pandas as pd 
+import os 
+from src.retrofit_calc import process_postcodes_for_retrofit_with_uncertainty
 
 
 def process_retrofit_batch_with_uncertainty(
@@ -80,28 +82,56 @@ def process_retrofit_batch_with_uncertainty(
     
     # Save successful results
     if results:
-        df = pd.concat(results)
         
-        # Check for duplicates
-        duplicate_count = df.groupby('postcode').size().max()
-        if duplicate_count > 1:
-            logger.warning(f'Duplicate postcodes found (max count: {duplicate_count})')
-            # Log which postcodes are duplicated
-            duplicates = df[df.duplicated('postcode', keep=False)]['postcode'].unique()
-            logger.warning(f'Duplicated postcodes: {list(duplicates)}')
-            raise ValueError('Duplicate postcodes found in the batch')
-        
-        # Save results
-        if not os.path.exists(log_file):
-            logger.debug('Creating new log file')
-            df.to_csv(log_file, index=False)
-        else:
-            logger.debug('Appending to existing log file')
-            df.to_csv(log_file, mode='a', header=False, index=False)
-        
-        logger.info(f'Saved {len(results)} results for batch: {process_batch_name}')
+        logger.info(f'Saving {len(results)} results')
     
-    # Save failed postcodes to separate file
+        # DIAGNOSTIC: Check what we're working with
+        logger.debug(f"Number of results to concatenate: {len(results)}")
+        logger.debug(f"Type of first result: {type(results[0])}")
+        
+        if isinstance(results[0], pd.DataFrame):
+            logger.debug(f"First result columns: {results[0].columns.tolist()}")
+            logger.debug(f"First result shape: {results[0].shape}")
+            logger.debug(f"First result head:\n{results[0].head()}")
+        elif isinstance(results[0], dict):
+            logger.debug(f"First result keys: {results[0].keys()}")
+            logger.debug(f"First result: {results[0]}")
+        else:
+            logger.error(f"Unexpected result type: {type(results[0])}")
+            logger.error(f"First result: {results[0]}")
+        
+        try:
+            df = pd.concat(results, ignore_index=True)
+            logger.info(f"Concatenated DataFrame shape: {df.shape}")
+            logger.info(f"Concatenated DataFrame columns: {df.columns.tolist()}")
+            # Check if 'postcode' column exists
+            if 'postcode' not in df.columns:
+                logger.error(f"CRITICAL ERROR: 'postcode' column missing!")
+                logger.error(f"Available columns: {df.columns.tolist()}")
+                logger.error(f"Sample row:\n{df.iloc[0]}")
+                raise KeyError("Required 'postcode' column not found in results")
+            
+            
+            # Save results
+            if not os.path.exists(log_file):
+                logger.info(f'Creating new log file: {log_file}')
+                df.to_csv(log_file, index=False)
+            else:
+                logger.info(f'Appending to existing log file: {log_file}')
+                df.to_csv(log_file, mode='a', header=False, index=False)
+            
+            logger.info(f'Successfully saved {len(results)} results for batch: {process_batch_name}')
+        
+        except KeyError as ke:
+            logger.error(f"KeyError during save: {str(ke)}")
+            logger.error(f"This usually means the DataFrame structure is incorrect")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during save: {type(e).__name__}: {str(e)}")
+            raise
+        
+        
+       
     if failed_pcs:
         failed_log = log_file.replace('.csv', '_failed.csv')
         df_failed = pd.DataFrame(failed_pcs)
@@ -132,6 +162,7 @@ def run_retrofit_calc_with_uncertainty(
 ):
     """
     Run retrofit calculations with uncertainty analysis for list of postcodes.
+    calls process_retrofit_batch_with_uncertainty to proces batch 
     
     Args:
         pcs_list: List of postcodes to process
@@ -169,7 +200,7 @@ def run_retrofit_calc_with_uncertainty(
     
     # Log configuration
     logger.info(f'Processing {len(pcs_list)} postcodes in region {region}')
-    logger.info(f'Batch size: {batch_size}')
+    logger.info(f'Logger_Batch size: {batch_size}')
     logger.info(f'Uncertainty analysis: {"ENABLED" if use_uncertainty else "DISABLED"}')
     if use_uncertainty:
         logger.info(f'Monte Carlo iterations: {n_monte_carlo}')

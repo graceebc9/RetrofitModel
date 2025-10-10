@@ -208,7 +208,7 @@ class RetrofitScenarioGenerator:
 
             if isinstance(results, dict):
                 if 'error' in results:
-                    print(f"Warning: {results['error']}")
+                    logger.warning(f"Warning: {results['error']}")
                     continue  # Skip this scenario
                 logger.debug(f"Results keys: {results.keys()}")
                 logger.debug(f"Sample values: {[(k, type(v), v) for k, v in list(results.items())[:3]]}")
