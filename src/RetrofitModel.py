@@ -273,7 +273,7 @@ class RetrofitModel:
         # Check required boolean/type columns
         required_new_cols = ['wall_insulated', 'existing_loft_insulation', 
                             'existing_floor_insulation', 'existing_window_upgrades', 
-                            'wall_type']
+                            'inferred_wall_type']
         missing_new_cols = [col for col in required_new_cols if col not in df.columns]
         
         if missing_new_cols:
@@ -891,7 +891,7 @@ class RetrofitModel:
         existing_loft = bool(row['existing_loft_insulation'])
         existing_floor = bool(row['existing_floor_insulation'])
         existing_windows = bool(row['existing_window_upgrades'])
-        wall_type = str(row['wall_type']).lower().strip()
+        wall_type = str(row['inferred_wall_type']).lower().strip()
         
         # Validate wall_type
         if wall_type not in ['cavity_wall', 'solid_wall']:

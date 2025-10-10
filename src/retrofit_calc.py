@@ -1,3 +1,9 @@
+# At the top of retrofit_calc.py
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
+
+
 import logging
 import pandas as pd
 import numpy as np
@@ -9,11 +15,6 @@ from .postcode_utils import find_data_pc_joint
 from .pre_process_buildings import pre_process_building_data
 
 
-# Setup basic logging (required for the flat estimation fix)
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-
-
-# eui factors 
 
 def load_eui(eui_path= '/Volumes/T9/2024_Data_downloads/2024_11_nebula_paper_data/2025_revisions/20225_11_final_submission/neb_eui_table.csv'):
     """
@@ -95,7 +96,7 @@ def process_postcodes_for_retrofit_with_uncertainty(
     retrofig_model,
     energy_column, 
     scenarios,
-    n_monte_carlo=10000,
+    n_monte_carlo,
     random_seed=42
 ):
     """
@@ -153,19 +154,22 @@ def process_postcodes_for_retrofit_with_uncertainty(
         return error_dict
     scen = RetrofitScenarioGenerator()
     # Calculate with uncertainty
+   
     results = scen.process_dataframe_scenarios( 
-        df = building_data,
-        region = region,
-        model_class = retrofig_model, 
-        typ_config = retrofit_config, 
-          scenarios=scenarios,
-        random_seed=random_seed
-    )
+    df = building_data,
+    region = region,
+    model_class = retrofig_model, 
+    typ_config = retrofit_config, 
+    scenarios=scenarios,
+    random_seed=random_seed
+        )
+   
     
     if 'error' in results:
-        error_dict.update(results)
-        return error_dict
+            error_dict.update(results)
+            return error_dict
     else:
+        results['postcode'] = pc 
         return results 
     
 
