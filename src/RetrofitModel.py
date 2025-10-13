@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any
 import numpy as np
 
 from .BuildingCharacteristics import BuildingCharacteristics  
-from .RetrofitInterventionScalingRules import InterventionScalingRules
+from .RetrofitCostsScalingRules import InterventionScalingRules
 from .RetrofitEnergy import RetrofitEnergy 
 from .RetrofitUtils import calculate_estimated_flats_per_building 
 from .RetrofitConfig import RetrofitConfig 
