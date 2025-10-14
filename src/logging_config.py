@@ -5,7 +5,7 @@ import sys
 # Global flag to ensure we only configure once
 _logging_configured = False
 
-def setup_logging(log_level='INFO'):
+def setup_logging(log_level='INFO', log_path='logs/processing.log'):
     """
     Setup logging configuration that can only be called once.
     Prevents multiple configurations from overriding each other.
@@ -34,7 +34,7 @@ def setup_logging(log_level='INFO'):
     )
     
     # File handler
-    file_handler = logging.FileHandler('logs/processing.log', mode='a')
+    file_handler = logging.FileHandler(log_path, mode='a')
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     

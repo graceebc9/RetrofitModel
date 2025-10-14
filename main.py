@@ -8,11 +8,13 @@ To view a copy of this license, visit https://creativecommons.org/licenses/by-nc
 For commercial licensing options, contact: gb669@cam.ac.uk. 
 """
 
-
+from datetime import datetime
 from src.logging_config import setup_logging, get_logger
+base_path = '/Users/gracecolverd/retrofit_model/notebook'
+log_config_filepath = f"{base_path}/logs/config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+log_path = f"{base_path}/logs/log_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-
-setup_logging(log_level='INFO')
+setup_logging(log_level='INFO', log_path=log_path)
 logger = get_logger(__name__)
 
 
@@ -62,7 +64,7 @@ batch_size = 500
 log_size = 100
 n_monte_carlo = 100
 scenarios = ['wall_installation', 'loft_installation']
-
+job_name='testing'
 running_locally = os.getenv('SLURM_ARRAY_TASK_ID') is None
 region_list = ['NE'] if running_locally else [os.getenv('REGION_LIST')]
 
@@ -84,6 +86,25 @@ retrofig_model = RetrofitModel(
     n_samples=n_monte_carlo
 )
 
+from src.utils import log_configuration
+
+ 
+log_configuration(
+    log_config_filepath,
+    batch_size=batch_size,
+    log_size=log_size,
+    n_monte_carlo=n_monte_carlo,
+    scenarios=scenarios,
+    running_locally=running_locally,
+    region_list=region_list,
+    STAGE0_split_onsud=STAGE0_split_onsud,
+    retrofit_config=retrofit_config,
+    retrofig_model=retrofig_model,
+    job_name=job_name,
+    # Environment variables
+    slurm_array_task_id=os.getenv('SLURM_ARRAY_TASK_ID'),
+    region_env=os.getenv('REGION_LIST'),
+) 
 
 # ========================================
 # HELPER FUNCTIONS
