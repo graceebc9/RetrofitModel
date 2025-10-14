@@ -20,10 +20,10 @@ root_dir = Path(__file__).resolve().parent.parent
 
 
 def load_energy():
-    energy_df = pd.read_csv(f'{root_dir}/RetrofitModel/src/global_avs/neb_enegry_data.csv')
+    energy_df = pd.read_csv(f'{root_dir}/src/global_avs/neb_enegry_data.csv')
     return energy_df
 
-def load_eui(eui_path= f'{root_dir}/RetrofitModel/src/global_avs/neb_eui_table.csv'):
+def load_eui(eui_path= f'{root_dir}/src/global_avs/neb_eui_table.csv'):
     """
     Load the processed nebula gas EUI and elec EUI variables """
     eui_df = pd.read_csv(eui_path)

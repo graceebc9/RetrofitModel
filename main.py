@@ -11,7 +11,10 @@ For commercial licensing options, contact: gb669@cam.ac.uk.
 from datetime import datetime
 import os
 from src.logging_config import setup_logging, get_logger
-running_locally=True 
+from src.utils import is_running_on_hpc 
+
+# Use it in your script
+running_locally = not is_running_on_hpc()
 if running_locally:
     base_path = '/Users/gracecolverd/RetrofitModel/notebook'
 else:

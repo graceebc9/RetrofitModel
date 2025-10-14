@@ -18,6 +18,28 @@ def join_three_pcds(df, df_col,  pc_df  , pcds_cols):
 import os
 from datetime import datetime
 import json
+import os
+import socket
+
+def is_running_on_hpc():
+    """
+    Detect if running on HPC by checking:
+    1. SLURM job environment variable (for submitted jobs)
+    2. Login node hostname pattern (for interactive testing)
+    """
+    # Check if running in a SLURM job
+    if 'SLURM_JOB_ID' in os.environ:
+        return True
+    
+    # Check if on a login node
+    hostname = socket.gethostname().lower()
+    if 'login' in hostname:
+        return True
+    
+    return False
+
+ 
+
 
 def log_configuration(log_filepath, **config_params):
     """
