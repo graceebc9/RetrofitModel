@@ -5,6 +5,131 @@ import numpy as np
 from typing import List, Dict
 import re
 
+
+import pandas as pd
+import numpy as np
+import pandas as pd
+import numpy as np
+
+def validate_wall_energy_columns(df):
+    """
+    Validate that energy columns are populated correctly based on wall type and insulation type.
+    
+    Rules:
+    - If inferred_wall_type is 'cavity wall': only cavity column should be non-NaN
+    - If inferred_wall_type is 'solid wall' and inferred_insulation_type is 'external': 
+      only external column should be non-NaN
+    - If inferred_wall_type is 'solid wall' and inferred_insulation_type is 'internal': 
+      only internal column should be non-NaN
+    
+    Returns:
+    - validation_df: DataFrame with validation results for each row
+    - invalid_rows: DataFrame containing only rows that failed validation
+    """
+    
+    # Create a copy to avoid modifying original
+    validation_df = df.copy()
+    
+    # Short column names for easier handling
+    cavity_col = 'wall_installation_energy_cavity_wall_percentile_gas_mean'
+    external_col = 'wall_installation_energy_solid_wall_external_percentile_gas_mean'
+    internal_col = 'wall_installation_energy_solid_wall_internal_percentile_gas_mean'
+    
+    # Initialize validation column
+    validation_df['is_valid'] = False
+    validation_df['validation_error'] = ''
+    
+    for idx, row in validation_df.iterrows():
+        wall_type = row['inferred_wall_type']
+        insulation_type = row['inferred_insulation_type']
+        
+        cavity_val = row[cavity_col]
+        external_val = row[external_col]
+        internal_val = row[internal_col]
+        
+        is_cavity_nan = pd.isna(cavity_val)
+        is_external_nan = pd.isna(external_val)
+        is_internal_nan = pd.isna(internal_val)
+        
+        # Check based on wall type
+        if pd.isna(wall_type):
+            validation_df.at[idx, 'validation_error'] = 'Wall type is NaN'
+            continue
+            
+        if wall_type.lower() == 'cavity_wall':
+            # Only cavity should be non-NaN, others should be NaN
+            if not is_cavity_nan and is_external_nan and is_internal_nan:
+                validation_df.at[idx, 'is_valid'] = True
+            else:
+                errors = []
+                if is_cavity_nan:
+                    errors.append('cavity column is NaN')
+                if not is_external_nan:
+                    errors.append('external column is not NaN')
+                if not is_internal_nan:
+                    errors.append('internal column is not NaN')
+                validation_df.at[idx, 'validation_error'] = '; '.join(errors)
+                
+        elif wall_type.lower() == 'solid_wall':
+            if pd.isna(insulation_type):
+                validation_df.at[idx, 'validation_error'] = 'Solid wall but insulation type is NaN'
+                continue
+                
+            if insulation_type.lower() == 'external_wall_insulation':
+                # Only external should be non-NaN
+                if is_cavity_nan and not is_external_nan and is_internal_nan:
+                    validation_df.at[idx, 'is_valid'] = True
+                else:
+                    errors = []
+                    if not is_cavity_nan:
+                        errors.append('cavity column is not NaN')
+                    if is_external_nan:
+                        errors.append('external column is NaN')
+                    if not is_internal_nan:
+                        errors.append('internal column is not NaN')
+                    validation_df.at[idx, 'validation_error'] = '; '.join(errors)
+                    
+            elif insulation_type.lower() == 'internal_wall_insulation':
+                # Only internal should be non-NaN
+                if is_cavity_nan and is_external_nan and not is_internal_nan:
+                    validation_df.at[idx, 'is_valid'] = True
+                else:
+                    errors = []
+                    if not is_cavity_nan:
+                        errors.append('cavity column is not NaN')
+                    if not is_external_nan:
+                        errors.append('external column is not NaN')
+                    if is_internal_nan:
+                        errors.append('internal column is NaN')
+                    validation_df.at[idx, 'validation_error'] = '; '.join(errors)
+            else:
+                validation_df.at[idx, 'validation_error'] = f'Unknown insulation type: {insulation_type}'
+        else:
+            validation_df.at[idx, 'validation_error'] = f'Unknown wall type: {wall_type}'
+    
+    # Get invalid rows
+    invalid_rows = validation_df[~validation_df['is_valid']].copy()
+    
+    # Print summary
+    total_rows = len(validation_df)
+    valid_count = validation_df['is_valid'].sum()
+    invalid_count = total_rows - valid_count
+    
+    print(f"Validation Summary:")
+    print(f"  Total rows: {total_rows}")
+    print(f"  Valid rows: {valid_count} ({100*valid_count/total_rows:.1f}%)")
+    print(f"  Invalid rows: {invalid_count} ({100*invalid_count/total_rows:.1f}%)")
+    
+    if invalid_count > 0:
+        print(f"\nError breakdown:")
+        error_counts = invalid_rows['validation_error'].value_counts()
+        for error, count in error_counts.items():
+            print(f"  {error}: {count}")
+    
+    return validation_df, invalid_rows
+
+
+
 def detect_scenarios(df: pd.DataFrame) -> List[str]:
     """
     Detect unique scenario prefixes from DataFrame columns.
