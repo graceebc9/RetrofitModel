@@ -9,10 +9,11 @@ For commercial licensing options, contact: gb669@cam.ac.uk.
 """
 
 from datetime import datetime
+import os
 from src.logging_config import setup_logging, get_logger
 running_locally=True 
 if running_locally:
-    base_path = '/Users/gracecolverd/retrofit_model/notebook'
+    base_path = '/Users/gracecolverd/RetrofitModel/notebook'
 else:
     base_path = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel'
     os.makedirs(f'{base_path}/logs', exist_ok=True )
@@ -23,6 +24,9 @@ log_path = f"{base_path}/logs/log_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 setup_logging(log_level='INFO', log_path=log_path)
 logger = get_logger(__name__)
 
+
+from pathlib import Path
+root_dir = Path(__file__).resolve().parent.parent
 
 import os
 import sys
@@ -223,7 +227,7 @@ def main():
     }
 
     # load conservation areas 
-    conservation_data = load_conservation_shapefile(path = '/Users/gracecolverd/Downloads/Conservation_Areas_-5503574965118299320/Conservation_Areas.shp')
+    conservation_data = load_conservation_shapefile(path =f'{root_dir}/RetrofitModel/src/global_avs/Conservation_Areas_-5503574965118299320')
 
     for name, path in required_paths.items():
         if not os.path.exists(path):
@@ -243,7 +247,7 @@ def main():
         logger.info("ONSUD splitting disabled, proceeding to postcode calculations")
 
     # Load NEBULA postcodes
-    neb_pcs = pd.read_csv('/Users/gracecolverd/NebulaDataset/notebooks2/neb_dom_pcs.csv')
+    neb_pcs = pd.read_csv(f'{root_dir}/RetrofitModel/src/global_avs/neb_dom_pcs.csv')
     neb_pcs = neb_pcs['postcode'].tolist()
 
     # Load batch paths

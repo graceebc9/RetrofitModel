@@ -15,12 +15,15 @@ from .postcode_utils import find_data_pc_joint
 from .pre_process_buildings import pre_process_building_data
 
 
+from pathlib import Path
+root_dir = Path(__file__).resolve().parent.parent
+
 
 def load_energy():
-    energy_df = pd.read_csv('/Users/gracecolverd/retrofit_model/notebook/neb_enegry_data.csv')
+    energy_df = pd.read_csv(f'{root_dir}/RetrofitModel/src/global_avs/neb_enegry_data.csv')
     return energy_df
 
-def load_eui(eui_path= '/Volumes/T9/2024_Data_downloads/2024_11_nebula_paper_data/2025_revisions/20225_11_final_submission/neb_eui_table.csv'):
+def load_eui(eui_path= f'{root_dir}/RetrofitModel/src/global_avs/neb_eui_table.csv'):
     """
     Load the processed nebula gas EUI and elec EUI variables """
     eui_df = pd.read_csv(eui_path)
