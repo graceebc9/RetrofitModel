@@ -34,20 +34,27 @@ from src.conservation import load_conservation_shapefile
 # ========================================
 # DATA PATHS - UPDATE AS NEEDED
 # ========================================
+running_locally=True 
+if running_locally:
 
-# Location of postcode shapefiles (we use codepoint edina)
-PC_SHP_PATH = '/Volumes/T9/2024_Data_downloads/codepoint_polygons_edina/Download_all_postcodes_2378998/codepoint-poly_5267291'
+    PC_SHP_PATH = '/Volumes/T9/2024_Data_downloads/codepoint_polygons_edina/Download_all_postcodes_2378998/codepoint-poly_5267291'
 
-# Location of building stock dataset (we use Verisk buildings from Edina)
-BUILDING_PATH = '/Volumes/T9/2024_Data_downloads/Versik_building_data/2024_03_22_updated_data/UKBuildings_Edition_15_new_format_upn.gpkg'
+    # Location of building stock dataset (we use Verisk buildings from Edina)
+    BUILDING_PATH = '/Volumes/T9/2024_Data_downloads/Versik_building_data/2024_03_22_updated_data/UKBuildings_Edition_15_new_format_upn.gpkg'
 
-# Location of the input data folder
-# If in this repo: location_input_data_folder = 'input_data_sources'
-# If stored elsewhere (e.g. external hard drive):
-location_input_data_folder = '/Volumes/T9/2024_Data_downloads/2024_11_nebula_paper_data/'
+    # Location of the input data folder
+    # If in this repo: location_input_data_folder = 'input_data_sources'
+    # If stored elsewhere (e.g. external hard drive):
+    location_input_data_folder = '/Volumes/T9/2024_Data_downloads/2024_11_nebula_paper_data/'
+    onsud_path_base = os.path.join(location_input_data_folder, 'ONS_UPRN_database/ONSUD_DEC_2022/Data')
+else: 
+    PC_SHP_PATH = '/rds/user/gb669/hpc-work/energy_map/data/postcode_polygons/codepoint-poly_5267291'
+    BUILDING_PATH = '/rds/user/gb669/hpc-work/energy_map/data/building_files/UKBuildings_Edition_15_new_format_upn.gpkg'
+    location_input_data_folder = '/home/gb669/rds/hpc-work/energy_map/data/input_data'
+    onsud_path_base = '/home/gb669/rds/hpc-work/energy_map/data/onsud_files/Data'
+
 
 # Derived paths - do not update if you download our zip file, unzip and place in location_input_data_folder
-onsud_path_base = os.path.join(location_input_data_folder, 'ONS_UPRN_database/ONSUD_DEC_2022/Data')
 GAS_PATH = os.path.join(location_input_data_folder, 'energy_data/Postcode_level_gas_2022.csv')
 ELEC_PATH = os.path.join(location_input_data_folder, 'energy_data/Postcode_level_all_meters_electricity_2022.csv')
 TEMP_1KM_PATH = os.path.join(location_input_data_folder, 'climate_data/tas_hadukgrid_uk_1km_mon_202201-202212.nc')
