@@ -11,13 +11,128 @@ logger = logging.getLogger(__name__)
 
 from .PreProcessRetrofit import vectorized_process_buildings 
 
+
+
+
+
 @dataclass
 class RetrofitScenarioGenerator:
     """
     Generates retrofit scenarios with age-appropriate wall insulation types.
     Includes Monte Carlo uncertainty analysis based on observed performance ranges.
     """
-    
+
+    def process_dataframe_scenarios(self,
+                               df: pd.DataFrame,
+                              scenarios: list, 
+                            #    typ_config,   # RetrofitConfig instance
+                               model_class,  # RetrofitCost instance
+                               region: str,
+                               random_seed: Optional[int] = None,
+                               col_mapping: Optional[Dict[str, str]] = None) -> pd.DataFrame:
+        """
+        Process scenarios for all buildings in a DataFrame with efficient cost sampling.
+        
+        Flow:
+        1. Determine wall type for building
+        2. Generate scenarios (includes sampling existing insulation)
+        3. Get list of needed interventions per scenario
+        4. Run Monte Carlo on costs ONLY for needed interventions
+        5. Run Monte Carlo on energy savings
+        
+        Parameters:
+        -----------
+        df : pd.DataFrame
+            Input DataFrame with building data
+        typ_config: RetrofitConfig object 
+        model_class : RetrofitModel for single scenario 
+            
+        region : str
+            Region code (e.g., 'LN', 'SE')
+        n_samples : int
+            Number of Monte Carlo samples per building
+        random_seed : int, optional
+            Random seed for reproducibility
+        col_mapping : Dict[str, str], optional
+            Column name mapping
+            
+        Required columns in df:
+        - age_band
+        - current_energy_kwh
+        - Building characteristics for cost calculation
+        
+        Returns:
+        --------
+        pd.DataFrame : Original DataFrame with added scenario columns
+        """
+        
+        typ_config = model_class.retrofit_config
+        # Default column mapping
+        default_mapping = {
+            'age_band': 'premise_age_bucketed',
+            'current_energy_kwh': 'total_gas_derived',
+            'floor_count': 'total_fl_area_avg',
+            'gross_external_area': 'total_fl_area_avg',
+            'gross_internal_area': 'scaled_fl_area',
+            'footprint_circumference': 'perimeter_length',
+            'flat_count': 'est_num_flats',
+            'building_type': 'premise_type',
+            'building_footprint_area': 'premise_area',
+            'avg_gas_decile': 'avg_gas_decile',
+            'cons_bool': 'conservation_area_bool', 
+        }
+        
+        if col_mapping:
+            default_mapping.update(col_mapping)
+        col_mapping = default_mapping
+        
+        result_df = df.copy()
+   
+        # tis sets the inferred wall type, inferred insulation type. 
+        df_typ = vectorized_process_buildings(
+                    result_df=result_df,
+                    col_mapping=col_mapping , 
+                    config=typ_config, 
+                    random_seed=random_seed
+                )
+     
+  
+ 
+        res_sc = [df_typ] 
+        
+        # prob_external = typ_config.existing_intervention_probs['external_wall_occurence']
+
+        for scenario in scenarios:
+            
+            results = model_class.calculate_building_costs_df_updated(
+                df= df_typ, 
+                region=region,
+                scenario=scenario ,
+                # prob_external = prob_external , 
+                ) 
+
+            logger.debug(f"Type of results: {type(results)}")
+            logger.debug(f"Results content: {results}")
+
+            if isinstance(results, dict):
+                if 'error' in results:
+                    logger.warning(f"Warning: {results['error']}")
+                    continue  # Skip this scenario
+                logger.debug(f"Results keys: {results.keys()}")
+                logger.debug(f"Sample values: {[(k, type(v), v) for k, v in list(results.items())[:3]]}")
+                results = pd.DataFrame(results, index=[0])  # Add index=[0] fix here
+            else:
+                res_sc.append(results)
+ 
+            
+        costs_result = pd.concat(res_sc, axis=1)                     
+       
+        return costs_result 
+            
+                     
+
+
+
     
      
     # # Base scenario templates
@@ -112,113 +227,3 @@ class RetrofitScenarioGenerator:
     #     }
     # })
     
-     
-
- 
- 
-
-    def process_dataframe_scenarios(self,
-                               df: pd.DataFrame,
-                              scenarios: list, 
-                               typ_config,   # RetrofitConfig instance
-                               model_class,  # RetrofitCost instance
-                               region: str,
-                               random_seed: Optional[int] = None,
-                               col_mapping: Optional[Dict[str, str]] = None) -> pd.DataFrame:
-        """
-        Process scenarios for all buildings in a DataFrame with efficient cost sampling.
-        
-        Flow:
-        1. Determine wall type for building
-        2. Generate scenarios (includes sampling existing insulation)
-        3. Get list of needed interventions per scenario
-        4. Run Monte Carlo on costs ONLY for needed interventions
-        5. Run Monte Carlo on energy savings
-        
-        Parameters:
-        -----------
-        df : pd.DataFrame
-            Input DataFrame with building data
-        typ_config: RetrofitConfig object 
-        model_class : RetrofitModel for single scenario 
-            
-        region : str
-            Region code (e.g., 'LN', 'SE')
-        n_samples : int
-            Number of Monte Carlo samples per building
-        random_seed : int, optional
-            Random seed for reproducibility
-        col_mapping : Dict[str, str], optional
-            Column name mapping
-            
-        Required columns in df:
-        - age_band
-        - current_energy_kwh
-        - Building characteristics for cost calculation
-        
-        Returns:
-        --------
-        pd.DataFrame : Original DataFrame with added scenario columns
-        """
-        
-        
-        # Default column mapping
-        default_mapping = {
-            'age_band': 'premise_age_bucketed',
-            'current_energy_kwh': 'total_gas_derived',
-            'floor_count': 'total_fl_area_avg',
-            'gross_external_area': 'total_fl_area_avg',
-            'gross_internal_area': 'scaled_fl_area',
-            'footprint_circumference': 'perimeter_length',
-            'flat_count': 'est_num_flats',
-            'building_type': 'premise_type',
-            'building_footprint_area': 'premise_area',
-            'avg_gas_decile': 'avg_gas_decile'
-        }
-        
-        if col_mapping:
-            default_mapping.update(col_mapping)
-        col_mapping = default_mapping
-        
-        result_df = df.copy()
-
-        df_typ = vectorized_process_buildings(
-                    result_df=result_df,
-                    col_mapping=col_mapping , 
-                    config=typ_config, 
-                    random_seed=random_seed
-                )
-        
- 
-        res_sc = [df] 
-        
-        prob_external = typ_config.existing_intervention_probs['external_wall_occurence']
-
-        for scenario in scenarios:
-            
-            results = model_class.calculate_building_costs_df_updated(
-                df= df_typ, 
-                region=region,
-                scenario=scenario ,
-                prob_external = prob_external , 
-                ) 
-
-            logger.debug(f"Type of results: {type(results)}")
-            logger.debug(f"Results content: {results}")
-
-            if isinstance(results, dict):
-                if 'error' in results:
-                    print(f"Warning: {results['error']}")
-                    continue  # Skip this scenario
-                logger.debug(f"Results keys: {results.keys()}")
-                logger.debug(f"Sample values: {[(k, type(v), v) for k, v in list(results.items())[:3]]}")
-                results = pd.DataFrame(results, index=[0])  # Add index=[0] fix here
-            else:
-                res_sc.append(results)
- 
-            
-        costs_result = pd.concat(res_sc, axis=1)                     
-       
-        return costs_result 
-            
-                     

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any
 import numpy as np
 
 from .BuildingCharacteristics import BuildingCharacteristics  
-from .RetrofitInterventionScalingRules import InterventionScalingRules
+from .RetrofitCostsScalingRules import INTERVENTION_CONFIGS, CostEstimator, InterventionConfig
 from .RetrofitEnergy import RetrofitEnergy 
 from .RetrofitUtils import calculate_estimated_flats_per_building 
 from .RetrofitConfig import RetrofitConfig 
@@ -21,7 +21,12 @@ class RetrofitModel:
     """Enhanced configuration with with Monte Carlo cost sampling.."""
     retrofit_config: RetrofitConfig 
     n_samples: int = 100
-    
+    solid_wall_internal_improvement_factor: float = 0.1 
+    solid_wall_external_improvement_factor: float = 0.2 
+    energy_config: Optional[RetrofitEnergy] = None  # Allow custom config or will be auto-created
+    cost_estimator: CostEstimator = field(default_factory=CostEstimator)
+    custom_intervention_configs: Optional[Dict[str, InterventionConfig]] = None
+
 
     def __post_init__(self):
         """Validate inputs after initialization."""
@@ -29,7 +34,23 @@ class RetrofitModel:
             raise ValueError(f"n_samples must be positive, got {self.n_samples}")
         
         if self.n_samples < 100:
-            print(f"Warning: n_samples={self.n_samples} is low. Consider using 100+ for stable results.")
+            logger.warning(f"Warning: n_samples={self.n_samples} is low. Consider using 100+ for stable results.")
+
+        # Create RetrofitEnergy config if not provided
+        if self.energy_config is None:
+            self.energy_config = RetrofitEnergy(
+                solid_wall_internal_improvement_factor=self.solid_wall_internal_improvement_factor, 
+                solid_wall_external_improvement_factor=self.solid_wall_external_improvement_factor
+            )
+            logger.info(f"Created RetrofitEnergy config with solid wall improvement factor: internal {self.solid_wall_internal_improvement_factor} and external {self.solid_wall_external_improvement_factor}  ")
+        
+        # Initialize cost estimator with custom configs if provided
+        if self.custom_intervention_configs is not None:
+            self.cost_estimator = CostEstimator(self.custom_intervention_configs)
+            logger.info(f"Initialized CostEstimator with {len(self.custom_intervention_configs)} custom configs")
+        else:
+            logger.info(f"Using default CostEstimator with {len(self.cost_estimator.configs)} interventions")
+
 
         logger.debug(f"Regional multipliers: {list(self.regional_multipliers.keys())}")
         logger.debug(f"Available scenarios: {list(self.retrofit_packages.keys())}")
@@ -69,8 +90,8 @@ class RetrofitModel:
         'LN', 'SE', 'SW', 'NW', 'NE', 'YH', 'WA', 'EM', 'EE', 'WM'
     ])
     
-    scaling_rules: InterventionScalingRules = field(default_factory=InterventionScalingRules)
-    energy_config: RetrofitEnergy = field(default_factory=RetrofitEnergy)
+    # scaling_rules: CostEstimator = field(default_factory=INTERVENTION_CONFIGS)
+    
 
     age_band_multipliers: Dict[str, float] = field(default_factory=lambda: {
         'Post 1999': 0.90, '1990-1999': 0.95, '1980-1989': 1.0,
@@ -98,7 +119,7 @@ class RetrofitModel:
             'installation_approach': 'simultaneous'
         },
         'wall_installation': {
-            'name': 'loft',
+            'name': 'wall',
             'description': 'using percentiles to get savings',
             'interventions': [
                 'WALL_INSULATION',
@@ -225,6 +246,9 @@ class RetrofitModel:
             'age_band': 'premise_age',
             'building_footprint_area': 'premise_area',
             'avg_gas_percentile':'avg_gas_percentile', 
+            'inferred_wall_type': 'inferred_wall_type',
+            'inferred_insulation_type': 'inferred_insulation_type',
+
         }
         
         if col_mapping is None:
@@ -273,7 +297,7 @@ class RetrofitModel:
         # Check required boolean/type columns
         required_new_cols = ['wall_insulated', 'existing_loft_insulation', 
                             'existing_floor_insulation', 'existing_window_upgrades', 
-                            'wall_type']
+                            'inferred_wall_type']
         missing_new_cols = [col for col in required_new_cols if col not in df.columns]
         
         if missing_new_cols:
@@ -309,6 +333,9 @@ class RetrofitModel:
             skip_interventions.add('internal_wall_insulation')
             skip_interventions.add('cavity_wall_percentile')
             skip_interventions.add('solid_wall_percentile')
+            skip_interventions.add('solid_wall_internal_percentile')
+            skip_interventions.add('solid_wall_external_percentile')
+
         if existing_loft:
             skip_interventions.add('loft_insulation')
             skip_interventions.add('loft_percentile')
@@ -321,55 +348,55 @@ class RetrofitModel:
     
 
 
-    def resolve_interventions_for_building(self, scenario_interventions, wall_type, prob_external, percentile ):
-        """
-        Resolve scenario interventions, replacing WALL_INSULATION placeholder with specific wall type.
+    # def resolve_interventions_for_building(self, scenario_interventions, wall_type, prob_external, percentile ):
+    #     """
+    #     Resolve scenario interventions, replacing WALL_INSULATION placeholder with specific wall type.
         
-        Parameters:
-        -----------
-        scenario_interventions : list
-            List of interventions from scenario config (may include 'WALL_INSULATION' placeholder)
-        wall_type : str
-            Either 'cavity_wall' or 'solid_wall'
-        prob_external : float
-            Probability of selecting external wall insulation for solid walls
+    #     Parameters:
+    #     -----------
+    #     scenario_interventions : list
+    #         List of interventions from scenario config (may include 'WALL_INSULATION' placeholder)
+    #     wall_type : str
+    #         Either 'cavity_wall' or 'solid_wall'
+    #     prob_external : float
+    #         Probability of selecting external wall insulation for solid walls
         
-        percentile: bool , if true use percentile interventions 
+    #     percentile: bool , if true use percentile interventions 
         
-        Returns:
-        --------
-        tuple: (interventions_list, selected_wall_type)
-            - interventions_list: List of resolved interventions
-            - selected_wall_type: Specific wall insulation type selected (or None)
-        """
-        interventions_to_calculate = []
-        selected_wall_insulation = None
+    #     Returns:
+    #     --------
+    #     tuple: (interventions_list, selected_wall_type)
+    #         - interventions_list: List of resolved interventions
+    #         - selected_wall_type: Specific wall insulation type selected (or None)
+    #     """
+    #     interventions_to_calculate = []
+    #     selected_wall_insulation = None
         
-        for intervention in scenario_interventions:
-            if intervention == 'WALL_INSULATION':
-                if percentile:
-                    if wall_type == 'cavity_wall':
-                        selected_wall_insulation = 'cavity_wall_insulation'
-                        interventions_to_calculate.append('cavity_wall_percentile')
-                    else:  # solid_wall
-                        selected_wall_insulation = 'solid_insulation'
-                        interventions_to_calculate.append('solid_wall_percentile')
-                else:
-                    # Replace with specific wall insulation type based on wall_type
-                    if wall_type == 'cavity_wall':
-                        selected_wall_insulation = 'cavity_wall_insulation'
-                        interventions_to_calculate.append('cavity_wall_insulation')
-                    else:  # solid_wall
-                        # Randomly choose internal or external wall insulation
-                        if np.random.random() < prob_external:
-                            selected_wall_insulation = 'external_wall_insulation'
-                        else:
-                            selected_wall_insulation = 'internal_wall_insulation'
-                        interventions_to_calculate.append(selected_wall_insulation)
-            else:
-                interventions_to_calculate.append(intervention)
+    #     for intervention in scenario_interventions:
+    #         if intervention == 'WALL_INSULATION':
+    #             if percentile:
+    #                 if wall_type == 'cavity_wall':
+    #                     selected_wall_insulation = 'cavity_wall_insulation'
+    #                     interventions_to_calculate.append('cavity_wall_percentile')
+    #                 else:  # solid_wall
+    #                     selected_wall_insulation = 'solid_insulation'
+    #                     interventions_to_calculate.append('solid_wall_percentile')
+    #             else:
+    #                 # Replace with specific wall insulation type based on wall_type
+    #                 if wall_type == 'cavity_wall':
+    #                     selected_wall_insulation = 'cavity_wall_insulation'
+    #                     interventions_to_calculate.append('cavity_wall_insulation')
+    #                 else:  # solid_wall
+    #                     # Randomly choose internal or external wall insulation
+    #                     if np.random.random() < prob_external:
+    #                         selected_wall_insulation = 'external_wall_insulation'
+    #                     else:
+    #                         selected_wall_insulation = 'internal_wall_insulation'
+    #                     interventions_to_calculate.append(selected_wall_insulation)
+    #         else:
+    #             interventions_to_calculate.append(intervention)
         
-        return interventions_to_calculate, selected_wall_insulation
+    #     return interventions_to_calculate, selected_wall_insulation
       
  
 
@@ -537,89 +564,187 @@ class RetrofitModel:
             logger.debug('Samples are not a list or dictionary')
             result = self._calculate_single_statistic(samples, stat)
             return result
-        
-    def calculate_intervention_energy_savings(self, 
-                                    interventions, 
-                                    building_chars,
-                                    region,  
-                                    return_statistics,
-                                    roof_scaling, 
-                                    ):
+    
+    def calculate_intervention_energy_savings(
+        self, 
+        interventions, 
+        building_chars,
+        region,  
+        return_statistics,
+        roof_scaling,
+    ):
         """
         Calculate Monte Carlo energy savings statistics for a list of interventions.
-        For both gas and electricity: combines samples additively at the sample level, then calculates summary stats.
+        Produces flat, consistent column naming similar to cost calculations.
+        Example output keys:
+            energy_wall_installation_gas_mean
+            energy_wall_installation_electricity_p95
         """
-        # Store samples by fuel type
-        gas_samples_list = []
-        electricity_samples_list = []
+
+        # Store samples by fuel type for each intervention
+        energy_stats = {}
 
         for intervention in interventions:
             if intervention != 'solar_pv':
                 try:
-                    # Get Monte Carlo samples for energy savings
+                    # Get Monte Carlo samples
                     samples = self.energy_config.sample_intervention_energy_savings_monte_carlo(
                         intervention=intervention,
                         building_chars=building_chars,
                         region=region,
                         n_samples=self.n_samples,
                         roof_scaling=roof_scaling,
-                        
                     )
-                    
-                    if 'percentile' in intervention:
-                        # these only return gas samples 
-                        gas_samples_list.append(samples)
+
+                    # Determine fuel-specific samples
+                    gas_samples = None
+                    elec_samples = None
+
+                    if isinstance(samples, dict):
+                        gas_samples = samples.get('gas', None)
+                        elec_samples = samples.get('electricity', None)
                     else:
-                        # Separate gas and electricity samples
-                        if 'gas' in samples:
-                            gas_samples_list.append(samples['gas'])
-                        elif 'electricity' in samples:
-                            electricity_samples_list.append(samples['electricity'])
-                        else:
-                            print('samples ', samples)
-                        
-                            raise Exception('Samples not as expected')
-         
+                        # Some configs may return only one array (assume gas)
+                        gas_samples = samples
+
+                    # Compute statistics for gas
+                    if gas_samples is not None:
+                        for stat in return_statistics:
+                            if stat == 'mean':
+                                val = np.mean(gas_samples)
+                            elif stat == 'median' or stat == 'p50':
+                                val = np.median(gas_samples)
+                            elif stat == 'p5':
+                                val = np.percentile(gas_samples, 5)
+                            elif stat == 'p95':
+                                val = np.percentile(gas_samples, 95)
+                            elif stat == 'std':
+                                val = np.std(gas_samples)
+                            else:
+                                raise ValueError(f"Unsupported statistic: {stat}")
+
+                            col_name = f"energy_{intervention}_gas_{stat}"
+                            energy_stats[col_name] = val
+
+                    # Compute statistics for electricity
+                    if elec_samples is not None:
+                        for stat in return_statistics:
+                            if stat == 'mean':
+                                val = np.mean(elec_samples)
+                            elif stat == 'median' or stat == 'p50':
+                                val = np.median(elec_samples)
+                            elif stat == 'p5':
+                                val = np.percentile(elec_samples, 5)
+                            elif stat == 'p95':
+                                val = np.percentile(elec_samples, 95)
+                            elif stat == 'std':
+                                val = np.std(elec_samples)
+                            else:
+                                raise ValueError(f"Unsupported statistic: {stat}")
+
+                            col_name = f"energy_{intervention}_electricity_{stat}"
+                            energy_stats[col_name] = val
+
                 except Exception as e:
-                    # Handle errors appropriately
-                    print(f"Error processing intervention {intervention}: {e}")
-                    continue
+                    logger.warning(f"Error processing intervention {intervention}: {e}")
+                    # Fill with NaNs for expected stats if failure
+                    for fuel in ['gas', 'electricity']:
+                        for stat in return_statistics:
+                            col_name = f"energy_{intervention}_{fuel}_{stat}"
+                            energy_stats[col_name] = np.nan
+
+        return energy_stats
+
+    
+    # def calculate_intervention_energy_savings(self, 
+    #                                 interventions, 
+    #                                 building_chars,
+    #                                 region,  
+    #                                 return_statistics,
+    #                                 roof_scaling, 
+    #                                 ):
+    #     """
+    #     Calculate Monte Carlo energy savings statistics for a list of interventions.
+    #     For both gas and electricity: combines samples additively at the sample level, then calculates summary stats.
+
+    #         Example output keys:
+    #     energy_wall_installation_gas_mean
+    #     energy_wall_installation_electricity_p95
+
+
+    #     """
+    #     # Store samples by fuel type
+    #     gas_samples_list = []
+    #     electricity_samples_list = []
+
+    #     for intervention in interventions:
+    #         if intervention != 'solar_pv':
+    #             try:
+    #                 # Get Monte Carlo samples for energy savings
+    #                 samples = self.energy_config.sample_intervention_energy_savings_monte_carlo(
+    #                     intervention=intervention,
+    #                     building_chars=building_chars,
+    #                     region=region,
+    #                     n_samples=self.n_samples,
+    #                     roof_scaling=roof_scaling,
+                        
+    #                 )
+                    
+    #                 if 'percentile' in intervention:
+    #                     # these only return gas samples 
+    #                     gas_samples_list.append(samples)
+    #                 else:
+    #                     # Separate gas and electricity samples
+    #                     if 'gas' in samples:
+    #                         gas_samples_list.append(samples['gas'])
+    #                     elif 'electricity' in samples:
+    #                         electricity_samples_list.append(samples['electricity'])
+    #                     else:
+    #                         logger.info('samples seem strange ')
+    #                         logger.info( samples)
+                        
+    #                         raise Exception('Samples not as expected')
+         
+    #             except Exception as e:
+    #                 # Handle errors appropriately
+    #                 logger.warning(f"Error processing intervention {intervention}: {e}")
+    #                 continue
         
-        savings_stats = {}
+    #     savings_stats = {}
         
-        # Process gas samples: additive combination at sample level
-        if gas_samples_list:
-            # Add samples element-wise across all interventions
-            combined_gas_samples = gas_samples_list[0].copy()
-            for gas_samples in gas_samples_list[1:]:
-                combined_gas_samples += gas_samples
+    #     # Process gas samples: additive combination at sample level
+    #     if gas_samples_list:
+    #         # Add samples element-wise across all interventions
+    #         combined_gas_samples = gas_samples_list[0].copy()
+    #         for gas_samples in gas_samples_list[1:]:
+    #             combined_gas_samples += gas_samples
             
-            # Calculate summary statistics on combined samples
-            savings_stats['gas'] = {
-                'mean': np.mean(combined_gas_samples),
-                'median': np.median(combined_gas_samples),
-                'std': np.std(combined_gas_samples),
-                'p5': np.percentile(combined_gas_samples, 5),
-                'p95': np.percentile(combined_gas_samples, 95),
-            }
+    #         # Calculate summary statistics on combined samples
+    #         savings_stats['gas'] = {
+    #             'mean': np.mean(combined_gas_samples),
+    #             'median': np.median(combined_gas_samples),
+    #             'std': np.std(combined_gas_samples),
+    #             'p5': np.percentile(combined_gas_samples, 5),
+    #             'p95': np.percentile(combined_gas_samples, 95),
+    #         }
          
         
-        # Process electricity samples: additive combination at sample level
-        if electricity_samples_list:
-            # Add samples element-wise across all interventions
-            combined_electricity_samples = electricity_samples_list[0].copy()
-            for elec_samples in electricity_samples_list[1:]:
-                combined_electricity_samples += elec_samples
+    #     # Process electricity samples: additive combination at sample level
+    #     if electricity_samples_list:
+    #         # Add samples element-wise across all interventions
+    #         combined_electricity_samples = electricity_samples_list[0].copy()
+    #         for elec_samples in electricity_samples_list[1:]:
+    #             combined_electricity_samples += elec_samples
             
-            savings_stats['electricity'] = {
-                'mean': np.mean(combined_electricity_samples),
-                'median': np.median(combined_electricity_samples),
-                'std': np.std(combined_electricity_samples),
-                'p5': np.percentile(combined_electricity_samples, 5),
-                'p95': np.percentile(combined_electricity_samples, 95),
-            }
+    #         savings_stats['electricity'] = {
+    #             'mean': np.mean(combined_electricity_samples),
+    #             'median': np.median(combined_electricity_samples),
+    #             'std': np.std(combined_electricity_samples),
+    #             'p5': np.percentile(combined_electricity_samples, 5),
+    #             'p95': np.percentile(combined_electricity_samples, 95),
+    #         }
         
-        return savings_stats
+    #     return savings_stats
      
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
@@ -662,9 +787,11 @@ class RetrofitModel:
         """
         cost_stats = {}
         all_samples = [] if include_total else None
+
+ 
         
         for intervention in interventions:
-            # Check if intervention is already installed
+            # Check if interv(ention is already installed
             if intervention in skip_interventions:
                 # Set cost to 0 for already-installed interventions
                 for stat in return_statistics:
@@ -677,6 +804,7 @@ class RetrofitModel:
                 continue
             
             try:
+              
                 # Get Monte Carlo samples
                 samples = self.sample_intervention_cost_monte_carlo(
                     intervention=intervention,
@@ -685,7 +813,8 @@ class RetrofitModel:
                     age_band=age_band,
                     region=region,
                 )
-                
+                 
+               
                 
                 # Calculate individual intervention statistics
                 for stat in return_statistics:
@@ -702,7 +831,7 @@ class RetrofitModel:
                     all_samples.append(samples)
                 
             except ValueError as ve:
-                logging.warning(f"Cost calculation skipped for {intervention}: {ve}")
+                # logging.warning(f"Cost calculation skipped for {intervention}: {ve}")
                 for stat in return_statistics:
                     col_name = f'{intervention}_{stat}'
                     cost_stats[col_name] = np.nan
@@ -785,9 +914,7 @@ class RetrofitModel:
         ...     'LN',
         ...     n_samples=1000
         ... )
-        >>> print(f"Mean: £{samples.mean():.2f}")
-        >>> print(f"Median: £{np.median(samples):.2f}")
-        >>> print(f"95% CI: £{np.percentile(samples, 2.5):.2f} - £{np.percentile(samples, 97.5):.2f}")
+ 
         """
         if typology is None or typology == 'None':
             return None
@@ -799,18 +926,48 @@ class RetrofitModel:
         complexity_mult = self.typology_complexity.get(typology, 1.0)
         regional_mult = self.get_regional_multiplier(validated_region)
         
-        # Sample using unified method
-        samples = self.scaling_rules.sample_intervention_cost(
-            intervention=intervention,
-            building_chars=building_chars,
-            typology=typology,
-            age_band=age_band,
-            region=region,
-            regional_multiplier=regional_mult,
-            age_multiplier=age_mult,
-            complexity_multiplier=complexity_mult,
-            n_samples=self.n_samples
+        logger.debug(
+            f"Sampling {intervention}: region={validated_region}, "
+            f"age_mult={age_mult:.2f}, complexity_mult={complexity_mult:.2f}, "
+            f"regional_mult={regional_mult:.2f}"
         )
+
+        try:
+            samples = self.cost_estimator.sample_intervention_cost(
+                intervention=intervention,
+                building_chars=building_chars,
+                typology=typology,
+                age_band=age_band,
+                region=region,
+                regional_multiplier=regional_mult,
+                age_multiplier=age_mult,
+                complexity_multiplier=complexity_mult,
+                n_samples=self.n_samples
+            )
+            
+            logger.debug(
+                f"{intervention} samples: mean=£{samples.mean():,.0f}, "
+                f"std=£{samples.std():,.0f}"
+            )
+            
+            return samples
+            
+        except ValueError as e:
+            logger.error(f"Error sampling {intervention}: {e}")
+            raise
+
+        # # Sample using unified method
+        # samples = self.scaling_rules.sample_intervention_cost(
+        #     intervention=intervention,
+        #     building_chars=building_chars,
+        #     typology=typology,
+        #     age_band=age_band,
+        #     region=region,
+        #     regional_multiplier=regional_mult,
+        #     age_multiplier=age_mult,
+        #     complexity_multiplier=complexity_mult,
+        #     n_samples=self.n_samples
+        # )
         
         return samples
      
@@ -839,15 +996,20 @@ class RetrofitModel:
 
 
 
-    def calculate_ONLY_row_costs_only(self, row, col_mapping, scenario_interventions, prob_external, 
-                        region, n_samples, return_statistics):
+    def calculate_ONLY_row_costs_only(self,
+                                    row,
+                                        col_mapping, 
+                                        scenario_interventions, 
+                                        # prob_external, 
+                                        region, 
+                                        return_statistics):
         """
         Calculate Monte Carlo cost statistics for scenario interventions for one building.
         and now energy 
        
         """
         # Data validation
-        required_cols = ['floor_count', 'gross_external_area', 'gross_internal_area',
+        required_cols = ['floor_count', 'gross_external_area', 'gross_internal_area', 'inferred_wall_type', 'inferred_insulation_type',
                         'footprint_circumference', 'building_type', 'age_band', 'building_footprint_area', 'avg_gas_percentile']
         
         missing_cols = [col for col in required_cols if col_mapping[col] not in row.index]
@@ -885,21 +1047,41 @@ class RetrofitModel:
         )
         
         run_percentile= True 
+
+        # 'wall_insulated', 'existing_loft_insulation', 'existing_floor_insulation', 'existing_window_upgrades'
         # Extract retrofit status flags
         wall_insulated = bool(row['wall_insulated'])
         existing_loft = bool(row['existing_loft_insulation'])
         existing_floor = bool(row['existing_floor_insulation'])
         existing_windows = bool(row['existing_window_upgrades'])
-        wall_type = str(row['wall_type']).lower().strip()
+        wall_type = str(row['inferred_wall_type']).lower().strip()
+        insulation_type = str(row['inferred_insulation_type']).lower().strip()
         
         # Validate wall_type
         if wall_type not in ['cavity_wall', 'solid_wall']:
-            raise ValueError(f"Invalid wall_type: '{wall_type}'. Must be 'cavity_wall_percentile' or 'solid_wall_percentile'")
+            raise ValueError(f"Invalid wall_type: '{wall_type}'. Must be 'cavity_wall' or 'solid_wall'")
+        if insulation_type not in ['cavity_wall_insulation', 'internal_wall_insulation', 'external_wall_insulation']: 
+            raise ValueError("Invalid insulation type ")
         
         # Resolve interventions (replaces WALL_INSULATION placeholder)
-        interventions_to_calculate, selected_wall_insulation = self.resolve_interventions_for_building(
-            scenario_interventions, wall_type, prob_external, percentile = run_percentile
-        )
+        selected_wall_insulation = insulation_type
+        interventions_to_calculate= [] 
+        
+        for intervention in scenario_interventions:
+            if intervention=='WALL_INSULATION':
+                if selected_wall_insulation =='cavity_wall_insulation': 
+                    interventions_to_calculate.append('cavity_wall_percentile')
+                elif selected_wall_insulation =='internal_wall_insulation':  # solid_wall
+                        interventions_to_calculate.append('solid_wall_internal_percentile')
+                elif selected_wall_insulation =='external_wall_insulation':  # solid_wall
+                    interventions_to_calculate.append('solid_wall_external_percentile')
+            else:
+                interventions_to_calculate.append(intervention)
+
+
+        # interventions_to_calculate, selected_wall_insulation = self.resolve_interventions_for_building(
+        #     scenario_interventions, wall_type, prob_external, percentile = run_percentile
+        # )
         
         # Determine which interventions to skip
         skip_interventions = self.get_skip_interventions(
@@ -910,7 +1092,7 @@ class RetrofitModel:
         typology = row[col_mapping['building_type']]
         age_band = row[col_mapping['age_band']]
         
-        logger.debug('Strating calc interventio costs..')
+        
 
         cost_stats = self.calculate_intervention_costs(
             interventions=interventions_to_calculate,
@@ -924,14 +1106,12 @@ class RetrofitModel:
              
         # Add prefixes to cost and energy statistics
         cost_stats_prefixed = {f'cost_{key}': value for key, value in cost_stats.items()}
-        logger.debug('prefizes done, returning sereies .. ')
+        
         
         cost_result = pd.Series(
             cost_stats_prefixed,   
            )
-        logger.debug('Costs complete.')
-
-        logger.debug("Starting energy calc .. ")
+ 
         energy_stats = self.calculate_intervention_energy_savings(
             interventions=interventions_to_calculate,
         
@@ -944,16 +1124,16 @@ class RetrofitModel:
             
 
         )
-        logger.debug('Energy calc complete')
-
+        
+ 
          # Add selected wall type to results
         cost_stats['selected_wall_insulation_type'] = selected_wall_insulation
-        
+ 
    
         
-        energy_stats_prefixed = {f'energy_{key}': value for key, value in energy_stats.items()}
+        energy_stats_prefixed = {f'{key}': value for key, value in energy_stats.items()}
         energy_result = pd.Series(energy_stats_prefixed )
-
+        logger.debug('calculate_ONLY_row_costs_only complete')
         return cost_result, energy_result
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
@@ -969,8 +1149,14 @@ class RetrofitModel:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
 
-    def _calculate_and_add_costs(self, result_df, col_mapping, scenario_interventions, 
-                                prob_external, region, scenario, return_statistics):
+    def _calculate_and_add_costs(self, 
+                                 result_df,
+                                  col_mapping,
+                                    scenario_interventions, 
+                                # prob_external,
+                                  region,
+                                   scenario,
+                                     return_statistics):
         """Calculate costs  and add them to the DataFrame."""
         
         energy_res = result_df.copy() 
@@ -978,19 +1164,23 @@ class RetrofitModel:
         
         # Apply cost calculations to all rows, this calc the total at sample time 
         results  = result_df.apply(
-            lambda row: self.calculate_ONLY_row_costs_only(
-                row, col_mapping, scenario_interventions, prob_external,
-                region, self.n_samples, return_statistics
-            ),
-            axis=1
-        )
+            lambda row: self.calculate_ONLY_row_costs_only(row, 
+                                                            col_mapping, 
+                                                            scenario_interventions, 
+                                                            # prob_external,
+                                                            region,  
+                                                            return_statistics
+                                                             ), axis=1
+                                    )
         
         # Unpack the results - each element is a tuple of (cost_series, energy_series)
         cost_results = pd.DataFrame([x[0] for x in results])
         energy_results = pd.DataFrame([x[1] for x in results])
+        
         self._add_cost_columns(result_df, cost_results, scenario)
         # Add energy columns (individual interventions)
         self._add_individual_energy_columns(energy_res, energy_results, scenario)
+        logger.debug('_calculate_and_add_costs Added costs total complete for all rows.')
         return result_df, energy_res
 
 
@@ -998,15 +1188,19 @@ class RetrofitModel:
     def _add_cost_columns(self, result_df, cost_results, scenario):
         """Add individual and total cost columns to result DataFrame."""
         # Add individual intervention cost columns
+ 
         for col in cost_results.columns:
-            result_df[f'cost_{scenario}_{col}'] = cost_results[col]
+      
+            result_df[f'{scenario}_{col}'] = cost_results[col]
         
   
 
     def _add_individual_energy_columns(self, result_df, energy_results, scenario):
         """Add individual intervention energy columns to result DataFrame."""
+ 
         for col in energy_results.columns:
-            result_df[f'energy_{scenario}_{col}'] = energy_results[col]
+     
+            result_df[f'{scenario}_{col}'] = energy_results[col]
 
 
     def _add_aggregated_energy_columns(self, result_df, energy_results, scenario, return_statistics):
@@ -1079,7 +1273,37 @@ class RetrofitModel:
             if elec_intervention_cols:
                 result_df[f'energy_{scenario}_elec_{stat}'] = energy_results[elec_intervention_cols].sum(axis=1)
 
+    def _get_cols_scenario_intervention(self, scenario_str, stats = ['mean', 'std', 'p5', 'p50', 'p95']):
+        cost_cols= [] 
+        energy_cols= [] 
+        if scenario_str == 'wall_installation':
+            interventions = ['cavity_wall_percentile', 'solid_wall_internal_percentile', 'solid_wall_external_percentile' ]
+            elec=False 
+        elif scenario_str =='loft_installation':
+            interventions = ['loft_percentile']
+            elec=False 
+        else:
+            raise Exception(f'Need to define the interventions  for scenarioi  ({scenario_str}) in RetrofitModel _get_cols_scenario_intervention')
+        
+        for iint in interventions:
+            for s in stats:
+                cost_cols.append( f'{scenario_str}_cost_{iint}_{s}' ) 
+                energy_cols.append(  f'{scenario_str}_energy_{iint}_gas_{s}' ) 
+                if elec:
+                    energy_cols.append(  f'{scenario_str}_energy_{iint}_electricity_{s}' ) 
+        
+        return cost_cols,  energy_cols
 
+
+    def _ensure_columns_exist(self, df, required_cols):
+        """
+        Ensure all required columns exist in the DataFrame.
+        If any are missing, create them with NaN values.
+        """
+        for col in required_cols:
+            if col not in df.columns:
+                df[col] = np.nan
+        return df
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
@@ -1089,8 +1313,13 @@ class RetrofitModel:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
-    def calculate_building_costs_df_updated(self, df, region, scenario, prob_external, 
-                                        col_mapping=None, return_statistics=None):
+    def calculate_building_costs_df_updated(self,
+                                             df, 
+                                             region, 
+                                             scenario, 
+                                            # prob_external, 
+                                        col_mapping=None, 
+                                        return_statistics=None):
         """
         Apply Monte Carlo building cost calculations to all rows in a DataFrame for a specific scenario.
         
@@ -1128,7 +1357,7 @@ class RetrofitModel:
         # Prepare DataFrame
         result_df = self._prepare_dataframe(df, col_mapping)
         # Show first few rows with better formatting
-        logger.debug("DataFrame preview:\n%s", result_df.head().to_string())
+        # logger.debug("DataFrame preview:\n%s", result_df.head().to_string())
 
         # Validate DataFrame columns
         error = self._validate_dataframe_columns(result_df, col_mapping)
@@ -1137,24 +1366,53 @@ class RetrofitModel:
         
         costs_result_df  = result_df.copy() 
         energy_results_df = result_df.copy() 
+        dfcols = result_df.columns.tolist()
+         
         # Calculate and add costs  
-        costs_result_df, energy_results_df = self._calculate_and_add_costs(
-            costs_result_df, col_mapping, scenario_interventions, 
-            prob_external, region, scenario, return_statistics
+        costs_result_df, energy_results_df = self._calculate_and_add_costs(result_df = costs_result_df, 
+                                                                            col_mapping = col_mapping, 
+                                                                            scenario_interventions = scenario_interventions, 
+                                                                            # prob_external = prob_external,
+                                                                            region =region, 
+                                                                            scenario = scenario,
+                                                                            return_statistics = return_statistics
         )
-        op_cols = [col for col in costs_result_df.columns.tolist() if scenario in col]
+
+        # check if wall type solid then no cavity wall cost 
+
+ 
+        # extra_cols = ['wall_insulated', 'existing_loft_insulation', 'existing_floor_insulation', 'existing_window_upgrades']
+        cost_cols, energy_cols = self._get_cols_scenario_intervention(scenario )
+  
         
-        costs_result_df=costs_result_df[op_cols]
-        
-        # energy_results_df = self._calculate_and_add_energy( energy_results_df, col_mapping, scenario_interventions, 
-        #     prob_external, region, scenario, return_statistics
-        # )
-        op_cols = [col for col in energy_results_df.columns.tolist() if scenario in col]
-        print(op_cols)
-        energy_results_df=energy_results_df[op_cols]
+        # ✅ Check for overlap between expected and actual columns
+        cost_overlap = set(cost_cols).intersection(costs_result_df.columns)
+        energy_overlap = set(energy_cols).intersection(energy_results_df.columns)
+
+        if not cost_overlap:
+            logger.warning(f"No overlap found between expected cost columns and DataFrame columns for scenario {scenario}.")
+            logger.warning(f"Expected cost cols: {cost_cols}")
+            logger.warning(f"Actual cost DF cols: {[x for x in costs_result_df.columns.tolist() if x not in dfcols ] }")
+
+        if not energy_overlap:
+            logger.warning(f"No overlap found between expected energy columns and DataFrame columns for scenario {scenario}.")
+            logger.warning(f"Expected energy cols: {energy_cols}")
+            logger.warning(f"Actual energy DF cols: {[x for x in energy_results_df.columns.tolist() if x not in dfcols ] }")
+
+ 
+
+        costs_result_df = self._ensure_columns_exist(costs_result_df, cost_cols)
+        energy_results_df = self._ensure_columns_exist(energy_results_df, energy_cols)
         energy_results_df = expand_dict_columns(energy_results_df)
 
-        return pd.concat([costs_result_df, energy_results_df], axis=1 ) 
+        # if 'geometry' in energy_results_df.columns:
+        #     energy_results_df = energy_results_df.drop(columns=['geometry'])
+        # Safe concatenation
+        data = pd.concat(
+            [costs_result_df[ cost_cols ], energy_results_df[energy_cols]],
+            axis=1
+                )       
+        return  data
 
 
 

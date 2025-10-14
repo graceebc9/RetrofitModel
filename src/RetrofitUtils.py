@@ -33,6 +33,7 @@ def calculate_estimated_flats_per_building(building_footprint_area, typology_col
     efficiency = efficiency_factors.get(typology_col, 0.75)
     
     try:
+        
         usable_area_per_floor = building_footprint_area * efficiency
         flats_per_floor = usable_area_per_floor / flat_footprint
         total_flats = float(floor_count) * float(flats_per_floor)
