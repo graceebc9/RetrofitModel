@@ -60,17 +60,21 @@ if running_locally:
     # If stored elsewhere (e.g. external hard drive):
     location_input_data_folder = '/Volumes/T9/2024_Data_downloads/2024_11_nebula_paper_data/'
     onsud_path_base = os.path.join(location_input_data_folder, 'ONS_UPRN_database/ONSUD_DEC_2022/Data')
+    GAS_PATH = os.path.join(location_input_data_folder, 'energy_data/Postcode_level_gas_2022.csv')
+    ELEC_PATH = os.path.join(location_input_data_folder, 'energy_data/Postcode_level_all_meters_electricity_2022.csv')
+    TEMP_1KM_PATH = os.path.join(location_input_data_folder, 'climate_data/tas_hadukgrid_uk_1km_mon_202201-202212.nc')
 else: 
     PC_SHP_PATH = '/rds/user/gb669/hpc-work/energy_map/data/postcode_polygons/codepoint-poly_5267291'
     BUILDING_PATH = '/rds/user/gb669/hpc-work/energy_map/data/building_files/UKBuildings_Edition_15_new_format_upn.gpkg'
     location_input_data_folder = '/home/gb669/rds/hpc-work/energy_map/data/input_data'
     onsud_path_base = '/home/gb669/rds/hpc-work/energy_map/data/onsud_files/Data'
 
+    GAS_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_gas_2022.csv'
+    ELEC_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_all_meters_electricity_2022.csv'
 
-# Derived paths - do not update if you download our zip file, unzip and place in location_input_data_folder
-GAS_PATH = os.path.join(location_input_data_folder, 'energy_data/Postcode_level_gas_2022.csv')
-ELEC_PATH = os.path.join(location_input_data_folder, 'energy_data/Postcode_level_all_meters_electricity_2022.csv')
-TEMP_1KM_PATH = os.path.join(location_input_data_folder, 'climate_data/tas_hadukgrid_uk_1km_mon_202201-202212.nc')
+
+
+
 
 # Output directory - do not update if you want to save in the repo
 OUTPUT_DIR = 'final_dataset'
