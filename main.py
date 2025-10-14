@@ -10,7 +10,13 @@ For commercial licensing options, contact: gb669@cam.ac.uk.
 
 from datetime import datetime
 from src.logging_config import setup_logging, get_logger
-base_path = '/Users/gracecolverd/retrofit_model/notebook'
+running_locally=True 
+if running_locally:
+    base_path = '/Users/gracecolverd/retrofit_model/notebook'
+else:
+    base_path = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel'
+    os.makedirs(f'{base_path}/logs', exist_ok=True )
+
 log_config_filepath = f"{base_path}/logs/config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 log_path = f"{base_path}/logs/log_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
@@ -34,7 +40,7 @@ from src.conservation import load_conservation_shapefile
 # ========================================
 # DATA PATHS - UPDATE AS NEEDED
 # ========================================
-running_locally=True 
+
 if running_locally:
 
     PC_SHP_PATH = '/Volumes/T9/2024_Data_downloads/codepoint_polygons_edina/Download_all_postcodes_2378998/codepoint-poly_5267291'
