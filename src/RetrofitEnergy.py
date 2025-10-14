@@ -9,104 +9,139 @@ from .BuildingCharacteristics import BuildingCharacteristics
 
 @dataclass
 class RetrofitEnergy:
-    """Enhanced configuration with with Monte Carlo cost sampling.."""
+    """Enhanced configuration with Monte Carlo cost sampling."""
+    
+    # Improvement factor for solid wall vs cavity wall (default 10% better)
+    solid_wall_internal_improvement_factor: float = 0.1
+    solid_wall_external_improvement_factor: float = 0.2
+    
     solar_regional_multiplier: Dict[str, float] = field(default_factory=lambda: {
-            # high sun regions 
-            'SW': 1.20,  # South West            
-            'SE': 1.20,            
-            'EE' :1.2,
-            # mid region 
-            'LN': 1.00,  # London
-            'EM': 1.00,  # East Midlands
-            'WM': 1.00,  # West Midlands
+        # high sun regions 
+        'SW': 1.20,  # South West            
+        'SE': 1.20,            
+        'EE': 1.2,
+        # mid region 
+        'LN': 1.00,  # London
+        'EM': 1.00,  # East Midlands
+        'WM': 1.00,  # West Midlands
+        
+        # low sun regions 
+        'YH': 0.8,  # Yorkshire and Humber
+        'NW': 0.8,  # North West
+        'NE': 0.8,  # North East
+        'WA': 0.8,  # Wales
+    }) 
+    
+    def __post_init__(self):
+        """Generate solid wall configs after initialization."""
+        # Generate solid wall configurations from cavity wall
+        cavity_config = self.energysaving_uncertainty_parameters['cavity_wall_percentile']
+        
+        # Create solid internal wall config
+        self.energysaving_uncertainty_parameters['solid_wall_internal_percentile'] = \
+            self._create_solid_wall_config(cavity_config, self.solid_wall_internal_improvement_factor)
+        
+        # Create solid external wall config
+        self.energysaving_uncertainty_parameters['solid_wall_external_percentile'] = \
+            self._create_solid_wall_config(cavity_config, self.solid_wall_external_improvement_factor)
+    
+    def _create_solid_wall_config(self, cavity_wall_config: Dict, improvement_factor: float) -> Dict:
+        """
+        Create solid wall config from cavity wall config.
+        
+        Args:
+            cavity_wall_config: The cavity wall configuration dict
+            improvement_factor: Factor by which solid wall performs better
+                               - Positive means are reduced by this factor
+                               - Negative means are increased (more negative) by this factor
+        
+        Returns:
+            Dictionary with solid wall configuration
+        """
+        solid_wall_config = {
+            'distribution': cavity_wall_config['distribution'],
+            'gas': {}
+        }
+        
+        for percentile, params in cavity_wall_config['gas'].items():
+            mean = params['mean']
             
-            # low sun regions 
-            'YH': 0.8,  # Yorkshire and Humber
-            'NW': 0.8,  # North West
-            'NE': 0.8,  # North East
-            'WA': 0.8,  # Wales
-                  }) 
+            # Apply improvement: reduce positive, increase magnitude of negative
+            if mean >= 0:
+                adjusted_mean = mean * (1 - improvement_factor)
+            else:
+                adjusted_mean = mean * (1 + improvement_factor)
             
- 
+            solid_wall_config['gas'][percentile] = {
+                'mean': adjusted_mean,
+                'sd': params['sd']  # Keep SD the same
+            }
+        
+        return solid_wall_config
+    
+    # percentiel ones are from diaz anadaon paper on pecentiles 
     energysaving_uncertainty_parameters: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
-       
-  
-    'loft_percentile': {
-        'distribution': 'normal',
-        'gas': {
-            0: {'mean': 0.11794812, 'sd': 0.86019675},
-            1: {'mean': 0.02333679, 'sd': 0.46902747},
-            2: {'mean': -0.02471, 'sd': 0.37714685},
-            3: {'mean': -0.0476622, 'sd': 0.31667587},
-            4: {'mean': -0.0629936, 'sd': 0.28913223},
-            5: {'mean': -0.0781211, 'sd': 0.20514012},
-            6: {'mean': -0.0929435, 'sd': 0.20214586},
-            7: {'mean': -0.1048867, 'sd': 0.20783682},
-            8: {'mean': -0.1113446, 'sd': 0.23797363},
-            9: {'mean': -0.110213, 'sd': 0.38473549}
-        }
-    },
-    'cavity_wall_percentile': {
-        'distribution': 'normal',
-        'gas': {
-            0: {'mean': 0.1059182, 'sd': 0.89226159},
-            1: {'mean': 0.02026381, 'sd': 0.5013025},
-            2: {'mean': -0.023164, 'sd': 0.36765047},
-            3: {'mean': -0.0518756, 'sd': 0.32145214},
-            4: {'mean': -0.0752905, 'sd': 0.21262479},
-            5: {'mean': -0.0975109, 'sd': 0.19887291},
-            6: {'mean': -0.1179157, 'sd': 0.19147565},
-            7: {'mean': -0.1360034, 'sd': 0.19498504},
-            8: {'mean': -0.1537655, 'sd': 0.20694392},
-            9: {'mean': -0.1738108, 'sd': 0.37280598}
-        }
-    },
-    # update by 10 of cavity 
-    'solid_wall_percentile': {
-        'distribution': 'normal',
-        'gas': {
-             0: {'mean': 0.1159182, 'sd': 0.89226159},
-            1: {'mean':    0.02229019, 'sd': 0.5013025},
-            2: {'mean': -0.0254804, 'sd': 0.36765047},
-            3: {'mean': -0.0570631, 'sd': 0.32145214},
-            4: {'mean': -0.0828196, 'sd': 0.21262479},
-            5: {'mean': -0.107262, 'sd': 0.19887291},
-            6: {'mean': -0.1297073, 'sd': 0.19147565},
-            7: {'mean': -0.1496037, 'sd': 0.19498504},
-            8: {'mean': -0.1691421, 'sd': 0.20694392},
-            9: {'mean': -0.1911919, 'sd': 0.37280598},
-        }
-    },
-    # "Loft_percentile_minmax": {
-    #     "distribution": "minmax",
-    #     "gas": {
-    #         0: {"max": 15.6197738, "min": 7.96985019},      # 0-10th
-    #         1: {"max": 4.44876601, "min": 0.2185924},       # 10th-20th
-    #         2: {"max": -0.7870848, "min": -4.154916},       # 20th-30th
-    #         3: {"max": -3.3577185, "min": -6.1747239},      # 30th-40th
-    #         4: {"max": -5.0186254, "min": -7.5800992},      # 40th-50th
-    #         5: {"max": -6.5975416, "min": -9.0266738},      # 50th-60th
-    #         6: {"max": -8.0975166, "min": -10.491193},      # 60th-70th
-    #         7: {"max": -9.2581341, "min": -11.719199},      # 70th-80th
-    #         8: {"max": -9.7254937, "min": -12.543418},      # 80th-90th
-    #         9: {"max": -9.3560783, "min": -12.686518}       # 90th-100th
-    #     }
-    # },
-    # "Cavity_percentile_minmax": {
-    #     "distribution": "minmax",
-    #     "gas": {
-    #         0: {"max": 14.558245, "min": 6.62539434},       # 0-10th
-    #         1: {"max": 4.2762953, "min": -0.2235334},       # 10th-20th
-    #         2: {"max": -0.6559457, "min": -3.9768618},      # 20th-30th
-    #         3: {"max": -3.744087, "min": -6.6310304},       # 30th-40th
-    #         4: {"max": -6.2701725, "min": -8.7879331},      # 40th-50th
-    #         5: {"max": -8.5736337, "min": -10.928554},      # 50th-60th
-    #         6: {"max": -10.657907, "min": -12.925234},      # 60th-70th
-    #         7: {"max": -12.445896, "min": -14.754778},      # 70th-80th
-    #         8: {"max": -14.151309, "min": -16.6018},        # 80th-90th
-    #         9: {"max": -15.767497, "min": -18.994669}       # 90th-100th
-    #     }
-    # },
+        'loft_percentile': {
+            'distribution': 'normal',
+            'gas': {
+                0: {'mean': 0.11794812, 'sd': 0.86019675},
+                1: {'mean': 0.02333679, 'sd': 0.46902747},
+                2: {'mean': -0.02471, 'sd': 0.37714685},
+                3: {'mean': -0.0476622, 'sd': 0.31667587},
+                4: {'mean': -0.0629936, 'sd': 0.28913223},
+                5: {'mean': -0.0781211, 'sd': 0.20514012},
+                6: {'mean': -0.0929435, 'sd': 0.20214586},
+                7: {'mean': -0.1048867, 'sd': 0.20783682},
+                8: {'mean': -0.1113446, 'sd': 0.23797363},
+                9: {'mean': -0.110213, 'sd': 0.38473549}
+            }
+        },
+        'cavity_wall_percentile': {
+            'distribution': 'normal',
+            'gas': {
+                0: {'mean': 0.1059182, 'sd': 0.89226159},
+                1: {'mean': 0.02026381, 'sd': 0.5013025},
+                2: {'mean': -0.023164, 'sd': 0.36765047},
+                3: {'mean': -0.0518756, 'sd': 0.32145214},
+                4: {'mean': -0.0752905, 'sd': 0.21262479},
+                5: {'mean': -0.0975109, 'sd': 0.19887291},
+                6: {'mean': -0.1179157, 'sd': 0.19147565},
+                7: {'mean': -0.1360034, 'sd': 0.19498504},
+                8: {'mean': -0.1537655, 'sd': 0.20694392},
+                9: {'mean': -0.1738108, 'sd': 0.37280598}
+            }
+        },
+        # Note: solid_internal_percentile and solid_external_percentile 
+        # will be auto-generated in __post_init__
+
+        'heat_pump_percentile': {
+            'distribution': 'normal',
+            'gas': {
+                0: {'mean': -0.70, 'sd': 0.50},
+                1: {'mean': -0.80, 'sd': 0.40},
+                2: {'mean': -0.85, 'sd': 0.35},
+                3: {'mean': -0.90, 'sd': 0.30},
+                4: {'mean': -0.92, 'sd': 0.28},
+                5: {'mean': -0.95, 'sd': 0.25},
+                6: {'mean': -0.96, 'sd': 0.26},
+                7: {'mean': -0.97, 'sd': 0.28},
+                8: {'mean': -0.98, 'sd': 0.32},
+                9: {'mean': -0.99, 'sd': 0.45}
+            },
+            'electricity': {
+                0: {'mean': 0.65, 'sd': 0.45},
+                1: {'mean': 0.58, 'sd': 0.35},
+                2: {'mean': 0.55, 'sd': 0.30},
+                3: {'mean': 0.52, 'sd': 0.27},
+                4: {'mean': 0.50, 'sd': 0.25},
+                5: {'mean': 0.48, 'sd': 0.22},
+                6: {'mean': 0.46, 'sd': 0.24},
+                7: {'mean': 0.42, 'sd': 0.26},
+                8: {'mean': 0.38, 'sd': 0.30},
+                9: {'mean': 0.30, 'sd': 0.42}
+            }
+        } , 
+
                 
         'solar_pv':{
          'distribution': 'triangular',
@@ -144,34 +179,35 @@ class RetrofitEnergy:
             },
             'confidence': 'high'
         },
-        'internal_wall_insulation': {
-            'distribution': 'triangular',
-            'gas': {
-                'min': 0.132,
-                'mode': 0.132,
-                'max': 0.68,
-            },
-            'electricity': {
-                'min': 0.0,
-                'mode': 0.0,
-                'max': 0.0,
-            },
-            'confidence': 'medium'
-        },
-        'external_wall_insulation': {
-            'distribution': 'triangular',
-            'gas': {
-                'min': 0.132,
-                'mode': 0.132,
-                'max': 0.68,
-            },
-            'electricity': {
-                'min': 0.0,
-                'mode': 0.0,
-                'max': 0.0,
-            },
-            'confidence': 'medium'
-        },
+        # 'internal_wall_insulation': {
+        #     'distribution': 'triangular',
+        #     'gas': {
+        #         'min': 0.132,
+        #         'mode': 0.132,
+        #         'max': 0.68,
+        #     },
+        #     'electricity': {
+        #         'min': 0.0,
+        #         'mode': 0.0,
+        #         'max': 0.0,
+        #     },
+        #     'confidence': 'medium'
+        # },
+        # 'external_wall_insulation': {
+        #     'distribution': 'triangular',
+        #     'gas': {
+        #         'min': 0.132,
+        #         'mode': 0.132,
+        #         'max': 0.68,
+        #     },
+        #     'electricity': {
+        #         'min': 0.0,
+        #         'mode': 0.0,
+        #         'max': 0.0,
+        #     },
+        #     'confidence': 'medium'
+        # },
+
         'floor_insulation': {
             'distribution': 'triangular',
             'gas': {
@@ -200,20 +236,20 @@ class RetrofitEnergy:
             },
             'confidence': 'medium'
         },
-        'heat_pump_upgrade': {
-            'distribution': 'triangular',
-            'gas': {
-                'min': 0.90,
-                'mode': 0.95,
-                'max': 0.98,
-            },
-            'electricity': {
-                'min': -0.60,  # Negative = increase
-                'mode': -0.50,
-                'max': -0.40,
-            },
-            'confidence': 'medium'
-        },
+        # 'heat_pump_upgrade': {
+        #     'distribution': 'triangular',
+        #     'gas': {
+        #         'min': 0.90,
+        #         'mode': 0.95,
+        #         'max': 0.98,
+        #     },
+        #     'electricity': {
+        #         'min': -0.60,  # Negative = increase
+        #         'mode': -0.50,
+        #         'max': -0.40,
+        #     },
+        #     'confidence': 'medium'
+        # },
  
         'double_glazing': {
             'distribution': 'triangular',

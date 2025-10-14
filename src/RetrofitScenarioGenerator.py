@@ -78,7 +78,8 @@ class RetrofitScenarioGenerator:
             'flat_count': 'est_num_flats',
             'building_type': 'premise_type',
             'building_footprint_area': 'premise_area',
-            'avg_gas_decile': 'avg_gas_decile'
+            'avg_gas_decile': 'avg_gas_decile',
+            'cons_bool': 'conservation_area_bool', 
         }
         
         if col_mapping:
@@ -86,18 +87,20 @@ class RetrofitScenarioGenerator:
         col_mapping = default_mapping
         
         result_df = df.copy()
-
+   
+        # tis sets the inferred wall type, inferred insulation type. 
         df_typ = vectorized_process_buildings(
                     result_df=result_df,
                     col_mapping=col_mapping , 
                     config=typ_config, 
                     random_seed=random_seed
                 )
-        
+     
+  
  
-        res_sc = [df] 
+        res_sc = [df_typ] 
         
-        prob_external = typ_config.existing_intervention_probs['external_wall_occurence']
+        # prob_external = typ_config.existing_intervention_probs['external_wall_occurence']
 
         for scenario in scenarios:
             
@@ -105,7 +108,7 @@ class RetrofitScenarioGenerator:
                 df= df_typ, 
                 region=region,
                 scenario=scenario ,
-                prob_external = prob_external , 
+                # prob_external = prob_external , 
                 ) 
 
             logger.debug(f"Type of results: {type(results)}")

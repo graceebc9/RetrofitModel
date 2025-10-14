@@ -97,16 +97,16 @@ def process_postcodes_for_retrofit_with_uncertainty(
     uprn_match = find_data_pc_joint(pc, onsud_data, input_gpk=INPUT_GPK)
     uprn_match=get_conservation_area(uprn_match, conservation_data)
 
-    # error_dict = {
-    #     'postcode': pc,
-    #     'error': 'No building data found',
-    #     'basic_maintenance_cost': None,
-    #     'comprehensive_fabric_cost': None,
-    #     'deep_retrofit_cost': None,
-    #     'electrification_ready_cost': None,
-    #     'fabric_first_lite_cost': None,
-    #     'total_flat_count': None
-    # }
+    error_dict = {
+        'postcode': pc,
+        'error': 'No building data found',
+        'basic_maintenance_cost': None,
+        'comprehensive_fabric_cost': None,
+        'deep_retrofit_cost': None,
+        'electrification_ready_cost': None,
+        'fabric_first_lite_cost': None,
+        'total_flat_count': None
+    }
     
     if uprn_match is None or uprn_match.empty:
         return error_dict
@@ -129,6 +129,7 @@ def process_postcodes_for_retrofit_with_uncertainty(
     if energy_column not in building_data.columns:
         error_dict['error'] = f'Missing energy column: {energy_column}'
         return error_dict
+    
     logger.debug('Starting scenario generation')
     scen = RetrofitScenarioGenerator()
     

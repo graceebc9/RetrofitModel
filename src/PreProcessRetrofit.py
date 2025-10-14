@@ -92,8 +92,8 @@ class PreProcessRetrofit:
         probs = np.zeros(n)
         
         for idx, (age_band, wall_type) in enumerate(zip(age_bands, wall_types)):
-            age_data = self.config.insulation_by_age_band.get(age_band, {})
-            existing_prob = age_data.get('existing_insulation_prob', 0.0)
+            existing_prob = self.config.insulation_probs_by_age_band.get(age_band, {})
+            # existing_prob = age_data.get('existing_insulation_prob', 0.0)
             
             if isinstance(existing_prob, dict):
                 insulation_type = 'cavity_wall_insulation' if wall_type == 'cavity_wall' else 'internal_wall_insulation'
@@ -128,6 +128,47 @@ class PreProcessRetrofit:
             results[intervention] = rng.random(n_buildings) < prob
         
         return pd.DataFrame(results)
+    
+    def determine_inferred_insulation(self, conservation_bool, inferred_wall_type):
+        """ 
+        if in conservation area, and wall type is solid -> internal wall insulation 
+        cavity wall -> cavity wall insulation 
+        if not in conservation area and wall type solid, sample self.config.existing_intervention_probs.external_wall_occurence for probability of internal or external 
+        """
+
+        
+        # Initialize result series
+        result = pd.Series(index=conservation_bool.index, dtype='object')
+        
+        # Conservation area logic
+        conservation_solid = conservation_bool & (inferred_wall_type == 'solid_wall')
+        conservation_cavity = conservation_bool & (inferred_wall_type == 'cavity_wall')
+        
+        result[conservation_solid] = 'internal_wall_insulation'
+        result[conservation_cavity] = 'cavity_wall_insulation'
+        
+        # Non-conservation area logic
+        non_conservation_solid = (~conservation_bool) & (inferred_wall_type == 'solid_wall')
+        non_conservation_cavity = (~conservation_bool) & (inferred_wall_type == 'cavity_wall')
+        
+        # For non-conservation solid walls, sample for external vs internal
+        n_non_cons_solid = non_conservation_solid.sum()
+        if n_non_cons_solid > 0:
+            prob_external = self.config.existing_intervention_probs['external_wall_occurence']
+            random_samples = np.random.random(n_non_cons_solid)
+            is_external = random_samples < prob_external
+            
+            result[non_conservation_solid] = np.where(
+                is_external, 
+                'external_wall_insulation', 
+                'internal_wall_insulation'
+            )
+        
+        result[non_conservation_cavity] = 'cavity_wall_insulation'
+        
+        return result
+    
+                                      
 
 
 def vectorized_process_buildings(result_df: pd.DataFrame, 
@@ -157,11 +198,13 @@ def vectorized_process_buildings(result_df: pd.DataFrame,
     
     # Extract required columns
     age_bands = result_df[col_mapping['age_band']]
+    conservation_bool = result_df[col_mapping['cons_bool']]
     
     # Step 1: Determine wall types (vectorized)
     logger.debug("Determining wall types...")
     result_df['inferred_wall_type'] = analyzer.determine_wall_types_vectorized(age_bands, random_seed)
-    
+    result_df['inferred_insulation_type'] = analyzer.determine_inferred_insulation(conservation_bool, result_df['inferred_wall_type']  )
+
     # Step 2: Check existing wall insulation (vectorized)
     logger.debug("Checking existing wall insulation...")
     result_df['wall_insulated'] = analyzer.check_walls_already_insulated_vectorized(
