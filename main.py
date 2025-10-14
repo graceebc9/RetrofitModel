@@ -89,7 +89,6 @@ log_size = 100
 n_monte_carlo = 100
 scenarios = ['wall_installation', 'loft_installation']
 job_name='testing'
-running_locally = os.getenv('SLURM_ARRAY_TASK_ID') is None
 region_list = ['NE'] if running_locally else [os.getenv('REGION_LIST')]
 
 STAGE0_split_onsud = False
@@ -258,9 +257,31 @@ def main():
     neb_pcs = neb_pcs['postcode'].tolist()
 
     # Load batch paths
-    batch_paths = list(set(load_ids_from_file('batch_paths.txt')))
-    logger.info(f"Found {len(batch_paths)} unique batch paths to process")
-    print(batch_paths)
+    all_batch_paths = list(set(load_ids_from_file('batch_paths.txt')))
+
+    # Determine which batch(es) to process
+    if not running_locally:
+        # HPC mode: expect batch path as command line argument
+        if len(sys.argv) < 2:
+            logger.error("HPC mode requires batch path as command line argument")
+            logger.error("Usage: python main.py <batch_path>")
+            raise ValueError("Missing batch path argument for HPC mode")
+        
+        batch_path_arg = sys.argv[1]
+        logger.info(f"HPC mode: Received batch path argument: {batch_path_arg}")
+        
+        # Validate the batch path exists in our list
+        if batch_path_arg not in all_batch_paths:
+            logger.warning(f"Batch path not in batch_paths.txt, but proceeding: {batch_path_arg}")
+        
+        batch_paths = [batch_path_arg]
+        logger.info(f"HPC mode: Processing single batch: {batch_paths[0]}")
+    else:
+        # Local mode: process all batches
+        batch_paths = all_batch_paths
+        logger.info(f"Local mode: Processing all {len(batch_paths)} batches")
+
+    print(f"Batch paths to process: {batch_paths}")
 
     # Process each batch
     for i, batch_path in enumerate(batch_paths, 1):
