@@ -11,22 +11,21 @@ logger = logging.getLogger(__name__)
 
 from .PreProcessRetrofit import vectorized_process_buildings 
 
+
+
+
+
 @dataclass
 class RetrofitScenarioGenerator:
     """
     Generates retrofit scenarios with age-appropriate wall insulation types.
     Includes Monte Carlo uncertainty analysis based on observed performance ranges.
     """
-    
-     
-
- 
- 
 
     def process_dataframe_scenarios(self,
                                df: pd.DataFrame,
                               scenarios: list, 
-                               typ_config,   # RetrofitConfig instance
+                            #    typ_config,   # RetrofitConfig instance
                                model_class,  # RetrofitCost instance
                                region: str,
                                random_seed: Optional[int] = None,
@@ -67,7 +66,7 @@ class RetrofitScenarioGenerator:
         pd.DataFrame : Original DataFrame with added scenario columns
         """
         
-        
+        typ_config = model_class.retrofit_config
         # Default column mapping
         default_mapping = {
             'age_band': 'premise_age_bucketed',

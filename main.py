@@ -27,7 +27,7 @@ from src.split_onsud_file import split_onsud_and_postcodes
 from src.postcode_utils import load_ids_from_file, load_onsud_data
 from src.retrofit_proc import run_retrofit_calc_with_uncertainty
 from src.logging_config import get_logger, setup_logging
-
+from src.conservation import load_conservation_shapefile 
 
 # ========================================
 # DATA PATHS - UPDATE AS NEEDED
@@ -110,13 +110,14 @@ def gen_batch_ids(batch_ids: list, log_file: str, logger: logging.Logger) -> lis
 
 
 def postcode_main(batch_path, data_dir, path_to_onsud_file, path_to_pcshp, INPUT_GPK,
-                  retrofit_config, retrofig_model, scenarios, neb_pcs,
-                  region_label, batch_label, attr_lab, n_monte_carlo=100, log_size=100):
+                  retrofit_config, retrofig_model, scenarios, neb_pcs, 
+                  conservation_data, 
+                  region_label, batch_label, attr_lab, log_size=100, ):
     """Main processing function."""
 
     # Setup logging
     proc_dir = os.path.join(data_dir, attr_lab, region_label)
- 
+    os.makedirs(proc_dir, exist_ok=True)
 
     logger.info(f'Starting processing for region: {region_label}')
     logger.debug(f'Processing batch: {batch_path}')
@@ -125,6 +126,7 @@ def postcode_main(batch_path, data_dir, path_to_onsud_file, path_to_pcshp, INPUT
     # Setup log file
     log_file = os.path.join(proc_dir, f'{batch_label}_log_file.csv')
     logger.debug(f'Using log file: {log_file}')
+
 
     # Load ONSUD data
     logger.debug('Loading ONSUD data')
@@ -160,10 +162,10 @@ def postcode_main(batch_path, data_dir, path_to_onsud_file, path_to_pcshp, INPUT
         batch_size=log_size,
         batch_label=batch_label,
         log_file=log_file,
-        n_monte_carlo=n_monte_carlo,
         retrofit_config=retrofit_config,
         retrofig_model=retrofig_model,
         scenarios=scenarios,
+        conservation_data=conservation_data,
     )
     logger.info('Batch processing completed successfully')
 
@@ -185,6 +187,9 @@ def main():
         'Gas data path': GAS_PATH,
         'Electricity data path': ELEC_PATH
     }
+
+    # load conservation areas 
+    conservation_data = load_conservation_shapefile(path = '/Users/gracecolverd/Downloads/Conservation_Areas_-5503574965118299320/Conservation_Areas.shp')
 
     for name, path in required_paths.items():
         if not os.path.exists(path):
@@ -237,8 +242,8 @@ def main():
             neb_pcs=neb_pcs,
             batch_label=batch_id,
             attr_lab='retrofit_scenario',
-            n_monte_carlo=n_monte_carlo,
-            log_size=log_size
+            log_size=log_size,
+            conservation_data=conservation_data,
         )
         logger.info(f"Successfully processed batch: {batch_path}")
 

@@ -8,6 +8,10 @@ import os
 from src.retrofit_calc import process_postcodes_for_retrofit_with_uncertainty
 
 
+
+
+
+
 def process_retrofit_batch_with_uncertainty(
     pc_batch, 
     data, 
@@ -18,8 +22,8 @@ def process_retrofit_batch_with_uncertainty(
     retrofit_config,
     retrofig_model,
     scenarios,
+    conservation_data,
     energy_column='total_gas',
-    n_monte_carlo=100,
     random_seed=42,
     use_uncertainty=True
 ):
@@ -53,12 +57,12 @@ def process_retrofit_batch_with_uncertainty(
                     onsud_data=data,
                     INPUT_GPK=INPUT_GPK,
                     region=region,
-                    retrofit_config=retrofit_config, 
+                    # retrofit_config=retrofit_config, 
                     retrofig_model=retrofig_model,
                     scenarios=scenarios,
-
+                    conservation_data=conservation_data,
                     energy_column=energy_column,
-                    n_monte_carlo=n_monte_carlo,
+                    # n_monte_carlo=n_monte_carlo,
                     random_seed=random_seed
                 )
    
@@ -83,7 +87,7 @@ def process_retrofit_batch_with_uncertainty(
     # Save successful results
     if results:
         
-        logger.info(f'Saving {len(results)} results')
+        logger.info(f'Saving {len(results)} results to {log_file}')
     
         # DIAGNOSTIC: Check what we're working with
         logger.debug(f"Number of results to concatenate: {len(results)}")
@@ -118,6 +122,7 @@ def process_retrofit_batch_with_uncertainty(
                 df.to_csv(log_file, index=False)
             else:
                 logger.info(f'Appending to existing log file: {log_file}')
+                # check columns of log file first
                 df.to_csv(log_file, mode='a', header=False, index=False)
             
             logger.info(f'Successfully saved {len(results)} results for batch: {process_batch_name}')
@@ -154,8 +159,9 @@ def run_retrofit_calc_with_uncertainty(
     retrofit_config, 
     retrofig_model,
     scenarios,
+    conservation_data,
     energy_column='total_gas_derived',
-    n_monte_carlo=100,
+    
     random_seed=42,
     use_uncertainty=True,
  
@@ -185,7 +191,7 @@ def run_retrofit_calc_with_uncertainty(
             batch_label='london_batch_1',
             log_file='outputs/LN/retrofit_results.csv',
             energy_column='total_gas',
-            n_monte_carlo=10000,
+            
             use_uncertainty=True
         )
     """
@@ -203,7 +209,7 @@ def run_retrofit_calc_with_uncertainty(
     logger.info(f'Logger_Batch size: {batch_size}')
     logger.info(f'Uncertainty analysis: {"ENABLED" if use_uncertainty else "DISABLED"}')
     if use_uncertainty:
-        logger.info(f'Monte Carlo iterations: {n_monte_carlo}')
+        logger.info(f'Monte Carlo iterations: defined in RetrofigModel')
         logger.info(f'Energy column: {energy_column}')
     
     # Process in batches
@@ -227,9 +233,10 @@ def run_retrofit_calc_with_uncertainty(
                 scenarios=scenarios,
                 region=region,
                 energy_column=energy_column,
-                n_monte_carlo=n_monte_carlo,
+                
                 random_seed=random_seed,  
-                use_uncertainty=use_uncertainty
+                use_uncertainty=use_uncertainty,
+                conservation_data=conservation_data,
             )
             logger.info(f'Completed batch {batch_num}/{total_batches}')
             
