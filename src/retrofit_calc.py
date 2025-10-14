@@ -121,7 +121,7 @@ def process_postcodes_for_retrofit_with_uncertainty(
     building_data['total_gas_derived'] =  building_data['total_fl_area_meta'] * gas_eui
     building_data['total_elec_derived'] =  building_data['total_fl_area_meta'] * elec_eui
     building_data['total_energy_dervied'] = building_data['total_gas_derived']  + building_data['total_elec_derived']
-    deciles = load_gas_deciles('/Users/gracecolverd/NebulaDataset/notebooks2/neb_unfil_final_gas_deciles.csv')
+    deciles = load_gas_deciles(f'{root_dir}/src/global_avs/neb_unfil_final_gas_deciles.csv')
 
     gas_decile = get_gas_decile_single(pc, deciles)
     building_data['avg_gas_percentile'] = [gas_decile[0] for x in range(len(building_data)  ) ]
