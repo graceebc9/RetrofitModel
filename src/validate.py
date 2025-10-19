@@ -11,6 +11,119 @@ import numpy as np
 import pandas as pd
 import numpy as np
 
+import os
+from datetime import datetime
+
+def validate(df, output_dir):
+    # Create output directory if it doesn't exist
+    output_dir = f'{output_dir}/validation_output'
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create log file with timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = os.path.join(output_dir, f'validation_log_{timestamp}.txt')
+    
+    def log_print(message=''):
+        """Print to console and write to log file"""
+        print(message)
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(message + '\n')
+    
+    log_print(f"Loaded {len(df):,} rows with {len(df.columns)} columns")
+
+    # Validate all scenarios
+    summary = validate_all_scenarios(df, verbose=True)
+
+    # Show cost comparison
+    log_print(f"\n{'='*80}")
+    log_print("COST COMPARISON (Most to Least Expensive)")
+    log_print(f"{'='*80}\n")
+    cost_comp = compare_all_scenarios(df, metric='cost')
+    if len(cost_comp) > 0:
+        log_print(cost_comp.to_string(index=False))
+    else:
+        log_print("No cost data found")
+
+    # Show energy comparison
+    log_print(f"\n{'='*80}")
+    log_print("ENERGY SAVINGS COMPARISON")
+    log_print(f"{'='*80}\n")
+    energy_comp = compare_all_scenarios(df, metric='energy')
+    if len(energy_comp) > 0:
+        log_print(energy_comp.to_string(index=False))
+    else:
+        log_print("No energy data found")
+
+    # Save summary
+    summary_path = os.path.join(output_dir, f'validation_summary_{timestamp}.csv')
+    summary.to_csv(summary_path, index=False)
+    log_print(f"\n✅ Summary saved to: {summary_path}")
+
+    validate_percentiles(df)
+
+    # Validate wall energy columns
+    validation_df, invalid_rows = validate_wall_energy_columns(df)
+
+    # Filter for actual invalid rows: not domestic outbuildings AND not already insulated
+    actual_invalid = invalid_rows[
+        (invalid_rows['premise_type'] != 'Domestic outbuilding') & 
+        (invalid_rows['wall_insulated'] == False)
+    ]
+    
+    log_print(f"\nActual invalid rows (excluding outbuildings and already insulated): {len(actual_invalid):,}")
+    
+    # Save actual invalid rows to CSV
+    if len(actual_invalid) > 0:
+        invalid_path = os.path.join(output_dir, f'invalid_rows_{timestamp}.csv')
+        actual_invalid.to_csv(invalid_path, index=False)
+        log_print(f"Invalid rows saved to: {invalid_path}")
+        log_print("\nSample of invalid rows:")
+        log_print(actual_invalid[['postcode', 'premise_age', 'inferred_wall_type', 
+                                   'inferred_insulation_type', 'wall_insulated']].head(10).to_string(index=False))
+    
+    log_print(f"\n✅ Validation log saved to: {log_file}")
+
+# def validate(df):
+
+
+#     print(f"Loaded {len(df):,} rows with {len(df.columns)} columns")
+
+#     # Validate all scenarios
+#     summary = validate_all_scenarios(df, verbose=True)
+
+#     # Show cost comparison
+#     print(f"\n{'='*80}")
+#     print("COST COMPARISON (Most to Least Expensive)")
+#     print(f"{'='*80}\n")
+#     cost_comp = compare_all_scenarios(df, metric='cost')
+#     if len(cost_comp) > 0:
+#         print(cost_comp.to_string(index=False))
+#     else:
+#         print("No cost data found")
+
+#     # Show energy comparison
+#     print(f"\n{'='*80}")
+#     print("ENERGY SAVINGS COMPARISON")
+#     print(f"{'='*80}\n")
+#     energy_comp = compare_all_scenarios(df, metric='energy')
+#     if len(energy_comp) > 0:
+#         print(energy_comp.to_string(index=False))
+#     else:
+#         print("No energy data found")
+
+#     # Save summary
+#     summary.to_csv('validation_summary.csv', index=False)
+#     print(f"\n✅ Summary saved to: validation_summary.csv")
+
+#     validate_percentiles(df)
+
+#     validation_df, invalid_rows = validate_wall_energy_columns(df)
+
+
+#     inv_shape = invalid_rows[(invalid_rows['premise_type']!='Domestic outbuilding') & (invalid_rows['wall_insulated'] ==False) ][['postcode', 'premise_age', 'inferred_wall_type', 'inferred_insulation_type', 'wall_insulated']].shape
+#     print('exclusing outbuilds and insualted: ', inv_shape)
+
+
 def validate_wall_energy_columns(df):
     """
     Validate that energy columns are populated correctly based on wall type and insulation type.
@@ -26,86 +139,70 @@ def validate_wall_energy_columns(df):
     - validation_df: DataFrame with validation results for each row
     - invalid_rows: DataFrame containing only rows that failed validation
     """
+    print('Validate wall energy columns that we dont have much overlap ')
     
-    # Create a copy to avoid modifying original
     validation_df = df.copy()
     
-    # Short column names for easier handling
+    # Short column names
     cavity_col = 'wall_installation_energy_cavity_wall_percentile_gas_mean'
     external_col = 'wall_installation_energy_solid_wall_external_percentile_gas_mean'
     internal_col = 'wall_installation_energy_solid_wall_internal_percentile_gas_mean'
     
-    # Initialize validation column
+    # Create boolean masks for NaN values
+    is_cavity_nan = validation_df[cavity_col].isna()
+    is_external_nan = validation_df[external_col].isna()
+    is_internal_nan = validation_df[internal_col].isna()
+    
+    # Normalize strings to lowercase for comparison
+    wall_type_lower = validation_df['inferred_wall_type'].str.lower()
+    insulation_type_lower = validation_df['inferred_insulation_type'].str.lower()
+    
+    # Initialize columns
     validation_df['is_valid'] = False
     validation_df['validation_error'] = ''
     
-    for idx, row in validation_df.iterrows():
-        wall_type = row['inferred_wall_type']
-        insulation_type = row['inferred_insulation_type']
-        
-        cavity_val = row[cavity_col]
-        external_val = row[external_col]
-        internal_val = row[internal_col]
-        
-        is_cavity_nan = pd.isna(cavity_val)
-        is_external_nan = pd.isna(external_val)
-        is_internal_nan = pd.isna(internal_val)
-        
-        # Check based on wall type
-        if pd.isna(wall_type):
-            validation_df.at[idx, 'validation_error'] = 'Wall type is NaN'
-            continue
-            
-        if wall_type.lower() == 'cavity_wall':
-            # Only cavity should be non-NaN, others should be NaN
-            if not is_cavity_nan and is_external_nan and is_internal_nan:
-                validation_df.at[idx, 'is_valid'] = True
-            else:
-                errors = []
-                if is_cavity_nan:
-                    errors.append('cavity column is NaN')
-                if not is_external_nan:
-                    errors.append('external column is not NaN')
-                if not is_internal_nan:
-                    errors.append('internal column is not NaN')
-                validation_df.at[idx, 'validation_error'] = '; '.join(errors)
-                
-        elif wall_type.lower() == 'solid_wall':
-            if pd.isna(insulation_type):
-                validation_df.at[idx, 'validation_error'] = 'Solid wall but insulation type is NaN'
-                continue
-                
-            if insulation_type.lower() == 'external_wall_insulation':
-                # Only external should be non-NaN
-                if is_cavity_nan and not is_external_nan and is_internal_nan:
-                    validation_df.at[idx, 'is_valid'] = True
-                else:
-                    errors = []
-                    if not is_cavity_nan:
-                        errors.append('cavity column is not NaN')
-                    if is_external_nan:
-                        errors.append('external column is NaN')
-                    if not is_internal_nan:
-                        errors.append('internal column is not NaN')
-                    validation_df.at[idx, 'validation_error'] = '; '.join(errors)
-                    
-            elif insulation_type.lower() == 'internal_wall_insulation':
-                # Only internal should be non-NaN
-                if is_cavity_nan and is_external_nan and not is_internal_nan:
-                    validation_df.at[idx, 'is_valid'] = True
-                else:
-                    errors = []
-                    if not is_cavity_nan:
-                        errors.append('cavity column is not NaN')
-                    if not is_external_nan:
-                        errors.append('external column is not NaN')
-                    if is_internal_nan:
-                        errors.append('internal column is NaN')
-                    validation_df.at[idx, 'validation_error'] = '; '.join(errors)
-            else:
-                validation_df.at[idx, 'validation_error'] = f'Unknown insulation type: {insulation_type}'
-        else:
-            validation_df.at[idx, 'validation_error'] = f'Unknown wall type: {wall_type}'
+    # Rule 1: Cavity wall - only cavity should be non-NaN
+    cavity_mask = wall_type_lower == 'cavity_wall'
+    cavity_valid = cavity_mask & ~is_cavity_nan & is_external_nan & is_internal_nan
+    validation_df.loc[cavity_valid, 'is_valid'] = True
+    
+    # Cavity wall errors
+    cavity_invalid = cavity_mask & ~cavity_valid
+    validation_df.loc[cavity_invalid & is_cavity_nan, 'validation_error'] += 'cavity column is NaN; '
+    validation_df.loc[cavity_invalid & ~is_external_nan, 'validation_error'] += 'external column is not NaN; '
+    validation_df.loc[cavity_invalid & ~is_internal_nan, 'validation_error'] += 'internal column is not NaN; '
+    
+    # Rule 2: Solid wall + external insulation - only external should be non-NaN
+    external_mask = (wall_type_lower == 'solid_wall') & (insulation_type_lower == 'external_wall_insulation')
+    external_valid = external_mask & is_cavity_nan & ~is_external_nan & is_internal_nan
+    validation_df.loc[external_valid, 'is_valid'] = True
+    
+    # External insulation errors
+    external_invalid = external_mask & ~external_valid
+    validation_df.loc[external_invalid & ~is_cavity_nan, 'validation_error'] += 'cavity column is not NaN; '
+    validation_df.loc[external_invalid & is_external_nan, 'validation_error'] += 'external column is NaN; '
+    validation_df.loc[external_invalid & ~is_internal_nan, 'validation_error'] += 'internal column is not NaN; '
+    
+    # Rule 3: Solid wall + internal insulation - only internal should be non-NaN
+    internal_mask = (wall_type_lower == 'solid_wall') & (insulation_type_lower == 'internal_wall_insulation')
+    internal_valid = internal_mask & is_cavity_nan & is_external_nan & ~is_internal_nan
+    validation_df.loc[internal_valid, 'is_valid'] = True
+    
+    # Internal insulation errors
+    internal_invalid = internal_mask & ~internal_valid
+    validation_df.loc[internal_invalid & ~is_cavity_nan, 'validation_error'] += 'cavity column is not NaN; '
+    validation_df.loc[internal_invalid & ~is_external_nan, 'validation_error'] += 'external column is not NaN; '
+    validation_df.loc[internal_invalid & is_internal_nan, 'validation_error'] += 'internal column is NaN; '
+    
+    # Handle special error cases
+    wall_type_nan = validation_df['inferred_wall_type'].isna()
+    validation_df.loc[wall_type_nan, 'validation_error'] = 'Wall type is NaN'
+    
+    solid_wall_no_insulation = (wall_type_lower == 'solid_wall') & validation_df['inferred_insulation_type'].isna()
+    validation_df.loc[solid_wall_no_insulation, 'validation_error'] = 'Solid wall but insulation type is NaN'
+    
+    # Clean up trailing semicolons and spaces
+    validation_df['validation_error'] = validation_df['validation_error'].str.rstrip('; ')
     
     # Get invalid rows
     invalid_rows = validation_df[~validation_df['is_valid']].copy()
