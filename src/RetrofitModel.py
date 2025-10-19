@@ -27,6 +27,7 @@ class RetrofitModel:
     cost_estimator: CostEstimator = field(default_factory=CostEstimator)
     custom_intervention_configs: Optional[Dict[str, InterventionConfig]] = None
 
+    join_intervnetion_to_skip = ['joint_loft_wall', 'loft_and_wall_installation'] 
 
     def __post_init__(self):
         """Validate inputs after initialization."""
@@ -127,6 +128,29 @@ class RetrofitModel:
             'includes_wall_insulation': True,
             'installation_approach': 'simultaneous'
 
+        },
+
+        'scenA': {
+            'name': 'wall_and_loft',
+            'description': 'combine using multiplicative ',
+            'interventions': [
+                'joint_loft_wall',
+
+            ],
+            'includes_wall_insulation': True,
+            'installation_approach': 'simultaneous'
+        },
+
+        'heat_pump_only': 
+        {
+            'name': 'heat pump only',
+            'description': '  ',
+            'interventions': [
+                'heat_pump_percentile',
+
+            ],
+            'includes_wall_insulation': False,
+            'installation_approach': 'simultaneous'
         },
 
         'scenario2': {
@@ -432,7 +456,7 @@ class RetrofitModel:
             logging.error("Cannot calculate statistics on empty array")
             raise ValueError("Cannot calculate statistics on empty array")
         
-
+ 
         
         # Calculate the requested statistic
         try:
@@ -572,6 +596,7 @@ class RetrofitModel:
         region,  
         return_statistics,
         roof_scaling,
+          wall_type  , 
     ):
         """
         Calculate Monte Carlo energy savings statistics for a list of interventions.
@@ -594,6 +619,7 @@ class RetrofitModel:
                         region=region,
                         n_samples=self.n_samples,
                         roof_scaling=roof_scaling,
+                          wall_type = wall_type ,
                     )
 
                     # Determine fuel-specific samples
@@ -606,6 +632,7 @@ class RetrofitModel:
                     else:
                         # Some configs may return only one array (assume gas)
                         gas_samples = samples
+
 
                     # Compute statistics for gas
                     if gas_samples is not None:
@@ -654,97 +681,7 @@ class RetrofitModel:
                             energy_stats[col_name] = np.nan
 
         return energy_stats
-
-    
-    # def calculate_intervention_energy_savings(self, 
-    #                                 interventions, 
-    #                                 building_chars,
-    #                                 region,  
-    #                                 return_statistics,
-    #                                 roof_scaling, 
-    #                                 ):
-    #     """
-    #     Calculate Monte Carlo energy savings statistics for a list of interventions.
-    #     For both gas and electricity: combines samples additively at the sample level, then calculates summary stats.
-
-    #         Example output keys:
-    #     energy_wall_installation_gas_mean
-    #     energy_wall_installation_electricity_p95
-
-
-    #     """
-    #     # Store samples by fuel type
-    #     gas_samples_list = []
-    #     electricity_samples_list = []
-
-    #     for intervention in interventions:
-    #         if intervention != 'solar_pv':
-    #             try:
-    #                 # Get Monte Carlo samples for energy savings
-    #                 samples = self.energy_config.sample_intervention_energy_savings_monte_carlo(
-    #                     intervention=intervention,
-    #                     building_chars=building_chars,
-    #                     region=region,
-    #                     n_samples=self.n_samples,
-    #                     roof_scaling=roof_scaling,
-                        
-    #                 )
-                    
-    #                 if 'percentile' in intervention:
-    #                     # these only return gas samples 
-    #                     gas_samples_list.append(samples)
-    #                 else:
-    #                     # Separate gas and electricity samples
-    #                     if 'gas' in samples:
-    #                         gas_samples_list.append(samples['gas'])
-    #                     elif 'electricity' in samples:
-    #                         electricity_samples_list.append(samples['electricity'])
-    #                     else:
-    #                         logger.info('samples seem strange ')
-    #                         logger.info( samples)
-                        
-    #                         raise Exception('Samples not as expected')
-         
-    #             except Exception as e:
-    #                 # Handle errors appropriately
-    #                 logger.warning(f"Error processing intervention {intervention}: {e}")
-    #                 continue
-        
-    #     savings_stats = {}
-        
-    #     # Process gas samples: additive combination at sample level
-    #     if gas_samples_list:
-    #         # Add samples element-wise across all interventions
-    #         combined_gas_samples = gas_samples_list[0].copy()
-    #         for gas_samples in gas_samples_list[1:]:
-    #             combined_gas_samples += gas_samples
-            
-    #         # Calculate summary statistics on combined samples
-    #         savings_stats['gas'] = {
-    #             'mean': np.mean(combined_gas_samples),
-    #             'median': np.median(combined_gas_samples),
-    #             'std': np.std(combined_gas_samples),
-    #             'p5': np.percentile(combined_gas_samples, 5),
-    #             'p95': np.percentile(combined_gas_samples, 95),
-    #         }
-         
-        
-    #     # Process electricity samples: additive combination at sample level
-    #     if electricity_samples_list:
-    #         # Add samples element-wise across all interventions
-    #         combined_electricity_samples = electricity_samples_list[0].copy()
-    #         for elec_samples in electricity_samples_list[1:]:
-    #             combined_electricity_samples += elec_samples
-            
-    #         savings_stats['electricity'] = {
-    #             'mean': np.mean(combined_electricity_samples),
-    #             'median': np.median(combined_electricity_samples),
-    #             'std': np.std(combined_electricity_samples),
-    #             'p5': np.percentile(combined_electricity_samples, 5),
-    #             'p95': np.percentile(combined_electricity_samples, 95),
-    #         }
-        
-    #     return savings_stats
+ 
      
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
@@ -933,7 +870,12 @@ class RetrofitModel:
         )
 
         try:
-            samples = self.cost_estimator.sample_intervention_cost(
+            if intervention in self.join_intervnetion_to_skip:
+                return None 
+                # skip 
+            else:
+
+                samples = self.cost_estimator.sample_intervention_cost(
                 intervention=intervention,
                 building_chars=building_chars,
                 typology=typology,
@@ -945,11 +887,11 @@ class RetrofitModel:
                 n_samples=self.n_samples
             )
             
-            logger.debug(
-                f"{intervention} samples: mean=£{samples.mean():,.0f}, "
-                f"std=£{samples.std():,.0f}"
-            )
-            
+                logger.debug(
+                    f"{intervention} samples: mean=£{samples.mean():,.0f}, "
+                    f"std=£{samples.std():,.0f}"
+                )
+                
             return samples
             
         except ValueError as e:
@@ -1121,6 +1063,7 @@ class RetrofitModel:
             region=region,
             return_statistics=return_statistics,
             roof_scaling=self.retrofit_config.existing_intervention_probs['roof_scaling_factor'] , 
+            wall_type = insulation_type , 
             
 
         )
@@ -1281,6 +1224,9 @@ class RetrofitModel:
             elec=False 
         elif scenario_str =='loft_installation':
             interventions = ['loft_percentile']
+            elec=False 
+        elif scenario_str =='scenA':
+            interventions =['joint_loft_wall']
             elec=False 
         else:
             raise Exception(f'Need to define the interventions  for scenarioi  ({scenario_str}) in RetrofitModel _get_cols_scenario_intervention')

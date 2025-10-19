@@ -26,8 +26,7 @@ def load_and_concatenate_data(file_pattern):
     
     dataframes = [pd.read_csv(file) for file in files]
     return pd.concat(dataframes, ignore_index=True)
-
-
+ 
 def proc_measures_optimized(df, measure_type, scenario_name, gas_carbon_factor_22, n_monte, gas_price):
     """
     Optimized version that calculates measures in-place without copying dataframe.

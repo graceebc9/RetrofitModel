@@ -81,6 +81,9 @@ class RetrofitEnergy:
     
     # percentiel ones are from diaz anadaon paper on pecentiles 
     energysaving_uncertainty_parameters: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
+        'joint_loft_wall': {'distribution': 'None',
+                                       },  
+    
         'loft_percentile': {
             'distribution': 'normal',
             'gas': {
@@ -281,13 +284,91 @@ class RetrofitEnergy:
         },
     })
  
+ 
         
-       
+    def sample_join_savings( self,
+                                intervention: str,  # Package name like 'loft_and_wall_installation'
+                                avg_gas_percentile: str,
+                                wall_type: str, 
+                                n_samples: int = 1000,
+                                method ='additive',
+                               
+                            ) -> Dict[str, np.ndarray]:
+        """
+        Sample savings from multiple percentile-based interventions in a package and combine them.
+        
+        Parameters:
+        -----------
+        intervention : str
+            Package name from retrofit_packages (e.g., 'loft_and_wall_installation')
+        avg_gas_percentile : str
+            Building's gas percentile (0-9)
+        n_samples : int
+            Number of Monte Carlo samples
+            
+        Returns:
+        --------
+        Dict with 'gas' key containing combined samples
+        """
+        if 'cavity' in wall_type :
+            wt = 'cavity_wall_percentile' 
+        elif 'internal' in wall_type:
+            wt = 'solid_wall_internal_percentile'
+        elif 'external' in wall_type:
+            wt = 'solid_wall_external_percentile'
+        else:
+            raise Exception('wall-type not as expected: ', wall_type)
+
+        joint_intervention_dict={'joint_loft_wall': [wt , 'loft_percentile' ] } 
+
+        if not str(avg_gas_percentile).isnumeric():
+            raise ValueError(f'Percentile must be numeric, got: {avg_gas_percentile}')
+        
+        percentile_key = int(avg_gas_percentile)
+        
+        # Get the package containing the list of interventions
+        if intervention not in joint_intervention_dict.keys():
+            raise KeyError(f'No package found for: {intervention}')
+        
+    
+        interventions_list = joint_intervention_dict[intervention]
+        
+        # Initialize combined samples
+        combined_samples = np.zeros(n_samples)
+        
+        # Sample from each intervention in the package and combine element-wise
+        for single_intervention in interventions_list:
+            # Check if intervention exists
+            if single_intervention not in self.energysaving_uncertainty_parameters:
+                raise KeyError(f'No data for intervention: {single_intervention}')
+            
+            # Check if percentile exists for this intervention
+            if percentile_key not in self.energysaving_uncertainty_parameters[single_intervention]['gas']:
+                raise KeyError(f'No data for percentile {percentile_key} in intervention {single_intervention}')
+            
+            # Get distribution parameters for this intervention at this percentile
+            dist_params = self.energysaving_uncertainty_parameters[single_intervention]['gas'][percentile_key]
+            
+            # Sample from normal distribution
+            intervention_samples = np.random.normal(
+                dist_params['mean'],
+                dist_params['sd'],
+                size=n_samples
+            )
+            
+            # Add to combined (element-wise)
+            if method =='additive':
+                combined_samples += intervention_samples
+        
+        # Clip combined result
+        combined_samples = np.clip(combined_samples, a_min=-1, a_max=1)
+        
+        return  combined_samples 
 
     def sample_intervention_energy_savings_monte_carlo(self,
                                                    intervention: str,
                                                    building_chars: BuildingCharacteristics,
-                                              
+                                                wall_type: str , 
                                                 #    typology: str,
                                                 #    age_band: str,
                                                    region: str,
@@ -324,7 +405,6 @@ class RetrofitEnergy:
         
         
         # Check if intervention exists in energy savings parameters
-        
         if intervention not in self.energysaving_uncertainty_parameters:
             raise ValueError(f"Intervention '{intervention}' not found in energy savings parameters")
         
@@ -339,6 +419,12 @@ class RetrofitEnergy:
                     region=region,
                     scaled_roof_size=building_chars.solar_roof_area_estimate(roof_scaling), 
                     n_samples=n_samples )
+        elif intervention =='joint_loft_wall':
+            samples= self.sample_join_savings(
+                intervention=intervention, 
+                    avg_gas_percentile=avg_gas_percentile,
+                    n_samples=n_samples, wall_type = wall_type  )
+            
         elif 'percentile' in intervention:
             
             samples= self.sample_percentile_savings(
