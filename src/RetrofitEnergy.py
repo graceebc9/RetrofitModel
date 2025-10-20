@@ -400,7 +400,63 @@ class RetrofitEnergy:
         combined_samples = np.clip(combined_samples, a_min=-1, a_max=1)
         
         return combined_samples
-         
+    
+
+    def sample_heat_pump_savings(
+        self,
+        intervention: str,
+        avg_gas_percentile: str,  # or int
+        n_samples: int = 1000
+    ) -> dict[str, np.ndarray]:
+        """Sample savings from normal distributions for gas and electricity.
+        
+        Returns:
+            dict with 'gas' and 'electricity' keys, each containing np.ndarray of samples
+        """
+        
+        if not str(avg_gas_percentile).isnumeric():
+            raise ValueError(f'Percentile must be numeric, got: {avg_gas_percentile}')
+        
+        # Check if intervention exists in data
+        if intervention not in self.energysaving_uncertainty_parameters:
+            raise KeyError(f'No data for intervention: {intervention}')
+        
+        # Convert to int for dict lookup
+        percentile_key = int(avg_gas_percentile)
+        
+        # Check if percentile exists for both gas and electricity
+        if percentile_key not in self.energysaving_uncertainty_parameters[intervention]['gas']:
+            raise KeyError(f'No gas data for percentile: {percentile_key}')
+        
+        if percentile_key not in self.energysaving_uncertainty_parameters[intervention]['electricity']:
+            raise KeyError(f'No electricity data for percentile: {percentile_key}')
+        
+        # Get distribution parameters
+        gas_params = self.energysaving_uncertainty_parameters[intervention]['gas'][percentile_key]
+        elec_params = self.energysaving_uncertainty_parameters[intervention]['electricity'][percentile_key]
+        
+        # Sample from both distributions
+        gas_savings = np.random.normal(
+            gas_params['mean'],
+            gas_params['sd'],
+            size=n_samples
+        )
+        
+        elec_savings = np.random.normal(
+            elec_params['mean'],
+            elec_params['sd'],
+            size=n_samples
+        )
+        
+        # Clip values to [-1, 1]
+        gas_savings = np.clip(gas_savings, a_min=-1, a_max=1)
+        elec_savings = np.clip(elec_savings, a_min=-1, a_max=1)
+        
+        return {
+            'gas': gas_savings,
+            'electricity': elec_savings
+        }
+    
     def sample_intervention_energy_savings_monte_carlo(self,
                                                    intervention: str,
                                                    building_chars: BuildingCharacteristics,
@@ -462,8 +518,13 @@ class RetrofitEnergy:
                     avg_gas_percentile=avg_gas_percentile,
                     n_samples=n_samples, wall_type = wall_type ,   )
             
+        elif 'heat_pump' in intervention: 
+            samples = self.sample_heat_pump_savings(
+                 intervention=intervention, 
+                    avg_gas_percentile=avg_gas_percentile,
+                    n_samples=n_samples
+            ) 
         elif 'percentile' in intervention:
-            
             samples= self.sample_percentile_savings(
                 intervention=intervention, 
                     avg_gas_percentile=avg_gas_percentile,
