@@ -157,11 +157,11 @@ def gen_batch_ids(batch_ids: list, log_file: str, logger: logging.Logger) -> lis
 def postcode_main(batch_path, data_dir, path_to_onsud_file, path_to_pcshp, INPUT_GPK,
                   retrofit_config, retrofig_model, scenarios, neb_pcs, 
                   conservation_data, 
-                  region_label, batch_label, attr_lab, log_size=100, ):
+                  region_label, batch_label, attr_lab, job_name, log_size=100, ):
     """Main processing function."""
 
     # Setup logging
-    proc_dir = os.path.join(data_dir, attr_lab, region_label)
+    proc_dir = os.path.join(data_dir, attr_lab, job_name, region_label)
     os.makedirs(proc_dir, exist_ok=True)
 
     logger.info(f'Starting processing for region: {region_label}')
@@ -310,6 +310,7 @@ def main():
             batch_label=batch_id,
             attr_lab='retrofit_scenario',
             log_size=log_size,
+            job_name =job_name,   
             conservation_data=conservation_data,
         )
         logger.info(f"Successfully processed batch: {batch_path}")
