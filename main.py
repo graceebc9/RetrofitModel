@@ -86,7 +86,7 @@ OUTPUT_DIR = 'final_dataset'
 
 batch_size = 500
 log_size = 100
-n_monte_carlo = 100
+n_monte_carlo = 1000
 # scenarios = ['wall_installation', 'loft_installation']
 scenarios=['join_heat_ins_decay', 'heat_pump_only', 'scenA_add', 'scenA_decay',]
 job_name='testing'
