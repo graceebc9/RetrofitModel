@@ -88,8 +88,8 @@ batch_size = 500
 log_size = 100
 n_monte_carlo = 1000
 # scenarios = ['wall_installation', 'loft_installation']
-scenarios=['join_heat_ins_decay', 'heat_pump_only', 'scenA_add', 'scenA_decay',]
-job_name='testing'
+scenarios=['join_heat_ins_decay', 'heat_pump_only', 'scenA_add', 'scenA_decay','wall_installation', 'loft_installation']
+job_name='combo_heat_pump'
 region_list = ['NE'] if running_locally else [os.getenv('REGION_LIST')]
 
 STAGE0_split_onsud = False

@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 import numpy as np
  
-
+from typing import Dict
+import numpy as np
 
 # # Add logger at the top of your module
 # logger = logging.getLogger(__name__)
@@ -564,7 +565,7 @@ class RetrofitEnergy:
         intervention: str,
         avg_gas_percentile: str,  # or int
         n_samples: int = 1000
-    ) -> dict[str, np.ndarray]:
+    ) -> Dict[str, np.ndarray]:
         """Sample savings from normal distributions for gas and electricity.
         
         Returns:
