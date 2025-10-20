@@ -27,7 +27,7 @@ class RetrofitModel:
     cost_estimator: CostEstimator = field(default_factory=CostEstimator)
     custom_intervention_configs: Optional[Dict[str, InterventionConfig]] = None
     
-    join_intervnetion_to_skip = ['joint_loft_wall_add','joint_loft_wall_decay',   'loft_and_wall_installation'] 
+    join_intervnetion_to_skip = [ 'joint_heat_ins_add', 'joint_heat_ins_decay', 'joint_loft_wall_add','joint_loft_wall_decay',   'loft_and_wall_installation'] 
 
     def __post_init__(self):
         """Validate inputs after initialization."""
@@ -161,6 +161,29 @@ class RetrofitModel:
 
             ],
             'includes_wall_insulation': False,
+            'installation_approach': 'simultaneous'
+        },
+
+        'join_heat_ins_add': 
+          {
+            'name': 'heat pump and insulation',
+            'description': '  ',
+            'interventions': [
+                'joint_heat_ins_add',
+
+            ],
+            'includes_wall_insulation': True,
+            'installation_approach': 'simultaneous'
+        },
+        'join_heat_ins_decay': 
+          {
+            'name': 'heat pump and insulation',
+            'description': '  ',
+            'interventions': [
+                'joint_heat_ins_decay',
+
+            ],
+            'includes_wall_insulation': True,
             'installation_approach': 'simultaneous'
         },
 
@@ -1262,6 +1285,14 @@ class RetrofitModel:
         elif scenario_str =='heat_pump_only':
             interventions = ['heat_pump_percentile']
             elec =True 
+        elif scenario_str =='join_heat_ins_decay':
+            interventions = ['joint_heat_ins_decay']
+            elec =True 
+        elif scenario_str =='join_heat_ins_add':
+            interventions = ['joint_heat_ins_add']
+            elec =True 
+
+            
         else:
             raise Exception(f'Need to define the interventions  for scenarioi  ({scenario_str}) in RetrofitModel _get_cols_scenario_intervention')
         
