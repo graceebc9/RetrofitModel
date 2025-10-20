@@ -5,6 +5,13 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 import numpy as np
  
+
+
+# Add logger at the top of your module
+logger = logging.getLogger(__name__)
+
+
+
 from .BuildingCharacteristics import BuildingCharacteristics 
 
 @dataclass
@@ -81,7 +88,9 @@ class RetrofitEnergy:
     
     # percentiel ones are from diaz anadaon paper on pecentiles 
     energysaving_uncertainty_parameters: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
-        'joint_loft_wall': {'distribution': 'None',
+        'joint_loft_wall_add': {'distribution': 'None',
+                                       },  
+        'joint_loft_wall_decay': {'distribution': 'None',
                                        },  
     
         'loft_percentile': {
@@ -285,14 +294,12 @@ class RetrofitEnergy:
     })
  
  
-        
-    def sample_join_savings( self,
+    def sample_join_savings(self,
                                 intervention: str,  # Package name like 'loft_and_wall_installation'
                                 avg_gas_percentile: str,
                                 wall_type: str, 
                                 n_samples: int = 1000,
-                                method ='additive',
-                               
+                                
                             ) -> Dict[str, np.ndarray]:
         """
         Sample savings from multiple percentile-based interventions in a package and combine them.
@@ -303,14 +310,20 @@ class RetrofitEnergy:
             Package name from retrofit_packages (e.g., 'loft_and_wall_installation')
         avg_gas_percentile : str
             Building's gas percentile (0-9)
+        wall_type : str
+            Type of wall intervention
         n_samples : int
             Number of Monte Carlo samples
+        method : str
+            Combination method: 'additive' or 'decay'
+            - 'additive': simple sum of savings
+            - 'decay': multiplicative combination using (1-x)(1-y) logic
             
         Returns:
         --------
         Dict with 'gas' key containing combined samples
         """
-        if 'cavity' in wall_type :
+        if 'cavity' in wall_type:
             wt = 'cavity_wall_percentile' 
         elif 'internal' in wall_type:
             wt = 'solid_wall_internal_percentile'
@@ -319,8 +332,18 @@ class RetrofitEnergy:
         else:
             raise Exception('wall-type not as expected: ', wall_type)
 
-        joint_intervention_dict={'joint_loft_wall': [wt , 'loft_percentile' ] } 
+        joint_intervention_dict = {'joint_loft_wall_add': [wt, 'loft_percentile'], 
+                                'joint_loft_wall_decay': [wt, 'loft_percentile']
+                                     } 
 
+        
+        if  'add' in intervention:
+            method ='additive'
+        elif 'decay' in intervention:
+            method ='decay'
+        else:
+            raise Exception('Method of joint not defined in intervention name: ', intervention)
+        logger.debug(f'Combining method is {method}')
         if not str(avg_gas_percentile).isnumeric():
             raise ValueError(f'Percentile must be numeric, got: {avg_gas_percentile}')
         
@@ -330,13 +353,18 @@ class RetrofitEnergy:
         if intervention not in joint_intervention_dict.keys():
             raise KeyError(f'No package found for: {intervention}')
         
-    
         interventions_list = joint_intervention_dict[intervention]
         
-        # Initialize combined samples
-        combined_samples = np.zeros(n_samples)
+        # Initialize based on method
+        if method == 'additive':
+            combined_samples = np.zeros(n_samples)
+        elif method == 'decay':
+            # Start with 1.0 (representing remaining energy usage fraction)
+            remaining_fraction = np.ones(n_samples)
+        else:
+            raise ValueError(f"Method must be 'additive' or 'decay', got: {method}")
         
-        # Sample from each intervention in the package and combine element-wise
+        # Sample from each intervention in the package and combine
         for single_intervention in interventions_list:
             # Check if intervention exists
             if single_intervention not in self.energysaving_uncertainty_parameters:
@@ -356,19 +384,28 @@ class RetrofitEnergy:
                 size=n_samples
             )
             
-            # Add to combined (element-wise)
-            if method =='additive':
+            # Combine based on method
+            if method == 'additive':
                 combined_samples += intervention_samples
+            elif method == 'decay':
+                # Multiplicative decay: remaining = remaining * (1 - savings)
+                remaining_fraction *= (1 - intervention_samples)
+        
+        # Calculate final combined samples
+        if method == 'decay':
+            # Convert remaining fraction back to total savings
+            combined_samples = 1 - remaining_fraction
         
         # Clip combined result
         combined_samples = np.clip(combined_samples, a_min=-1, a_max=1)
         
-        return  combined_samples 
-
+        return combined_samples
+         
     def sample_intervention_energy_savings_monte_carlo(self,
                                                    intervention: str,
                                                    building_chars: BuildingCharacteristics,
                                                 wall_type: str , 
+                                                
                                                 #    typology: str,
                                                 #    age_band: str,
                                                    region: str,
@@ -419,11 +456,11 @@ class RetrofitEnergy:
                     region=region,
                     scaled_roof_size=building_chars.solar_roof_area_estimate(roof_scaling), 
                     n_samples=n_samples )
-        elif intervention =='joint_loft_wall':
+        elif 'joint_loft_wall' in intervention:
             samples= self.sample_join_savings(
                 intervention=intervention, 
                     avg_gas_percentile=avg_gas_percentile,
-                    n_samples=n_samples, wall_type = wall_type  )
+                    n_samples=n_samples, wall_type = wall_type ,   )
             
         elif 'percentile' in intervention:
             

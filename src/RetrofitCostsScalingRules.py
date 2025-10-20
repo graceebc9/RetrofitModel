@@ -83,8 +83,11 @@ INTERVENTION_CONFIGS: Dict[str, InterventionConfig] = {
         notes='Cost per sqm of external wall area'
     ),
     
+    'loft_and_wall_installation': None 
+    ,
+
     # Fixed-cost interventions with typology variations
-    'heat_pump_upgrade': InterventionConfig(
+    'heat_pump_percentile': InterventionConfig(
         area_type='typology_based',
         cost_by_typology={
             # Flats: 10-15k

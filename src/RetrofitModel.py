@@ -26,8 +26,8 @@ class RetrofitModel:
     energy_config: Optional[RetrofitEnergy] = None  # Allow custom config or will be auto-created
     cost_estimator: CostEstimator = field(default_factory=CostEstimator)
     custom_intervention_configs: Optional[Dict[str, InterventionConfig]] = None
-
-    join_intervnetion_to_skip = ['joint_loft_wall', 'loft_and_wall_installation'] 
+    
+    join_intervnetion_to_skip = ['joint_loft_wall_add','joint_loft_wall_decay',   'loft_and_wall_installation'] 
 
     def __post_init__(self):
         """Validate inputs after initialization."""
@@ -55,6 +55,7 @@ class RetrofitModel:
 
         logger.debug(f"Regional multipliers: {list(self.regional_multipliers.keys())}")
         logger.debug(f"Available scenarios: {list(self.retrofit_packages.keys())}")
+        
         logger.info("RetrofitModel initialized successfully")
    
     typologies: List[str] = field(default_factory=lambda: [
@@ -130,11 +131,21 @@ class RetrofitModel:
 
         },
 
-        'scenA': {
+        'scenA_add': {
             'name': 'wall_and_loft',
             'description': 'combine using multiplicative ',
             'interventions': [
-                'joint_loft_wall',
+                'joint_loft_wall_add',
+
+            ],
+            'includes_wall_insulation': True,
+            'installation_approach': 'simultaneous'
+        },
+        'scenA_decay': {
+            'name': 'wall_and_loft',
+            'description': 'combine using multiplicative ',
+            'interventions': [
+                'joint_loft_wall_decay',
 
             ],
             'includes_wall_insulation': True,
@@ -597,6 +608,7 @@ class RetrofitModel:
         return_statistics,
         roof_scaling,
           wall_type  , 
+          
     ):
         """
         Calculate Monte Carlo energy savings statistics for a list of interventions.
@@ -620,6 +632,7 @@ class RetrofitModel:
                         n_samples=self.n_samples,
                         roof_scaling=roof_scaling,
                           wall_type = wall_type ,
+                          
                     )
 
                     # Determine fuel-specific samples
@@ -750,6 +763,18 @@ class RetrofitModel:
                     age_band=age_band,
                     region=region,
                 )
+                 # **NEW: Check if samples is None (joint interventions we want to skip)**
+                if samples is None:
+                    logger.debug(f"Skipping cost calculation for joint intervention: {intervention}")
+                    # Set all statistics to 0 or NaN for joint interventions
+                    for stat in return_statistics:
+                        col_name = f'{intervention}_{stat}'
+                        cost_stats[col_name] = 0.0  # or np.nan if you prefer
+                    
+                    # Don't add to total calculation
+                    if include_total:
+                        all_samples.append(np.zeros(self.n_samples))
+                    continue
                  
                
                 
@@ -944,11 +969,11 @@ class RetrofitModel:
                                         scenario_interventions, 
                                         # prob_external, 
                                         region, 
-                                        return_statistics):
+                                        return_statistics  ):
         """
         Calculate Monte Carlo cost statistics for scenario interventions for one building.
         and now energy 
-       
+        
         """
         # Data validation
         required_cols = ['floor_count', 'gross_external_area', 'gross_internal_area', 'inferred_wall_type', 'inferred_insulation_type',
@@ -1064,6 +1089,7 @@ class RetrofitModel:
             return_statistics=return_statistics,
             roof_scaling=self.retrofit_config.existing_intervention_probs['roof_scaling_factor'] , 
             wall_type = insulation_type , 
+        
             
 
         )
@@ -1099,8 +1125,9 @@ class RetrofitModel:
                                 # prob_external,
                                   region,
                                    scenario,
-                                     return_statistics):
-        """Calculate costs  and add them to the DataFrame."""
+                                     return_statistics,
+                                    ):
+        """Calculate costs  and add them to the DataFrame. method is only for joint sampling """
         
         energy_res = result_df.copy() 
         
@@ -1112,7 +1139,8 @@ class RetrofitModel:
                                                             scenario_interventions, 
                                                             # prob_external,
                                                             region,  
-                                                            return_statistics
+                                                            return_statistics,
+                                                            
                                                              ), axis=1
                                     )
         
@@ -1225,9 +1253,15 @@ class RetrofitModel:
         elif scenario_str =='loft_installation':
             interventions = ['loft_percentile']
             elec=False 
-        elif scenario_str =='scenA':
-            interventions =['joint_loft_wall']
+        elif scenario_str =='scenA_add':
+            interventions =['joint_loft_wall_add']
             elec=False 
+        elif scenario_str =='scenA_decay':
+            interventions =['joint_loft_wall_decay']
+            elec=False 
+        elif scenario_str =='heat_pump_only':
+            interventions = ['heat_pump_percentile']
+            elec =True 
         else:
             raise Exception(f'Need to define the interventions  for scenarioi  ({scenario_str}) in RetrofitModel _get_cols_scenario_intervention')
         
@@ -1265,7 +1299,8 @@ class RetrofitModel:
                                              scenario, 
                                             # prob_external, 
                                         col_mapping=None, 
-                                        return_statistics=None):
+                                        return_statistics=None, 
+                                          ):
         """
         Apply Monte Carlo building cost calculations to all rows in a DataFrame for a specific scenario.
         
@@ -1321,7 +1356,8 @@ class RetrofitModel:
                                                                             # prob_external = prob_external,
                                                                             region =region, 
                                                                             scenario = scenario,
-                                                                            return_statistics = return_statistics
+                                                                            return_statistics = return_statistics,
+                                                                            
         )
 
         # check if wall type solid then no cavity wall cost 
