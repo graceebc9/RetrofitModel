@@ -12,8 +12,8 @@ class RetrofitEnergy:
     """Enhanced configuration with Monte Carlo cost sampling."""
     
     # Improvement factor for solid wall vs cavity wall (default 10% better)
-    solid_wall_internal_improvement_factor: float = 0.1
-    solid_wall_external_improvement_factor: float = 0.2
+    solid_wall_internal_improvement_factor: float = 0.2
+    solid_wall_external_improvement_factor: float = 0.3
     
     solar_regional_multiplier: Dict[str, float] = field(default_factory=lambda: {
         # high sun regions 
