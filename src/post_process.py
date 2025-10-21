@@ -3,6 +3,52 @@ import pandas as pd
 import numpy as np
 
  
+
+
+def create_total_csots_for_heat_pump(df):
+    # Create mapping from inferred_insulation_type values to column name parts
+    wall_type_mapping = {
+    
+        'internal_wall_insulation': 'solid_wall_external',
+        'external_wall_insulation': 'solid_wall_internal',
+        'cavity_wall_insulation': 'cavity_wall',
+    }
+
+    # Map the insulation types to column name parts
+    df['wall_type_clean'] = df['inferred_insulation_type'].map(wall_type_mapping)
+
+    # Get the appropriate wall cost mean for each building
+    df['wall_cost_mean'] = df.apply(
+        lambda row: row[f"wall_installation_cost_{row['wall_type_clean']}_percentile_mean"],
+        axis=1
+    )
+
+    # Get the appropriate wall cost std for each building
+    df['wall_cost_std'] = df.apply(
+        lambda row: row[f"wall_installation_cost_{row['wall_type_clean']}_percentile_std"],
+        axis=1
+    )
+
+    # Calculate total cost mean (simple sum)
+    df['total_cost_combo_mean'] = (
+        df['heat_pump_only_cost_heat_pump_percentile_mean'] +
+        df['loft_installation_cost_loft_percentile_mean'] +
+        df['wall_cost_mean']
+    )
+
+    # Calculate total cost std (sqrt of sum of squares, assuming independent costs)
+    df['total_cost_combo_std'] = np.sqrt(
+        df['heat_pump_only_cost_heat_pump_percentile_std']**2 +
+        df['loft_installation_cost_loft_percentile_std']**2 +
+        df['wall_cost_std']**2
+    )
+
+    # Clean up intermediate columns if you don't need them
+    df.drop(['wall_type_clean', 'wall_cost_mean', 'wall_cost_std'], axis=1, inplace=True)
+
+    return df 
+
+    
 def calculate_combined_energy_reduction(
     df, 
     scenario_interventions,
