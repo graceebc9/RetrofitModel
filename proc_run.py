@@ -10,8 +10,8 @@ from src.costs import calculate_and_plot_measure_analysis
 
 
 # Configuration
-DATA_DIR = '/Volumes/T9/2024_Data_downloads/2025_10_RetrofitModel/1_data_runs/NE'
-OUTPUT_DIR_base = '/Volumes/T9/2024_Data_downloads/2025_10_RetrofitModel/2_costs_analysis'
+DATA_DIR = '/Volumes/T9/2024_Data_downloads/2025_10_RetrofitModel/1_data_runs/heat_pumps/NE'
+OUTPUT_DIR_base = '/Volumes/T9/2024_Data_downloads/2025_10_RetrofitModel/2_costs_analysis/heat_pumps'
 
 N_MONTE_CARLO_RUNS = 100
 GAS_CARBON_FACTOR_2022 = 0.2  # kg CO2/kWh
@@ -27,7 +27,52 @@ def load_and_concatenate_data(file_pattern):
     dataframes = [pd.read_csv(file) for file in files]
     return pd.concat(dataframes, ignore_index=True)
  
-def proc_measures_optimized(df, measure_type, scenario_name, gas_carbon_factor_22, n_monte, gas_price):
+
+
+def create_total_csots_for_heat_pump(df):
+    # Create mapping from inferred_insulation_type values to column name parts
+    wall_type_mapping = {
+    
+        'internal_wall_insulation': 'solid_wall_external',
+        'external_wall_insulation': 'solid_wall_internal',
+        'cavity_wall_insulation': 'cavity_wall',
+    }
+
+    # Map the insulation types to column name parts
+    df['wall_type_clean'] = df['inferred_insulation_type'].map(wall_type_mapping)
+
+    # Get the appropriate wall cost mean for each building
+    df['wall_cost_mean'] = df.apply(
+        lambda row: row[f"wall_installation_cost_{row['wall_type_clean']}_percentile_mean"],
+        axis=1
+    )
+
+    # Get the appropriate wall cost std for each building
+    df['wall_cost_std'] = df.apply(
+        lambda row: row[f"wall_installation_cost_{row['wall_type_clean']}_percentile_std"],
+        axis=1
+    )
+
+    # Calculate total cost mean (simple sum)
+    df['total_cost_mean'] = (
+        df['heat_pump_only_cost_heat_pump_percentile_mean'] +
+        df['loft_installation_cost_loft_percentile_mean'] +
+        df['wall_cost_mean']
+    )
+
+    # Calculate total cost std (sqrt of sum of squares, assuming independent costs)
+    df['total_cost_std'] = np.sqrt(
+        df['heat_pump_only_cost_heat_pump_percentile_std']**2 +
+        df['loft_installation_cost_loft_percentile_std']**2 +
+        df['wall_cost_std']**2
+    )
+
+    # Clean up intermediate columns if you don't need them
+    df.drop(['wall_type_clean', 'wall_cost_mean', 'wall_cost_std'], axis=1, inplace=True)
+
+    return df 
+
+def proc_measures_optimized(df, measure_type, scenario_name, gas_carbon_factor_22, n_monte, gas_price, combo=None):
     """
     Optimized version that calculates measures in-place without copying dataframe.
     Returns column names that were added.
@@ -37,10 +82,15 @@ def proc_measures_optimized(df, measure_type, scenario_name, gas_carbon_factor_2
     sqrt_n_monte = np.sqrt(n_monte)
     
     # Get column prefixes
-    energy_mean_col = f'{scenario_name}_installation_energy_{measure_type}_percentile_gas_mean'
-    energy_std_col = f'{scenario_name}_installation_energy_{measure_type}_percentile_gas_std'
-    cost_mean_col = f'{scenario_name}_installation_cost_{measure_type}_percentile_mean'
-    cost_std_col = f'{scenario_name}_installation_cost_{measure_type}_percentile_std'
+    energy_mean_col = f'{scenario_name}_energy_{measure_type}_gas_mean'
+    energy_std_col = f'{scenario_name}_energy_{measure_type}_gas_std'
+    if combo:
+        cost_mean_col='total_cost_mean'
+        cost_std_col='total_cost_std'
+
+    else:
+        cost_mean_col = f'{scenario_name}_cost_{measure_type}_mean'
+        cost_std_col = f'{scenario_name}_cost_{measure_type}_std'
     
     # Calculate 5-year kWh changes
     kwh_change_mean = total_gas_5y * df[energy_mean_col]
@@ -134,14 +184,15 @@ def main( ):
     file_pattern = f"{DATA_DIR}/*.csv"
     df = load_and_concatenate_data(file_pattern)
     
+    
     print('DataFame loaded ', df.shape)
     OUTPUT_DIR=f'{OUTPUT_DIR_base}/{name}'
     validate(df, OUTPUT_DIR)
 
     # Calculate absolute reductions
     calculate_absolute_reductions(df)
-    
-    # Plot building counts by age band
+    df = create_total_csots_for_heat_pump(df )
+    # Plot bui  lding counts by age band
     fig = plot_building_counts_by_age_band(
         df,
         groupby_cols=['avg_gas_percentile', 'premise_age_bucketed'],
@@ -160,23 +211,37 @@ def main( ):
     
     print('Plotting single intervention figs ')
     # plosingle measures
-    scenario_name='loft'
-    measure_type='loft'
-
+    scenario_name='loft_installation'
+    measure_type='loft_percentile'
     calculate_and_plot_measure_analysis(df, scenario_name, measure_type, N_MONTE_CARLO_RUNS, GAS_CARBON_FACTOR_2022, 
                                         GAS_PRICE, save_figs=True, output_dir=OUTPUT_DIR)
     
-    scenario_name='wall'
-    for measure_type in ['cavity_wall', 'solid_wall_internal', 'solid_wall_external']:
+    scenario_name='wall_installation'
+    for measure_type in ['cavity_wall_percentile', 'solid_wall_internal_percentile', 'solid_wall_external_percentile']:
         calculate_and_plot_measure_analysis(df, scenario_name, measure_type, N_MONTE_CARLO_RUNS, GAS_CARBON_FACTOR_2022, 
                                         GAS_PRICE, save_figs=True, output_dir=OUTPUT_DIR)
 
+    scenario_name='heat_pump_only'
+    measure_type='heat_pump_percentile'
+    calculate_and_plot_measure_analysis(df, scenario_name, measure_type, N_MONTE_CARLO_RUNS, GAS_CARBON_FACTOR_2022, 
+                                        GAS_PRICE, save_figs=True, output_dir=OUTPUT_DIR)
+    
+
+    scenario_name='join_heat_ins_decay'
+    measure_type='joint_heat_ins_decay'
+    calculate_and_plot_measure_analysis(df, scenario_name, measure_type, N_MONTE_CARLO_RUNS, GAS_CARBON_FACTOR_2022, 
+                                        GAS_PRICE, save_figs=True, output_dir=OUTPUT_DIR, total_cost_mean_col='total_cost_mean', total_cost_std_col='total_cost_std')
+    
     print('starting grouped plots')
-    # Process all measures in-place (MUCH faster - no dataframe copying/concatenation)
-    proc_measures_optimized(df, 'loft', 'loft', GAS_CARBON_FACTOR_2022, N_MONTE_CARLO_RUNS, GAS_PRICE)
+
+ 
+    proc_measures_optimized(df, 'loft_percentile', 'loft_installation', GAS_CARBON_FACTOR_2022, N_MONTE_CARLO_RUNS, GAS_PRICE)
     print('Df shape after loft', df.shape)
-    for measure in ['cavity_wall', 'solid_wall_internal', 'solid_wall_external']:
-        proc_measures_optimized(df, measure, 'wall', GAS_CARBON_FACTOR_2022, N_MONTE_CARLO_RUNS, GAS_PRICE)
+    for measure in ['cavity_wall_percentile', 'solid_wall_internal_percentile', 'solid_wall_external_percentile']:
+        proc_measures_optimized(df, measure, 'wall_installation', GAS_CARBON_FACTOR_2022, N_MONTE_CARLO_RUNS, GAS_PRICE)
+    
+    proc_measures_optimized(df,   'joint_heat_ins_decay',   'join_heat_ins_decay', GAS_CARBON_FACTOR_2022, N_MONTE_CARLO_RUNS, GAS_PRICE, combo=True)
+    proc_measures_optimized(df, 'heat_pump_percentile', 'heat_pump_only', GAS_CARBON_FACTOR_2022, N_MONTE_CARLO_RUNS, GAS_PRICE)
     
     # df now contains all the calculated columns
     print('Df shape after wall', df.shape)

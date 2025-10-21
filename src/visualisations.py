@@ -3,7 +3,81 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+def plot_col_reduction_by_decile_conservation(res_df,
+                                              
+                                groupby_col='avg_gas_percentile',
+                                mean_col='loft_installation_energy_loft_percentile_gas_mean',
+                                conservation_col='conservation-area_bool',
+                                groupby_label='Gas Usage Decile',
+                                ylabel='Energy Reduction (%)',
+                                title=None,
+                                figsize=(12, 6),
+                                rot=False, 
+                                percentage=True,):
+                                
+    
+    df = res_df.copy()
 
+    # Group by both decile AND conservation area
+    grouped = df.groupby([groupby_col, conservation_col]).agg({
+        mean_col: ['sum', 'count']
+    }).reset_index()
+    grouped.columns = ['decile', 'conservation_area', 'total_reduction', 'n_buildings']
+
+    if percentage:
+        grouped['total_reduction'] *= 100
+
+    # Pivot to get conservation areas as columns
+    pivot_data = grouped.pivot(index='decile', 
+                               columns='conservation_area', 
+                               values='total_reduction').fillna(0)
+    
+    # Create stacked bar chart
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Get conservation area labels
+    conservation_labels = {True: 'Conservation Area', False: 'Non-Conservation Area'}
+    colors = {True: 'coral', False: 'steelblue'}
+    
+    bottom = None
+    for cons_area in pivot_data.columns:
+        label = conservation_labels.get(cons_area, f'Conservation: {cons_area}')
+        color = colors.get(cons_area, 'gray')
+        
+        ax.bar(pivot_data.index, pivot_data[cons_area], 
+               bottom=bottom, 
+               label=label,
+               color=color, 
+               alpha=0.8, 
+               width=0.8)
+        
+        if bottom is None:
+            bottom = pivot_data[cons_area]
+        else:
+            bottom += pivot_data[cons_area]
+    
+    ax.set_xlabel(groupby_label, fontsize=11)
+    ax.set_ylabel(ylabel, fontsize=11)
+    ax.set_xticks(pivot_data.index)
+    ax.legend()
+    ax.grid(alpha=0.3, axis='y')
+    
+    if percentage: 
+        ax.axhline(0, color='r', linestyle='--', alpha=0.5)
+    if rot: 
+        ax.tick_params(axis='x', rotation=90)
+    if title:
+        ax.set_title(title, fontsize=13)
+    
+    plt.tight_layout()
+
+    # Print summary
+    print("\nSummary Statistics by Decile and Conservation Area:")
+    print(grouped.pivot_table(index='decile', 
+                             columns='conservation_area', 
+                             values=['total_reduction', 'n_buildings']))
+    
+    return fig
 
 def plot_col_reduction_by_decile(res_df,
                                       
@@ -16,9 +90,11 @@ def plot_col_reduction_by_decile(res_df,
                                 figsize=(16, 6),
                                 show_plot=True,
                                 costs=True,
+                                rot=False, 
                                 
                                 percentage=True ,):
                                 
+    
     df = res_df.copy( )
     df[f'{std_col}_2'] =(df[std_col] **2 )
 
@@ -67,6 +143,9 @@ def plot_col_reduction_by_decile(res_df,
     if percentage: 
         ax1.axhline(0, color='r', linestyle='--', alpha=0.5)
         ax2.axhline(0, color='r', linestyle='--', alpha=0.5)
+    if rot: 
+        ax1.set_xlabel(groupby_label, fontsize=11)
+        ax1.tick_params(axis='x', rotation=90)
 
     # Plot 2: Bar chart with error bars (confidence in mean)
     ax2.bar(grouped['decile'], grouped['mean_reduction'], 
@@ -81,6 +160,9 @@ def plot_col_reduction_by_decile(res_df,
     ax2.set_xticks(grouped['decile'].unique())
     ax2.legend()
     ax2.grid(alpha=0.3, axis='y')
+    if rot: 
+        ax2.set_xlabel(groupby_label, fontsize=11)
+        ax2.tick_params(axis='x', rotation=90)
 
     if title:
         fig.suptitle(title)
@@ -91,6 +173,103 @@ def plot_col_reduction_by_decile(res_df,
     # Print summary
     print("\nSummary Statistics:")
     print(grouped[['decile', 'mean_reduction', 'pooled_sd', 'se', 'n_buildings']])
+    return fig
+
+def plot_col_reduction_by_decile_sum(res_df,
+                                      
+                                groupby_col='avg_gas_percentile',
+                                mean_col='loft_installation_energy_loft_percentile_gas_mean',
+                                std_col='loft_installation_energy_loft_percentile_gas_std',
+                                groupby_label='Gas Usage Decile',
+                                ylabel='Energy Reduction (%)',
+                                title=None,
+                                figsize=(16, 6),
+                                show_plot=True,
+                                costs=True,
+                                rot=False, 
+                                
+                                percentage=True,):
+                                
+    
+    df = res_df.copy()
+    df[f'{std_col}_2'] = (df[std_col] ** 2)
+
+
+    # Changed 'mean' to 'sum' here
+    grouped = df.groupby(groupby_col).agg({
+        mean_col: ['sum', 'count'],  # ← CHANGED FROM 'mean' TO 'sum'
+        f'{std_col}_2': ['sum']
+    }).reset_index()
+    grouped.columns = ['decile', 'total_reduction', 'n_buildings', 'std_squared_summed']
+
+    # For sum: uncertainty is sqrt(sum of variances)
+    grouped['pooled_sd'] = np.sqrt(grouped['std_squared_summed'])
+
+    if percentage:
+        grouped['total_reduction'] *= 100
+        grouped['pooled_sd'] *= 100
+
+    # For sums, SE doesn't apply the same way, but showing uncertainty bounds
+    grouped['se'] = grouped['pooled_sd'] / np.sqrt(grouped['n_buildings'])
+
+    # SD bounds (total variability)
+    grouped['sd_lower'] = grouped['total_reduction'] - 2 * grouped['pooled_sd']
+    grouped['sd_upper'] = grouped['total_reduction'] + 2 * grouped['pooled_sd']
+
+    # SE bounds
+    grouped['se_lower'] = grouped['total_reduction'] - grouped['se']
+    grouped['se_upper'] = grouped['total_reduction'] + grouped['se']
+
+    # Calculate error bar size
+    grouped['ci_error'] = 2 * grouped['se']
+ 
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+    # Plot 1: Standard Deviation (total variability)
+    ax1.plot(grouped['decile'], grouped['total_reduction'], 
+                'o-', linewidth=2, markersize=8, color='steelblue')
+    ax1.fill_between(grouped['decile'], grouped['sd_lower'], grouped['sd_upper'], 
+                        alpha=0.3, label='Total ± 2σ', color='steelblue')
+    ax1.set_xlabel(groupby_label, fontsize=11)
+    ax1.set_ylabel(ylabel, fontsize=11)
+    ax1.set_title('Total Reduction Variability', fontsize=13)
+    ax1.set_xticks(grouped['decile'].unique())
+    ax1.legend()
+    ax1.grid(alpha=0.3)
+    if costs:
+        ax1.set_ylim(0)
+    if percentage: 
+        ax1.axhline(0, color='r', linestyle='--', alpha=0.5)
+        ax2.axhline(0, color='r', linestyle='--', alpha=0.5)
+    if rot: 
+        ax1.set_xlabel(groupby_label, fontsize=11)
+        ax1.tick_params(axis='x', rotation=90)
+
+    # Plot 2: Bar chart with error bars
+    ax2.bar(grouped['decile'], grouped['total_reduction'], 
+            color='darkgreen', alpha=0.7, width=0.8)
+    ax2.errorbar(grouped['decile'], grouped['total_reduction'], 
+                    yerr=grouped['ci_error'], fmt='none', 
+                    color='black', capsize=5, capthick=2, 
+                    label='Total ± 2 SE')
+    ax2.set_xlabel(groupby_label, fontsize=11)
+    ax2.set_ylabel(ylabel, fontsize=11)
+    ax2.set_title('Total Reduction Estimate', fontsize=13)
+    ax2.set_xticks(grouped['decile'].unique())
+    ax2.legend()
+    ax2.grid(alpha=0.3, axis='y')
+    if rot: 
+        ax2.set_xlabel(groupby_label, fontsize=11)
+        ax2.tick_params(axis='x', rotation=90)
+
+    if title:
+        fig.suptitle(title)
+    plt.tight_layout()
+
+    # Print summary
+    print("\nSummary Statistics:")
+    print(grouped[['decile', 'total_reduction', 'pooled_sd', 'se', 'n_buildings']])
     return fig
 
 

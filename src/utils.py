@@ -1,5 +1,6 @@
 import pandas as pd 
 
+import glob 
 
 def join_three_pcds(df, df_col,  pc_df  , pcds_cols):
     # merge on any one of three columns in pc_map 
@@ -13,6 +14,17 @@ def join_three_pcds(df, df_col,  pc_df  , pcds_cols):
     if len(df) != len(merged_final):
         print('Warning: some postcodes not matched')
     return merged_final 
+
+
+def load_and_concatenate_data(file_pattern):
+    """Load all CSV files matching the pattern and concatenate them."""
+    files = glob.glob(file_pattern)
+    if not files:
+        raise FileNotFoundError(f"No files found matching pattern: {file_pattern}")
+    
+    dataframes = [pd.read_csv(file) for file in files]
+    return pd.concat(dataframes, ignore_index=True)
+ 
 
 
 import os
