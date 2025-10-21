@@ -1,4 +1,5 @@
 from scipy import stats
+import sys 
 import pandas as pd
 import numpy as np
 import logging
@@ -8,7 +9,7 @@ import numpy as np
 
 # Assuming these imports are available in your environment
 from .BuildingCharacteristics import BuildingCharacteristics  
-from .RetrofitCostsScalingRules import INTERVENTION_CONFIGS, CostEstimator, InterventionConfig
+from .RetrofitCostsScalingRules2D import  CostEstimator, InterventionConfig
 from .RetrofitEnergy import RetrofitEnergy 
 from .RetrofitUtils import calculate_estimated_flats_per_building 
 from .RetrofitConfig import RetrofitConfig 
@@ -34,10 +35,6 @@ class RetrofitModel2D:
     cost_estimator: CostEstimator = field(default_factory=CostEstimator)
     custom_intervention_configs: Optional[Dict[str, InterventionConfig]] = None
     
-    join_intervnetion_to_skip = [ 
-        'joint_heat_ins_add', 'joint_heat_ins_decay', 'joint_loft_wall_add',
-        'joint_loft_wall_decay', 'loft_and_wall_installation'
-    ] 
 
     # --- Epistemic Factor Nominal Defaults (for energy model init) ---
     _SOLID_WALL_INT_NOMINAL = 0.1
@@ -385,7 +382,8 @@ class RetrofitModel2D:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
     def sample_intervention_cost_monte_carlo(self,
-                                            intervention: str,
+                                            interventions: List,
+                                            cost_col_name: str, 
                                             building_chars: BuildingCharacteristics,
                                             typology: str,
                                             age_band: str,
@@ -395,7 +393,7 @@ class RetrofitModel2D:
         Sample intervention costs using Monte Carlo simulation, applying Epistemic 
         Cost Multipliers (Regional & Age) to the sampled costs.
         """
-        if typology is None or typology == 'None' or intervention in self.join_intervnetion_to_skip:
+        if typology is None or typology == 'None'  :
             return None
         
         validated_region = self.validate_region(region)
@@ -416,80 +414,93 @@ class RetrofitModel2D:
         final_age_mult = age_mult_nominal * beta_AGE
         
         logger.debug(
-            f"Sampling {intervention}: region={validated_region}, "
+            f"Sampling {cost_col_name}: region={validated_region}, "
             f"final_age_mult={final_age_mult:.2f}, "
             f"final_regional_mult={final_regional_mult:.2f}, "
             f"complexity_mult={complexity_mult_nominal:.2f}"
         )
         
         try:
-            samples = self.cost_estimator.sample_intervention_cost(
-                intervention=intervention,
+            samples = self.cost_estimator.sample_cost_for_package(
+                interventions=interventions,
                 building_chars=building_chars,
                 typology=typology,
                 age_band=age_band,
                 region=region,
+                cost_col_name=cost_col_name,
                 regional_multiplier=final_regional_mult, # NEW: Use corrected multiplier
                 age_multiplier=final_age_mult,           # NEW: Use corrected multiplier
                 complexity_multiplier=complexity_mult_nominal, 
                 n_samples=self.n_samples
             )
             
-            logger.debug(f"{intervention} samples: mean=£{samples.mean():,.0f}")
+            logger.debug(f"{cost_col_name} samples: mean=£{samples.mean():,.0f}")
             return samples
             
         except ValueError as e:
-            logger.error(f"Error sampling {intervention}: {e}")
+            logger.error(f"Error sampling {cost_col_name}: {e}")
             raise
     
  
-    def calculate_intervention_costs(self, interventions, skip_interventions, building_chars, 
-                                    typology, age_band, region, 
-                                    return_statistics, include_total=True):
+    def calculate_intervention_costs(self,
+                                interventions, 
+                                cost_col_name, 
+                                # skip_interventions, 
+                                building_chars, 
+                                typology,
+                                age_band,
+                                region, 
+                                return_statistics,
+                                include_total=True
+                                 ):
         """
         Calculate Monte Carlo cost statistics for a list of interventions (uses modified 
         sample_intervention_cost_monte_carlo internally).
+
+        ok all interventions here are given that put in the costs 
+
         """
         cost_stats = {}
         all_samples = [] if include_total else None
         
-        for intervention in interventions:
-            if intervention in skip_interventions:
-                for stat in return_statistics:
-                    cost_stats[f'{intervention}_{stat}'] = 0.0
-                if include_total:
-                    all_samples.append(np.zeros(self.n_samples))
-                continue
+        try:
+            samples = self.sample_intervention_cost_monte_carlo(
+                interventions=interventions,
+                building_chars=building_chars,
+                typology=typology,
+                age_band=age_band,
+                region=region,
+                cost_col_name=cost_col_name,
+            )
+            if samples is None:
+                logger.debug(f"Skipping cost calculation for joint intervention: {cost_col_name}")
+                logger.debug(f"Error this shoudl not happen ")
+
+                # this should not happen 
+                sys.exit() 
+                
+                # for stat in return_statistics: 
+                #     cost_stats[f'{cost_col_name}_{stat}'] = 0.0
+                # if include_total: 
+                #     all_samples.append(np.zeros(self.n_samples))
+                # continue
             
-            try:
-                # Calls the MODIFIED sampling function
-                samples = self.sample_intervention_cost_monte_carlo(
-                    intervention=intervention,
-                    building_chars=building_chars,
-                    typology=typology,
-                    age_band=age_band,
-                    region=region,
-                )
-                if samples is None:
-                    logger.debug(f"Skipping cost calculation for joint intervention: {intervention}")
-                    for stat in return_statistics: cost_stats[f'{intervention}_{stat}'] = 0.0
-                    if include_total: all_samples.append(np.zeros(self.n_samples))
-                    continue
-                
-                for stat in return_statistics:
-                    col_name = f'{intervention}_{stat}'
-                    try:
-                        cost_stats[col_name] = self._calculate_single_statistic(samples, stat)
-                    except ValueError as stat_error:
-                        logging.error(f"Invalid statistic '{stat}' for {intervention}: {stat_error}")
-                        cost_stats[col_name] = np.nan
-                
-                if include_total: all_samples.append(samples)
-                
-            except Exception as e:
-                logging.error(f"Error calculating {intervention}: {e}")
-                for stat in return_statistics: cost_stats[f'{intervention}_{stat}'] = np.nan
-                if include_total: all_samples.append(np.full(self.n_samples, np.nan))
+            for stat in return_statistics:
+                col_name = f'{cost_col_name}_{stat}'
+                try:
+                    cost_stats[col_name] = self._calculate_single_statistic(samples, stat)
+                except ValueError as stat_error:
+                    logging.error(f"Invalid statistic '{stat}' for {cost_col_name}: {stat_error}")
+                    cost_stats[col_name] = np.nan
+            
+            if include_total: all_samples.append(samples)
+            
+        except Exception as e:
+            logging.error(f"Error calculating {cost_col_name}: {e}")
+            for stat in return_statistics: 
+                cost_stats[f'{cost_col_name}_{stat}'] = np.nan
+            if include_total:
+                all_samples.append(np.full(self.n_samples, np.nan))
         
         if include_total and all_samples:
             total_samples = np.sum(all_samples, axis=0)
@@ -520,6 +531,7 @@ class RetrofitModel2D:
                                     row,
                                         col_mapping, 
                                         scenario_interventions, 
+                                        scenario_name, 
                                         # prob_external, 
                                         region, 
                                         return_statistics  ):
@@ -566,7 +578,7 @@ class RetrofitModel2D:
             avg_gas_percentile=avg_gas_percentile,
         )
         
-        run_percentile= True 
+        # run_percentile= True 
 
         # 'wall_insulated', 'existing_loft_insulation', 'existing_floor_insulation', 'existing_window_upgrades'
         # Extract retrofit status flags
@@ -609,15 +621,16 @@ class RetrofitModel2D:
         age_band = row[col_mapping['age_band']]
         
         
-
+        # there should be one cost col per scenario which is the total costs 
         cost_stats = self.calculate_intervention_costs(
             interventions=interventions_to_calculate,
-            skip_interventions=skip_interventions,
+            # skip_interventions=skip_interventions,
             building_chars=building_chars,
             typology=typology,
             age_band=age_band,
             region=region,
-            return_statistics=return_statistics
+            return_statistics=return_statistics,
+            cost_col_name = scenario_name, 
         )
              
         # Add prefixes to cost and energy statistics
@@ -638,7 +651,7 @@ class RetrofitModel2D:
         )
         
  
-         # Add selected wall type to results
+        # Add selected wall type to results
         cost_stats['selected_wall_insulation_type'] = selected_wall_insulation
         energy_stats_prefixed = {f'{key}': value for key, value in energy_stats.items()}
         energy_result = pd.Series(energy_stats_prefixed )
@@ -674,11 +687,11 @@ class RetrofitModel2D:
         # Apply cost calculations to all rows, this calc the total at sample time 
         results  = result_df.apply(
             lambda row: self.calculate_ONLY_row_costs_only(row, 
-                                                            col_mapping, 
-                                                            scenario_interventions, 
-                                                            # prob_external,
-                                                            region,  
-                                                            return_statistics,
+                                                            col_mapping=col_mapping, 
+                                                            scenario_interventions=scenario_interventions, 
+                                                            region=region,  
+                                                            return_statistics=return_statistics,
+                                                            scenario_name=scenario,
                                                             
                                                              ), axis=1
                                     )
@@ -841,11 +854,11 @@ class RetrofitModel2D:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
     def calculate_building_costs_df_updated(self,
-                                             df, 
-                                             region, 
-                                             scenario, 
-                                        col_mapping=None, 
-                                        return_statistics=None, 
+                                            df, 
+                                            region, 
+                                            scenario, 
+                                            col_mapping=None, 
+                                            return_statistics=None, 
                                           ):
         """
         Apply Monte Carlo building cost calculations to all rows in a DataFrame for a specific scenario.
@@ -883,7 +896,7 @@ class RetrofitModel2D:
         
         # Prepare DataFrame
         result_df = self._prepare_dataframe(df, col_mapping)
- 
+        base_cols = result_df.columns.tolist() 
         # Validate DataFrame columns
         error = self._validate_dataframe_columns(result_df, col_mapping)
         if error:
@@ -921,14 +934,12 @@ class RetrofitModel2D:
             logger.warning(f"Expected energy cols: {energy_cols}")
             logger.warning(f"Actual energy DF cols: {[x for x in energy_results_df.columns.tolist() if x not in dfcols ] }")
 
- 
-
         costs_result_df = self._ensure_columns_exist(costs_result_df, cost_cols)
         energy_results_df = self._ensure_columns_exist(energy_results_df, energy_cols)
         energy_results_df = expand_dict_columns(energy_results_df)
  
         data = pd.concat(
-            [costs_result_df[ cost_cols ], energy_results_df[energy_cols]],
+            [costs_result_df[ base_cols+ cost_cols ], energy_results_df[energy_cols]],
             axis=1
                 )       
         return  data

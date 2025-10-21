@@ -1,3 +1,24 @@
+def get_intervention_list(wall_type, joint_intervention):
+        if 'cavity' in wall_type:
+            wt = 'cavity_wall_percentile' 
+        elif 'internal' in wall_type:
+            wt = 'solid_wall_internal_percentile'
+        elif 'external' in wall_type:
+            wt = 'solid_wall_external_percentile'
+        else:
+            raise Exception('wall-type not as expected: ', wall_type)
+        
+        joint_intervention_dict = {'joint_loft_wall_add': [wt, 'loft_percentile'], 
+                                'joint_loft_wall_decay': [wt, 'loft_percentile'], 
+                                'joint_heat_ins_add': [wt, 'loft_percentile', 'heat_pump_percentile'] , 
+                                'joint_heat_ins_decay': [wt, 'loft_percentile', 'heat_pump_percentile'] , 
+                                } 
+                                         
+        if joint_intervention not in joint_intervention_dict.keys():
+            raise KeyError(f'No package found for: {joint_intervention}')
+        interventions_list = joint_intervention_dict[joint_intervention]
+        
+        return interventions_list 
 
 
 retrofit_packages = {
@@ -68,7 +89,7 @@ retrofit_packages = {
     },
     'join_heat_ins_decay': 
         {
-        'name': 'heat pump and insulation',
+        'name': 'heat pump and all insulation',
         'description': '  ',
         'interventions': [
             'joint_heat_ins_decay',
