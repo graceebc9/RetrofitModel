@@ -136,10 +136,7 @@ class RetrofitScenarioGenerator2DMC:
                     logger.warning(f"Scenario {scenario} failed: {scenario_results['error']}")
                     continue
                 
-                # Rename columns to clearly identify the scenario
-                scenario_results = scenario_results.rename(
-                    columns=lambda c: f"{scenario}_{c}"
-                )
+        
                 
                 # Merge scenario results into the run_results DataFrame (on index or ID)
                 run_results = pd.merge(

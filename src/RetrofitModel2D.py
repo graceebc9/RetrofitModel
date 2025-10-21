@@ -364,7 +364,7 @@ class RetrofitModel2D:
             # Calculate final statistics  
             for stat in return_statistics:
                 val = self._calculate_single_statistic(all_gas_perc_samples, stat)
-                col_name = f"total_energy_gas_{stat}"
+                col_name = f"gas_{stat}"
                 energy_stats[col_name] = val
                         
         # --- Electricity Aggregation  n ---
@@ -372,7 +372,7 @@ class RetrofitModel2D:
             # Calculate final statistics  
             for stat in return_statistics:
                 val = self._calculate_single_statistic(all_elec_perc_samples, stat)
-                col_name = f"total_energy_electricity_{stat}"
+                col_name = f"electricity_{stat}"
                 energy_stats[col_name] = val
         return energy_stats
  
@@ -382,10 +382,11 @@ class RetrofitModel2D:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
     def sample_intervention_cost_monte_carlo(self,
-                                            interventions: List,
+                                            intervention: List,
                                             cost_col_name: str, 
                                             building_chars: BuildingCharacteristics,
                                             typology: str,
+                                            wall_insulation_type:str ,
                                             age_band: str,
                                             region: str,
                                              ) -> np.ndarray:
@@ -418,13 +419,16 @@ class RetrofitModel2D:
             f"final_age_mult={final_age_mult:.2f}, "
             f"final_regional_mult={final_regional_mult:.2f}, "
             f"complexity_mult={complexity_mult_nominal:.2f}"
+            f"Intervention: {intervention}"
+            f"Wall Type: {wall_insulation_type}"
         )
         
         try:
             samples = self.cost_estimator.sample_cost_for_package(
-                interventions=interventions,
+                intervention=intervention,
                 building_chars=building_chars,
                 typology=typology,
+                wall_type=wall_insulation_type, 
                 age_band=age_band,
                 region=region,
                 cost_col_name=cost_col_name,
@@ -443,10 +447,11 @@ class RetrofitModel2D:
     
  
     def calculate_intervention_costs(self,
-                                interventions, 
+                                intervention, 
                                 cost_col_name, 
                                 # skip_interventions, 
                                 building_chars, 
+                                wall_insulation_type,
                                 typology,
                                 age_band,
                                 region, 
@@ -464,12 +469,19 @@ class RetrofitModel2D:
         all_samples = [] if include_total else None
         
         try:
+                
+            logger.debug(f"Attempting cost calculation for: {cost_col_name}")
+            logger.debug(f"  intervention={intervention}")
+            logger.debug(f"  wall_insulation_type={wall_insulation_type}")
+            logger.debug(f"  typology={typology}, age_band={age_band}, region={region}")
+    
             samples = self.sample_intervention_cost_monte_carlo(
-                interventions=interventions,
+                intervention=intervention,
                 building_chars=building_chars,
                 typology=typology,
                 age_band=age_band,
                 region=region,
+                wall_insulation_type = wall_insulation_type, 
                 cost_col_name=cost_col_name,
             )
             if samples is None:
@@ -611,10 +623,10 @@ class RetrofitModel2D:
                 interventions_to_calculate.append(intervention)
  
         
-        # Determine which interventions to skip
-        skip_interventions = self.get_skip_interventions(
-            wall_insulated, existing_loft, existing_floor, existing_windows
-        )
+        # # Determine which interventions to skip
+        # skip_interventions = self.get_skip_interventions(
+        #     wall_insulated, existing_loft, existing_floor, existing_windows
+        # )
         
         # Calculate costs for all interventions
         typology = row[col_mapping['building_type']]
@@ -623,9 +635,10 @@ class RetrofitModel2D:
         
         # there should be one cost col per scenario which is the total costs 
         cost_stats = self.calculate_intervention_costs(
-            interventions=interventions_to_calculate,
+            intervention=interventions_to_calculate,
             # skip_interventions=skip_interventions,
             building_chars=building_chars,
+            wall_insulation_type=selected_wall_insulation, 
             typology=typology,
             age_band=age_band,
             region=region,
@@ -714,7 +727,7 @@ class RetrofitModel2D:
  
         for col in cost_results.columns:
       
-            result_df[f'{scenario}_{col}'] = cost_results[col]
+            result_df[col] = cost_results[col]
         
   
 
@@ -796,43 +809,89 @@ class RetrofitModel2D:
             if elec_intervention_cols:
                 result_df[f'energy_{scenario}_elec_{stat}'] = energy_results[elec_intervention_cols].sum(axis=1)
 
-    def _get_cols_scenario_intervention(self, scenario_str, stats = ['mean', 'std', 'p5', 'p50', 'p95']):
-        cost_cols= [] 
-        energy_cols= [] 
+    def _get_cols_scenario_intervention(self, scenario_str, stats=['mean', 'std', 'p5', 'p50', 'p95']):
+        cost_cols = [] 
+        energy_cols = [] 
+        
         if scenario_str == 'wall_installation':
-            interventions = ['cavity_wall_percentile', 'solid_wall_internal_percentile', 'solid_wall_external_percentile' ]
-            elec=False 
-        elif scenario_str =='loft_installation':
+            interventions = ['cavity_wall_percentile', 'solid_wall_internal_percentile', 'solid_wall_external_percentile']
+            elec = False 
+        elif scenario_str == 'loft_installation':
             interventions = ['loft_percentile']
-            elec=False 
-        elif scenario_str =='scenA_add':
-            interventions =['joint_loft_wall_add']
-            elec=False 
-        elif scenario_str =='scenA_decay':
-            interventions =['joint_loft_wall_decay']
-            elec=False 
-        elif scenario_str =='heat_pump_only':
+            elec = False 
+        elif scenario_str == 'joint_loft_wall_add':
+            interventions = ['joint_loft_wall_add']
+            elec = False 
+        elif scenario_str == 'joint_loft_wall_decay':
+            interventions = ['joint_loft_wall_decay']
+            elec = False 
+        elif scenario_str == 'heat_pump_only':
             interventions = ['heat_pump_percentile']
-            elec =True 
-        elif scenario_str =='join_heat_ins_decay':
-            interventions = ['joint_heat_ins_decay']
-            elec =True 
-        elif scenario_str =='join_heat_ins_add':
-            interventions = ['joint_heat_ins_add']
-            elec =True 
-
-            
+            elec = True 
+        elif scenario_str == 'join_heat_ins_decay':
+            interventions = ['join_heat_ins_decay']
+            elec = True 
+        elif scenario_str == 'join_heat_ins_add':
+            interventions = ['join_heat_ins_add']
+            elec = True 
         else:
-            raise Exception(f'Need to define the interventions  for scenarioi  ({scenario_str}) in RetrofitModel _get_cols_scenario_intervention')
+            raise Exception(f'Need to define the interventions for scenario ({scenario_str}) in RetrofitModel _get_cols_scenario_intervention')
+        
+        # If only one intervention, don't include intervention name in column names
+        single_intervention = len(interventions) == 1
         
         for iint in interventions:
             for s in stats:
-                cost_cols.append( f'{scenario_str}_cost_{iint}_{s}' ) 
-                energy_cols.append(  f'{scenario_str}_total_energy_gas_{s}' ) 
-                if elec:
-                    energy_cols.append(  f'{scenario_str}_total_energy_electricity_{s}' ) 
+                if single_intervention:
+                    # Simple column names when there's only one intervention
+                    cost_cols.append(f'cost_{scenario_str}_{s}')
+                    energy_cols.append(f'{scenario_str}_gas_{s}')
+                    if elec:
+                        energy_cols.append(f'electricity_{s}')
+                else:
+                    # Include intervention name when there are multiple
+                    cost_cols.append(f'{iint}_cost_{s}')
+                    energy_cols.append(f'{iint}_gas_{s}')
+                    if elec:
+                        energy_cols.append(f'{iint}_electricity_{s}')
         
-        return cost_cols,  energy_cols
+        return cost_cols, energy_cols
+    
+    # def _get_cols_scenario_intervention(self, scenario_str, stats = ['mean', 'std', 'p5', 'p50', 'p95']):
+    #     cost_cols= [] 
+    #     energy_cols= [] 
+    #     if scenario_str == 'wall_installation':
+    #         interventions = ['cavity_wall_percentile', 'solid_wall_internal_percentile', 'solid_wall_external_percentile' ]
+    #         elec=False 
+    #     elif scenario_str =='loft_installation':
+    #         interventions = ['loft_percentile']
+    #         elec=False 
+    #     elif scenario_str =='joint_loft_wall_add':
+    #         interventions =['joint_loft_wall_add']
+    #         elec=False 
+    #     elif scenario_str =='joint_loft_wall_decay':
+    #         interventions =['joint_loft_wall_decay']
+    #         elec=False 
+    #     elif scenario_str =='heat_pump_only':
+    #         interventions = ['heat_pump_percentile']
+    #         elec =True 
+    #     elif scenario_str =='join_heat_ins_decay':
+    #         interventions = ['join_heat_ins_decay']
+    #         elec =True 
+    #     elif scenario_str =='join_heat_ins_add':
+    #         interventions = ['join_heat_ins_add']
+    #         elec =True 
+    #     else:
+    #         raise Exception(f'Need to define the interventions  for scenarioi  ({scenario_str}) in RetrofitModel _get_cols_scenario_intervention')
+        
+    #     for iint in interventions:
+    #         for s in stats:
+    #             cost_cols.append( f'cost_{scenario_str}_{s}' ) 
+    #             energy_cols.append(  f'{scenario_str}_gas_{s}' ) 
+    #             if elec:
+    #                 energy_cols.append(  f'{scenario_str}_electricity_{s}' ) 
+        
+    #     return cost_cols,  energy_cols
 
 
     def _ensure_columns_exist(self, df, required_cols):
@@ -937,11 +996,20 @@ class RetrofitModel2D:
         costs_result_df = self._ensure_columns_exist(costs_result_df, cost_cols)
         energy_results_df = self._ensure_columns_exist(energy_results_df, energy_cols)
         energy_results_df = expand_dict_columns(energy_results_df)
- 
+        logger.debug(f'base cold: {base_cols}')
+        c_df =  costs_result_df[ cost_cols ]
+        e_df = energy_results_df[energy_cols]
+        c_df = c_df.rename(
+            columns=lambda c: f"{scenario}_{c}"
+        )    
+        e_df = e_df.rename(
+            columns=lambda c: f"{scenario}_{c}"
+        )    
         data = pd.concat(
-            [costs_result_df[ base_cols+ cost_cols ], energy_results_df[energy_cols]],
+            [result_df[base_cols], c_df, e_df ],
             axis=1
-                )       
+                )   
+           
         return  data
 
 

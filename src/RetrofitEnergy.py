@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 import numpy as np
- 
+from .RetrofitPackages import get_intervention_list 
 
 
 # # Add logger at the top of your module
@@ -330,20 +330,7 @@ class RetrofitEnergy:
         Dict with 'gas' key containing combined samples. 
         If heat_pump or solar in interventions, also includes 'electricity' key.
         """
-        if 'cavity' in wall_type:
-            wt = 'cavity_wall_percentile' 
-        elif 'internal' in wall_type:
-            wt = 'solid_wall_internal_percentile'
-        elif 'external' in wall_type:
-            wt = 'solid_wall_external_percentile'
-        else:
-            raise Exception('wall-type not as expected: ', wall_type)
-
-        joint_intervention_dict = {'joint_loft_wall_add': [wt, 'loft_percentile'], 
-                                    'joint_loft_wall_decay': [wt, 'loft_percentile'], 
-                                    'joint_heat_ins_add': [wt, 'loft_percentile', 'heat_pump_percentile'] , 
-                                    'joint_heat_ins_decay': [wt, 'loft_percentile', 'heat_pump_percentile'] , 
-                                    } 
+        interventions_list = get_intervention_list(wall_type, joint_intervention= intervention)
 
         
         if 'add' in intervention:
@@ -353,16 +340,14 @@ class RetrofitEnergy:
         else:
             raise Exception('Method of joint not defined in intervention name: ', intervention)
         
+
+
         if not str(avg_gas_percentile).isnumeric():
             raise ValueError(f'Percentile must be numeric, got: {avg_gas_percentile}')
         
         percentile_key = int(avg_gas_percentile)
         
-        # Get the package containing the list of interventions
-        if intervention not in joint_intervention_dict.keys():
-            raise KeyError(f'No package found for: {intervention}')
-        
-        interventions_list = joint_intervention_dict[intervention]
+  
         
         # Check if we need to process electricity
         include_electricity = any('heat_pump' in interv or 'solar' in interv 
