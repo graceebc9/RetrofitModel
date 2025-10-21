@@ -12,7 +12,10 @@ class RetrofitConfig:
     Includes Monte Carlo uncertainty analysis based on observed performance ranges.
     """
     energy_cost_per_kwh: float = 0.07  
-
+    
+    # 1. ALEATORY UNCERTAINTY (Inner Loop)
+    n_samples: int = 100
+    
     # Existing intervention probabilities (what % already have these installed) - these are defaults but can be overridden 
     existing_intervention_probs: Dict[str, float] = field(default_factory=lambda: {
         'loft_insulation': 0.67,
