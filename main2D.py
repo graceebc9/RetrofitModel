@@ -85,7 +85,7 @@ OUTPUT_DIR = 'final_dataset'
 # ========================================
 
 batch_size = 500
-log_size = 100
+log_size = 10
 n_monte_carlo = 5000
 N_EPISTEMIC_RUNS = 35
 RANDOM_SEED_OUTER = 42
