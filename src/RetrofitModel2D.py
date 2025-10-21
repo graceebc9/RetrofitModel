@@ -445,75 +445,83 @@ class RetrofitModel2D:
             logger.error(f"Error sampling {cost_col_name}: {e}")
             raise
     
- 
     def calculate_intervention_costs(self,
-                                intervention, 
-                                cost_col_name, 
-                                # skip_interventions, 
-                                building_chars, 
-                                wall_insulation_type,
-                                typology,
-                                age_band,
-                                region, 
-                                return_statistics,
-                                include_total=True
-                                 ):
+                                    intervention, 
+                                    cost_col_name, 
+                                    building_chars, 
+                                    wall_insulation_type,
+                                    typology,
+                                    age_band,
+                                    region, 
+                                    return_statistics,
+                                    include_total=True):
         """
-        Calculate Monte Carlo cost statistics for a list of interventions (uses modified 
-        sample_intervention_cost_monte_carlo internally).
-
-        ok all interventions here are given that put in the costs 
-
+        Calculate Monte Carlo cost statistics for an intervention.
+        
+        Args:
+            intervention: List of intervention names
+            cost_col_name: Name for the cost column
+            building_chars: Building characteristics dictionary
+            wall_insulation_type: Type of wall insulation
+            typology: Building typology
+            age_band: Age band of the building
+            region: Geographic region
+            return_statistics: List of statistics to calculate (e.g., ['mean', 'std', 'p10', 'p50', 'p90'])
+            include_total: Whether to calculate total costs across interventions
+            
+        Returns:
+            Dictionary of cost statistics
         """
         cost_stats = {}
         all_samples = [] if include_total else None
         
         try:
-                
             logger.debug(f"Attempting cost calculation for: {cost_col_name}")
             logger.debug(f"  intervention={intervention}")
             logger.debug(f"  wall_insulation_type={wall_insulation_type}")
             logger.debug(f"  typology={typology}, age_band={age_band}, region={region}")
-    
+
             samples = self.sample_intervention_cost_monte_carlo(
                 intervention=intervention,
                 building_chars=building_chars,
                 typology=typology,
                 age_band=age_band,
                 region=region,
-                wall_insulation_type = wall_insulation_type, 
+                wall_insulation_type=wall_insulation_type, 
                 cost_col_name=cost_col_name,
             )
-            if samples is None:
-                logger.debug(f"Skipping cost calculation for joint intervention: {cost_col_name}")
-                logger.debug(f"Error this shoudl not happen ")
-
-                # this should not happen 
-                sys.exit() 
-                
-                # for stat in return_statistics: 
-                #     cost_stats[f'{cost_col_name}_{stat}'] = 0.0
-                # if include_total: 
-                #     all_samples.append(np.zeros(self.n_samples))
-                # continue
             
+            if samples is None:
+                logger.debug(f"Skipping {cost_col_name}: missing building characteristics")
+                logger.debug(f"  typology={typology}, age_band={age_band}")
+                
+                # Return empty stats for this intervention
+                if return_statistics:
+                    for stat in return_statistics:
+                        cost_stats[f'{cost_col_name}_{stat}'] = None
+                
+                return cost_stats
+            
+            # Calculate requested statistics
             for stat in return_statistics:
                 col_name = f'{cost_col_name}_{stat}'
                 try:
                     cost_stats[col_name] = self._calculate_single_statistic(samples, stat)
                 except ValueError as stat_error:
-                    logging.error(f"Invalid statistic '{stat}' for {cost_col_name}: {stat_error}")
+                    logger.error(f"Invalid statistic '{stat}' for {cost_col_name}: {stat_error}")
                     cost_stats[col_name] = np.nan
             
-            if include_total: all_samples.append(samples)
-            
+            if include_total:
+                all_samples.append(samples)
+                
         except Exception as e:
-            logging.error(f"Error calculating {cost_col_name}: {e}")
+            logger.error(f"Error calculating {cost_col_name}: {e}")
             for stat in return_statistics: 
                 cost_stats[f'{cost_col_name}_{stat}'] = np.nan
             if include_total:
                 all_samples.append(np.full(self.n_samples, np.nan))
         
+        # Calculate total statistics if requested
         if include_total and all_samples:
             total_samples = np.sum(all_samples, axis=0)
             for stat in return_statistics:
@@ -521,7 +529,7 @@ class RetrofitModel2D:
                 try:
                     cost_stats[col_name] = self._calculate_single_statistic(total_samples, stat)
                 except ValueError as stat_error:
-                    logging.error(f"Invalid statistic '{stat}' for total: {stat_error}")
+                    logger.error(f"Invalid statistic '{stat}' for total: {stat_error}")
                     cost_stats[col_name] = np.nan
         
         return cost_stats
