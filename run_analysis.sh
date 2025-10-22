@@ -11,7 +11,7 @@
 # INPUT_PATTERN="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/testing/NE/*.csv"
 # OUTPUT_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/testing/retrofit_analysis"
 # else: 
-INPUT_PATTERN='/Volumes/T9/2024_Data_downloads/2025_10_RetrofitModel/1_data_runs/m2d/NE (1)/*.csv'
+INPUT_PATTERN='/Volumes/T9/2024_Data_downloads/2025_10_RetrofitModel/1_data_runs/m2d/NE_min/*.csv'
 OUTPUT_DIR='/Volumes/T9/2024_Data_downloads/2025_10_RetrofitModel/1_data_runs/m2d/NE1_retrofit-analysis.csv'
 
 

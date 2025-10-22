@@ -21,7 +21,7 @@ from src.validate import validate_single_scenario_new
 from src.visualisations import plot_col_reduction_by_decile
 from src.RetrofitPostProcess import clean_post_proccess 
 
- 
+from src.visualisations import plot_building_counts_by_age_band 
 
 def load_data(input_pattern):
     """Load and concatenate CSV files matching the pattern."""
@@ -120,11 +120,11 @@ def analyze_portfolio(df, scenario_name, output_dir):
     print("PORTFOLIO ANALYSIS")
     print("="*60)
     
-    GAS_MEAN_COL = f'gas_5yr_kg_co2_saved_mean'
-    GAS_P50_COL = f'gas_5yr_kg_co2_saved_p50'
-    GAS_P95_COL = f'gas_5yr_kg_co2_saved_p95'
-    GAS_P5_COL = f'gas_5yr_kg_co2_saved_p5'
-    GAS_STD_COL = f'gas_5yr_kg_co2_saved_std'
+    GAS_MEAN_COL = 'gas_5yr_kg_co2_saved_mean'
+    GAS_P50_COL = 'gas_5yr_kg_co2_saved_p50'
+    GAS_P95_COL = 'gas_5yr_kg_co2_saved_p95'
+    GAS_P5_COL = 'gas_5yr_kg_co2_saved_p5'
+    GAS_STD_COL = 'gas_5yr_kg_co2_saved_std'
     ELEC_P50_COL = 'elec_5yr_kg_co2_saved_p50'
     ELEC_P95_COL='elec_5yr_kg_co2_saved_p95'
 
@@ -465,7 +465,7 @@ def main():
     # Perform analyses
     building_metrics = analyze_uncertainty(df_joint, args.scenario, output_dir)
     portfolio_summary, portfolio_metrics = analyze_portfolio(
-        res_df, args.scenario, output_dir
+        df_joint, args.scenario, output_dir
     )
     
     # Create visualizations
