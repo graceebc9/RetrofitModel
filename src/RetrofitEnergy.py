@@ -8,7 +8,7 @@ from .RetrofitPackages import get_intervention_list
 
 
 # # Add logger at the top of your module
-# logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 
@@ -352,7 +352,7 @@ class RetrofitEnergy:
         # Check if we need to process electricity
         include_electricity = any('heat_pump' in interv or 'solar' in interv 
                                 for interv in interventions_list)
-        
+        logger.debug(f'In sample_join_savings including elec: {include_electricity}') 
         # Initialize for gas (and electricity if needed) based on method
         if method == 'additive':
             combined_gas = np.zeros(n_samples)
@@ -433,6 +433,18 @@ class RetrofitEnergy:
         if include_electricity:
             combined_elec = np.clip(combined_elec, a_min=-1, a_max=1)
             result['electricity'] = combined_elec
+            # Validation: Check that electricity samples are not all zeros for joint interventions
+            if np.all(combined_elec == 0):
+                logger.warning(f'Electricity samples are all zeros for joint intervention {intervention} '
+                             f'with interventions list: {interventions_list}. Expected non-zero values.')
+                raise ValueError(f'Electricity samples are all zeros for joint intervention {intervention}, '
+                               f'but electricity impact was expected from interventions: {interventions_list}')
+            if np.any(np.isnan(combined_elec)):
+                logger.warning(f'Electricity samples contain NaN values for joint intervention {intervention} '
+                             f'with interventions list: {interventions_list}.')
+                raise ValueError(f'Electricity samples contain NaN values for joint intervention {intervention}. '
+                               f'Check the electricity data for interventions: {interventions_list}')
+        
         
         return result
 
