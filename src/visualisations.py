@@ -7,7 +7,7 @@ def plot_col_reduction_by_decile_conservation(res_df,
                                               
                                 groupby_col='avg_gas_percentile',
                                 mean_col='loft_installation_energy_loft_percentile_gas_mean',
-                                conservation_col='conservation-area_bool',
+                                conservation_col='conservation_area_bool',
                                 groupby_label='Gas Usage Decile',
                                 ylabel='Energy Reduction (%)',
                                 title=None,

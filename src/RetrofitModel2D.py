@@ -244,47 +244,7 @@ class RetrofitModel2D:
             logging.error(f"Error calculating {stat}: {e}")
             raise
 
-    def _calculate_statistics_costs(self, samples, stat: str) -> dict:
-        # ... (Original logic) ...
-        result = self._calculate_single_statistic(samples, stat)
-        return result
-
-    def _calculate_statistics(self, samples, stat: str) -> dict:
-        """Calculate a specific statistic from Monte Carlo samples (Original Multiplicative/Additive Logic)."""
-        # ... (Original logic) ...
-        if isinstance(samples, list):
-            # Aggregation logic retained: gas multiplicative, electricity additive
-            if not samples: raise ValueError("Empty list provided for aggregation")
-            for i, item in enumerate(samples):
-                if not isinstance(item, dict): raise ValueError(f"Item {i} in list is not a dict")
-                if 'gas' not in item or 'electricity' not in item: raise ValueError(f"Item {i} missing 'gas' or 'electricity' keys")
-            
-            combined_gas = np.ones_like(samples[0]['gas'])
-            for item in samples: combined_gas *= item['gas'] # Multiplicative
-            
-            combined_electricity = np.zeros_like(samples[0]['electricity'])
-            for item in samples: combined_electricity += item['electricity'] # Additive
-            
-            results = {
-                'gas': self._calculate_single_statistic(combined_gas, stat),
-                'electricity': self._calculate_single_statistic(combined_electricity, stat)
-            }
-            return results
-        
-        elif isinstance(samples, dict):
-            if 'gas' not in samples or 'electricity' not in samples:
-                logging.error(f"Dict must have 'gas' and 'electricity' keys. Found: {samples.keys()}")
-                raise ValueError(f"Dict must have 'gas' and 'electricity' keys. Found: {samples.keys()}")
-            
-            results = {
-                'gas': self._calculate_single_statistic(samples['gas'], stat),
-                'electricity': self._calculate_single_statistic(samples['electricity'], stat)
-            }
-            return results
-        
-        else:
-            result = self._calculate_single_statistic(samples, stat)
-            return result
+    
     
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
     # CORE MODIFIED ENERGY METHOD: Applying Epistemic Factors
@@ -298,8 +258,6 @@ class RetrofitModel2D:
         return_statistics,
         roof_scaling,
         wall_type, 
-        
-  
     ):
         """
         Calculate Monte Carlo energy savings statistics, applying Rebound and

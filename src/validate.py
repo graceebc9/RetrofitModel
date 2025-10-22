@@ -348,13 +348,12 @@ def validate_all_scenarios(df: pd.DataFrame, verbose: bool = True) -> pd.DataFra
     
     return summary_df
 
-
 def validate_single_scenario_new(df: pd.DataFrame, scenario: str, verbose: bool = True) -> Dict:
     """
     Validate a single scenario with new column naming pattern:
     - Cost: {scenario}_cost_{scenario}_{stat}
     - Gas: {scenario}_{scenario}_gas_{stat}
-    - Electricity: {scenario}_electricity_{stat}
+    - Electricity: {scenario}_{scenario}_electricity_{stat}
     """
 
     results = {
@@ -458,8 +457,8 @@ def validate_single_scenario_new(df: pd.DataFrame, scenario: str, verbose: bool 
             print(f"\n❌ No gas columns found for scenario: {scenario}")
 
     # === ELECTRICITY COLUMNS ===
-    # Pattern: {scenario}_electricity_{stat}
-    elec_base = f"{scenario}_electricity"
+    # Pattern: {scenario}_{scenario}_electricity_{stat}
+    elec_base = f"{scenario}_{scenario}_electricity"
     elec_mean_col = f"{elec_base}_mean"
     
     if elec_mean_col in df.columns:
