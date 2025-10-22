@@ -348,6 +348,161 @@ def validate_all_scenarios(df: pd.DataFrame, verbose: bool = True) -> pd.DataFra
     
     return summary_df
 
+
+def validate_single_scenario_new(df: pd.DataFrame, scenario: str, verbose: bool = True) -> Dict:
+    """
+    Validate a single scenario with new column naming pattern:
+    - Cost: {scenario}_cost_{scenario}_{stat}
+    - Gas: {scenario}_{scenario}_gas_{stat}
+    - Electricity: {scenario}_electricity_{stat}
+    """
+
+    results = {
+        'scenario': scenario,
+        'rows_total': len(df)
+    }
+
+    # === COST COLUMNS ===
+    # Pattern: {scenario}_cost_{scenario}_{stat}
+    cost_pattern = f"{scenario}_cost_{scenario}_"
+    cost_cols = [c for c in df.columns if c.startswith(cost_pattern)]
+    
+    if len(cost_cols) == 0:
+        if verbose:
+            print(f"❌ No cost columns found for scenario: {scenario}")
+    else:
+        # Get the mean column (should be only one for cost)
+        mean_col = f"{scenario}_cost_{scenario}_mean"
+        if mean_col in df.columns:
+            base = f"{scenario}_cost_{scenario}"
+            p5_col = f"{base}_p5"
+            p50_col = f"{base}_p50"
+            p95_col = f"{base}_p95"
+            std_col = f"{base}_std"
+
+            # Load numeric safely
+            cost_numeric = safe_numeric_column(df[mean_col])
+            valid = cost_numeric.dropna()
+
+            results[f"{base}_valid_rows"] = len(valid)
+            results[f"{base}_mean"] = valid.mean() if len(valid) else np.nan
+            results[f"{base}_median"] = valid.median() if len(valid) else np.nan
+            results[f"{base}_min"] = valid.min() if len(valid) else np.nan
+            results[f"{base}_max"] = valid.max() if len(valid) else np.nan
+            results[f"{base}_negative_count"] = (cost_numeric < 0).sum()
+            results[f"{base}_nan_count"] = cost_numeric.isna().sum()
+
+            # Coeff of variation
+            if std_col in df.columns:
+                std_mean = safe_mean(df[std_col])
+                results[f"{base}_cv"] = std_mean / results[f"{base}_mean"] if results[f"{base}_mean"] > 0 else np.nan
+
+            # P95 / mean ratio
+            if p95_col in df.columns:
+                p95_mean = safe_mean(df[p95_col])
+                results[f"{base}_p95_mean_ratio"] = p95_mean / results[f"{base}_mean"] if results[f"{base}_mean"] > 0 else np.nan
+
+            if verbose:
+                print(f"\n💰 COST: {base}")
+                if not np.isnan(results[f"{base}_mean"]):
+                    print(f"   Mean: £{results[f'{base}_mean']:,.0f}")
+                    print(f"   Range: £{results[f'{base}_min']:,.0f} - £{results[f'{base}_max']:,.0f}")
+                else:
+                    print("   ⚠️ No valid cost data")
+                if results[f"{base}_negative_count"] > 0:
+                    print(f"   ⚠️ {results[f'{base}_negative_count']:,} negative values")
+                else:
+                    print("   ✅ All costs positive")
+
+    # === GAS COLUMNS ===
+    # Pattern: {scenario}_{scenario}_gas_{stat}
+    gas_base = f"{scenario}_{scenario}_gas"
+    gas_mean_col = f"{gas_base}_mean"
+    
+    if gas_mean_col in df.columns:
+        energy_numeric = safe_numeric_column(df[gas_mean_col])
+        valid = energy_numeric.dropna()
+
+        results[f"{gas_base}_valid_rows"] = len(valid)
+        results[f"{gas_base}_mean"] = valid.mean() if len(valid) else np.nan
+        results[f"{gas_base}_median"] = valid.median() if len(valid) else np.nan
+        results[f"{gas_base}_min"] = valid.min() if len(valid) else np.nan
+        results[f"{gas_base}_max"] = valid.max() if len(valid) else np.nan
+        results[f"{gas_base}_negative_count"] = (energy_numeric < 0).sum()
+        results[f"{gas_base}_positive_count"] = (energy_numeric > 0).sum()
+        results[f"{gas_base}_nan_count"] = energy_numeric.isna().sum()
+
+        # For gas, negative values = savings
+        results[f"{gas_base}_pct_with_savings"] = results[f"{gas_base}_negative_count"] / len(df)
+        
+        # Reasonable ranges (negative = savings)
+        if not np.isnan(results[f"{gas_base}_mean"]):
+            results[f"{gas_base}_reasonable_range"] = -0.30 < results[f"{gas_base}_mean"] < 0.20
+        else:
+            results[f"{gas_base}_reasonable_range"] = False
+
+        if verbose:
+            print(f"\n⚡ GAS ENERGY:")
+            if not np.isnan(results[f"{gas_base}_mean"]):
+                print(f"   Mean: {results[f'{gas_base}_mean']:.1%}")
+                print(f"   Range: {results[f'{gas_base}_min']:.1%} - {results[f'{gas_base}_max']:.1%}")
+            else:
+                print("   ⚠️ No valid gas data")
+            print(f"   Negative (savings): {results[f'{gas_base}_negative_count']:,} ({results[f'{gas_base}_pct_with_savings']:.1%})")
+            if results[f"{gas_base}_reasonable_range"]:
+                print("   ✅ Mean in reasonable range")
+            else:
+                print("   ⚠️ Mean outside typical range")
+    else:
+        if verbose:
+            print(f"\n❌ No gas columns found for scenario: {scenario}")
+
+    # === ELECTRICITY COLUMNS ===
+    # Pattern: {scenario}_electricity_{stat}
+    elec_base = f"{scenario}_electricity"
+    elec_mean_col = f"{elec_base}_mean"
+    
+    if elec_mean_col in df.columns:
+        energy_numeric = safe_numeric_column(df[elec_mean_col])
+        valid = energy_numeric.dropna()
+
+        results[f"{elec_base}_valid_rows"] = len(valid)
+        results[f"{elec_base}_mean"] = valid.mean() if len(valid) else np.nan
+        results[f"{elec_base}_median"] = valid.median() if len(valid) else np.nan
+        results[f"{elec_base}_min"] = valid.min() if len(valid) else np.nan
+        results[f"{elec_base}_max"] = valid.max() if len(valid) else np.nan
+        results[f"{elec_base}_negative_count"] = (energy_numeric < 0).sum()
+        results[f"{elec_base}_positive_count"] = (energy_numeric > 0).sum()
+        results[f"{elec_base}_nan_count"] = energy_numeric.isna().sum()
+
+        # For electricity (heat pump), positive values = increased usage
+        results[f"{elec_base}_pct_with_increase"] = results[f"{elec_base}_positive_count"] / len(df)
+        
+        # Reasonable ranges (positive = increase expected for heat pumps)
+        if not np.isnan(results[f"{elec_base}_mean"]):
+            results[f"{elec_base}_reasonable_range"] = 0.02 < results[f"{elec_base}_mean"] < 0.50
+        else:
+            results[f"{elec_base}_reasonable_range"] = False
+
+        if verbose:
+            print(f"\n⚡ ELECTRICITY ENERGY:")
+            if not np.isnan(results[f"{elec_base}_mean"]):
+                print(f"   Mean: {results[f'{elec_base}_mean']:.1%}")
+                print(f"   Range: {results[f'{elec_base}_min']:.1%} - {results[f'{elec_base}_max']:.1%}")
+            else:
+                print("   ⚠️ No valid electricity data")
+            print(f"   Positive (increase): {results[f'{elec_base}_positive_count']:,} ({results[f'{elec_base}_pct_with_increase']:.1%})")
+            if results[f"{elec_base}_reasonable_range"]:
+                print("   ✅ Mean in reasonable range")
+            else:
+                print("   ⚠️ Mean outside typical range")
+    else:
+        if verbose:
+            print(f"\n   (No electricity columns - normal for insulation-only scenarios)")
+
+    return results
+
+
 def validate_single_scenario(df: pd.DataFrame, scenario: str, verbose: bool = True) -> Dict:
     """
     Validate a single scenario (supports new '..._cost_...' and '..._energy_...' column formats).
