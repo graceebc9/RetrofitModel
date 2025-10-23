@@ -3,6 +3,50 @@
 import numpy as np 
 
 
+def process_multiple_scenarios(df, scenarios_config, years, n_simulations, 
+                                GAS_CARBON_FACTOR_2022, elec_carbon_factor):
+    """
+    Process energy and carbon savings data for multiple measure scenarios.
+    
+    Parameters:
+    - df: DataFrame with energy consumption data for all scenarios
+    - scenarios_config: List of tuples (measure_type, scenario_name) or dict {measure_type: scenario_name}
+                       e.g., [('heat_pump', 'heat_pump_only'), 
+                              ('insulation', 'join_heat_ins_decay')]
+    - years: Number of years for projections
+    - n_simulations: Number of Monte Carlo simulations
+    - GAS_CARBON_FACTOR_2022: Carbon factor for gas (kg CO2/kWh)
+    - elec_carbon_factor: Carbon factor for electricity (kg CO2/kWh)
+    
+    Returns:
+    - df: DataFrame with all scenarios processed
+    """
+    
+    # Convert dict to list of tuples if needed
+    if isinstance(scenarios_config, dict):
+        scenarios_config = list(scenarios_config.items())
+    
+    # Make a copy to avoid modifying original
+    df_processed = df.copy()
+    
+    # Process each scenario
+    for measure_type, scenario_name in scenarios_config:
+        print(f"Processing scenario: {scenario_name} (measure type: {measure_type})")
+        
+        df_processed = clean_post_proccess(
+            df=df_processed,
+            measure_type=measure_type,
+            scenario_name=scenario_name,
+            years=years,
+            n_simulations=n_simulations,
+            GAS_CARBON_FACTOR_2022=GAS_CARBON_FACTOR_2022,
+            elec_carbon_factor=elec_carbon_factor
+        )
+    
+    return df_processed
+
+
+
 def clean_post_proccess(df, measure_type, scenario_name, years, n_simulations, 
                         GAS_CARBON_FACTOR_2022, elec_carbon_factor):
     """
@@ -43,16 +87,16 @@ def clean_post_proccess(df, measure_type, scenario_name, years, n_simulations,
     # Gas carbon savings metrics
     # ==================================================================
     for stat in stats:
-        df[f'gas_{years}yr_kg_co2_saved_{stat}'] = (
+        df[f'gas_{years}yr_kg_co2_saved_{measure_type}_{stat}'] = (
             df[f'gas_{years}yr_kwh_change_{measure_type}_{stat}'] * GAS_CARBON_FACTOR_2022
         )
     
     # Standard error and relative standard error for gas
-    df[f'gas_{years}yr_kg_co2_saved_se'] = (
-        df[f'gas_{years}yr_kg_co2_saved_std'] / np.sqrt(n_simulations)
+    df[f'gas_{years}yr_kg_co2_saved_{measure_type}_se'] = (
+        df[f'gas_{years}yr_kg_co2_saved_{measure_type}_std'] / np.sqrt(n_simulations)
     )
-    df[f'gas_{years}yr_kg_co2_saved_r_se'] = (
-        df[f'gas_{years}yr_kg_co2_saved_se'] / df[f'gas_{years}yr_kg_co2_saved_mean']
+    df[f'gas_{years}yr_kg_co2_saved_{measure_type}_r_se'] = (
+        df[f'gas_{years}yr_kg_co2_saved_{measure_type}_se'] / df[f'gas_{years}yr_kg_co2_saved_{measure_type}_mean']
     )
 
     # ==================================================================
@@ -60,56 +104,56 @@ def clean_post_proccess(df, measure_type, scenario_name, years, n_simulations,
     # ==================================================================
     if scenario_name in ['heat_pump_only', 'join_heat_ins_decay']:
         for stat in stats:
-            df[f'elec_{years}yr_kg_co2_saved_{stat}'] = (
+            df[f'elec_{years}yr_kg_co2_saved_{measure_type}_{stat}'] = (
                 df[f'elec_{years}yr_kwh_change_{measure_type}_{stat}'] * elec_carbon_factor
             )
         
         # Standard error for electricity
-        df[f'elec_{years}yr_kg_co2_saved_se'] = (
-            df[f'elec_{years}yr_kg_co2_saved_std'] / np.sqrt(n_simulations)
+        df[f'elec_{years}yr_kg_co2_saved_{measure_type}_se'] = (
+            df[f'elec_{years}yr_kg_co2_saved_{measure_type}_std'] / np.sqrt(n_simulations)
         )
         
-        # Net carbon savings (gas + electricity)
-        df[f'total_kg_co2_saved_{years}yr_mean'] = (
-            df[f'gas_{years}yr_kg_co2_saved_mean'] + 
-            df[f'elec_{years}yr_kg_co2_saved_mean']
+        # Net carbon savings (gas + electricity) - NOW INDEXED
+        df[f'total_kg_co2_saved_{measure_type}_{years}yr_mean'] = (
+            df[f'gas_{years}yr_kg_co2_saved_{measure_type}_mean'] + 
+            df[f'elec_{years}yr_kg_co2_saved_{measure_type}_mean']
         )
-        df[f'total_kg_co2_saved_{years}yr_std'] = np.sqrt(
-            df[f'gas_{years}yr_kg_co2_saved_std']**2 + 
-            df[f'elec_{years}yr_kg_co2_saved_std']**2
+        df[f'total_kg_co2_saved_{measure_type}_{years}yr_std'] = np.sqrt(
+            df[f'gas_{years}yr_kg_co2_saved_{measure_type}_std']**2 + 
+            df[f'elec_{years}yr_kg_co2_saved_{measure_type}_std']**2
         )
     else:
-        # For non-heat pump scenarios, total equals gas only
-        df[f'total_kg_co2_saved_{years}yr_mean'] = df[f'gas_{years}yr_kg_co2_saved_mean']
-        df[f'total_kg_co2_saved_{years}yr_std'] = df[f'gas_{years}yr_kg_co2_saved_std']
+        # For non-heat pump scenarios, total equals gas only - NOW INDEXED
+        df[f'total_kg_co2_saved_{measure_type}_{years}yr_mean'] = df[f'gas_{years}yr_kg_co2_saved_{measure_type}_mean']
+        df[f'total_kg_co2_saved_{measure_type}_{years}yr_std'] = df[f'gas_{years}yr_kg_co2_saved_{measure_type}_std']
 
     # ==================================================================
-    # Convert to tonnes
+    # Convert to tonnes - NOW INDEXED
     # ==================================================================
-    df[f'gas_total_tonne_co2_saved_{years}yr_mean'] = df[f'gas_{years}yr_kg_co2_saved_mean'] / 1000
-    df[f'gas_total_tonne_co2_saved_{years}yr_std'] = df[f'gas_{years}yr_kg_co2_saved_std'] / 1000
+    df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_mean'] = df[f'gas_{years}yr_kg_co2_saved_{measure_type}_mean'] / 1000
+    df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_std'] = df[f'gas_{years}yr_kg_co2_saved_{measure_type}_std'] / 1000
 
-    df[f'total_tonne_co2_saved_{years}yr_mean'] = df[f'total_kg_co2_saved_{years}yr_mean'] / 1000
-    df[f'total_tonne_co2_saved_{years}yr_std'] = df[f'total_kg_co2_saved_{years}yr_std'] / 1000
+    df[f'total_tonne_co2_saved_{measure_type}_{years}yr_mean'] = df[f'total_kg_co2_saved_{measure_type}_{years}yr_mean'] / 1000
+    df[f'total_tonne_co2_saved_{measure_type}_{years}yr_std'] = df[f'total_kg_co2_saved_{measure_type}_{years}yr_std'] / 1000
 
     # ==================================================================
-    # Cost per tonne CO2 metrics
+    # Cost per tonne CO2 metrics - NOW INDEXED
     # ==================================================================
     cost_mean = (df[f'{scenario_name}_cost_{scenario_name}_mean'] / 1000 ) 
     cost_std = (df[f'{scenario_name}_cost_{scenario_name}_std'] / 1000) 
     
     # Cost per net ton CO2
-    df['cost_per_net_ton_co2_thousands'] = cost_mean / df[f'total_tonne_co2_saved_{years}yr_mean']
-    df['cost_per_net_ton_co2_std_thousands'] = df['cost_per_net_ton_co2_thousands'] * np.sqrt(
+    df[f'cost_per_net_ton_co2_{measure_type}_thousands'] = cost_mean / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_mean']
+    df[f'cost_per_net_ton_co2_{measure_type}_std_thousands'] = df[f'cost_per_net_ton_co2_{measure_type}_thousands'] * np.sqrt(
         (cost_std / cost_mean)**2 + 
-        (df[f'total_tonne_co2_saved_{years}yr_std'] / df[f'total_tonne_co2_saved_{years}yr_mean'])**2
+        (df[f'total_tonne_co2_saved_{measure_type}_{years}yr_std'] / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_mean'])**2
     )
 
     # Cost per gas ton reductions
-    df['cost_per_gas_ton_redutions_th'] = cost_mean / df[f'gas_total_tonne_co2_saved_{years}yr_mean']
-    df['cost_per_gas_ton_co2_std_th'] = df['cost_per_gas_ton_redutions_th'] * np.sqrt(
+    df[f'cost_per_gas_ton_reductions_{measure_type}_th'] = cost_mean / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_mean']
+    df[f'cost_per_gas_ton_co2_{measure_type}_std_th'] = df[f'cost_per_gas_ton_reductions_{measure_type}_th'] * np.sqrt(
         (cost_std / cost_mean)**2 + 
-        (df[f'gas_total_tonne_co2_saved_{years}yr_std'] / df[f'gas_total_tonne_co2_saved_{years}yr_mean'])**2
+        (df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_std'] / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_mean'])**2
     )
 
     return df
