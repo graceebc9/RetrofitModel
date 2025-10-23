@@ -140,9 +140,11 @@ def process_postcodes_for_retrofit_with_uncertainty2D(
          n_epistemic_runs=N_EPISTEMIC_RUNS,
     epistemic_sampler=generate_epistemic_scenarios_lhs
     )
+    logger.debug('Scenario generation complete. Starting Model loading')
     
     RetrofitModel2D.retrofit_config = retrofit_config
-    
+    logger.debug('Config updated. Starting to process data frame .. ') 
+
     results = scenario_generator.process_dataframe_scenarios( 
                 df = building_data,
                 region = region,
@@ -151,7 +153,7 @@ def process_postcodes_for_retrofit_with_uncertainty2D(
                 scenarios=scenarios,
     ) 
     
-    logger.debug('Processing results .. ')
+    logger.debug('Dataframe complete. Processing results .. ')
     
     if 'error' in results:
             logger.debug(f'Error found in results for pc {pc}')

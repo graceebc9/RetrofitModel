@@ -80,6 +80,7 @@ class RetrofitScenarioGenerator2DMC:
         
         # 2. Initial Vectorized Processing (Only needs to run once)
         # This sets inferred wall types, insulation status, etc., which are NOT epistemic
+        logger.debug('Vectorising preproess ... ')
         df_typ = vectorized_process_buildings(
             result_df=result_df,
             col_mapping=col_mapping, 
@@ -88,7 +89,7 @@ class RetrofitScenarioGenerator2DMC:
         )
         
         # 3. GENERATE EPISTEMIC SCENARIOS (Outer Loop Setup)
-        
+        logger.debug('Complete. starting to sample the runs .. ')
         # Use a seed for the Outer Loop itself for scenario reproducibility
         if random_seed is not None:
             np.random.seed(random_seed)
@@ -97,7 +98,7 @@ class RetrofitScenarioGenerator2DMC:
         
         # List to store the results of each Outer Loop run (N_epistemic dataframes)
         all_epistemic_results = []
-        
+        logger.debug('Sampled scenarios. starting outer loop. ')
         # 4. START THE OUTER LOOP ITERATION  
         
         logger.info(f"Starting {self.n_epistemic_runs} Epistemic Outer Loop runs...")

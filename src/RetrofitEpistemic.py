@@ -11,7 +11,7 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
     """
     
     # 1. Define the Number of Factors (N=6)
-    N_factors = 6
+    N_factors = 7
     
     # 2. Generate the Latin Hypercube Samples (N_epistemic_runs rows, N_factors columns)
     # The output is uniformly distributed between 0 and 1.
@@ -41,6 +41,27 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
     # Factor 6: Age Band Cost Multipliers (beta_AGE) - Uniform: Range [0.92, 1.08]
     age_samples = uniform.ppf(lhs_samples_uniform[:, 5], loc=0.92, scale=0.16)
     
+    # --- NEW: Factor 7 - Discrete Cost Scenario ---
+    
+    # We map the [0, 1] sample to 3 bins:
+    # [0.0, 0.333...) -> 'optimistic'
+    # [0.333..., 0.666...) -> 'central'
+    # [0.666..., 1.0] -> 'pessimistic'
+    
+    scenario_choices = np.array(['optimistic', 'central', 'pessimistic'])
+    # Get the 7th column of samples (index 6)
+    cost_scenario_samples_uniform = lhs_samples_uniform[:, 6]
+    
+    # Convert [0, 1] to indices [0, 1, 2]
+    # We multiply by 3 (N_choices) and take the floor
+    indices = np.floor(cost_scenario_samples_uniform * 3).astype(int)
+    
+    # Clip to handle the (very rare) edge case of a sample being exactly 1.0
+    indices = np.clip(indices, 0, 2)
+    
+    # Select from the array
+    cost_scenario_samples = scenario_choices[indices]
+
     # 4. Compile into DataFrame
     epistemic_df = pd.DataFrame({
         'time_scale_bias': ts_samples,
@@ -49,67 +70,7 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
         'solid_wall_external_improvement_factor': swe_samples,
         'regional_multipliers_uncertainty': reg_samples,
         'age_band_multipliers_uncertainty': age_samples,
+        'cost_scenario': cost_scenario_samples,
     })
     
     return epistemic_df
-
-# import pandas as pd
-# import numpy as np
-# from scipy.stats import truncnorm, uniform , norm 
-# from typing import Dict
-
-# # --- Epistemic Factor Sampler ---
-
-# def generate_epistemic_scenarios(N_epistemic_runs: int) -> pd.DataFrame:
-#     """
-#     Generates N_epistemic_runs scenarios for the Outer Loop of the 2DMC simulation.
-    
-#     Factors included:
-#     1. Time Scale Bias (beta_TS): Systematic error in savings comparison.
-#     2. Decile Misclassification Bias (beta_DEC): Systematic error in initial classification.
-#     3. Solid Wall Improvement Factor (Internal) (beta_SWI): Uncertainty in assumed factor (nominal 0.1).
-#     4. Solid Wall Improvement Factor (External) (beta_SWE): Uncertainty in assumed factor (nominal 0.2).
-#     5. Regional Multipliers Uncertainty (beta_REG): Systematic uncertainty in regional cost factors.
-#     6. Age Band Multipliers Uncertainty (beta_AGE): Systematic uncertainty in age-based cost factors.
-#     """
-    
-#     # 1. Define Distribution Parameters (These should be set by expert judgment)
-    
-#     # Time Scale Bias (beta_TS): Systematic uncertainty around the 1.0 baseline.
-#     # Assumes a 5% systematic uncertainty.
-#     ts_samples = truncnorm.rvs(a=-0.1, b=0.1, loc=1.0, scale=0.05, size=N_epistemic_runs)
-
-#     # Decile Misclassification Bias (beta_DEC): Systematic uncertainty around a 0.0 shift.
-#     # Represents an overall systematic misclassification error of +/- 2%
-#     decile_samples = norm.rvs(loc=0.0, scale=0.02, size=N_epistemic_runs)
-
-#     # Solid Wall Internal Improvement (beta_SWI): Uncertainty in the fixed factor (0.1).
-#     # Assumes the true factor could range from 0.08 to 0.12 (standard deviation of 0.01).
-#     swi_samples = truncnorm.rvs(a=-0.02, b=0.02, loc=0.1, scale=0.01, size=N_epistemic_runs)
-    
-#     # Solid Wall External Improvement (beta_SWE): Uncertainty in the fixed factor (0.2).
-#     # Assumes the true factor could range from 0.15 to 0.25 (standard deviation of 0.02).
-#     swe_samples = truncnorm.rvs(a=-0.05, b=0.05, loc=0.2, scale=0.02, size=N_epistemic_runs)
-
-#     # Regional Cost Multipliers (beta_REG): Systematic error in regional cost factors (nominal 1.0).
-#     # Assumes the regional multipliers could be systematically +/- 10% off.
-#     reg_samples = uniform.rvs(loc=0.9, scale=0.2, size=N_epistemic_runs) # Range: 0.9 to 1.1
-
-#     # Age Band Cost Multipliers (beta_AGE): Systematic error in age band factors (nominal 1.0).
-#     # Assumes the age band multipliers could be systematically +/- 8% off.
-#     age_samples = uniform.rvs(loc=0.92, scale=0.16, size=N_epistemic_runs) # Range: 0.92 to 1.08
-    
-#     # 2. Compile into DataFrame
-#     epistemic_df = pd.DataFrame({
-#         'time_scale_bias': ts_samples,
-#         'decile_misclassification_bias': decile_samples,
-#         'solid_wall_internal_improvement_factor': swi_samples,
-#         'solid_wall_external_improvement_factor': swe_samples,
-#         'regional_multipliers_uncertainty': reg_samples,
-#         'age_band_multipliers_uncertainty': age_samples,
-#     })
-    
-#     return epistemic_df
-
-# # Example of how to use it:
-# # scenarios = generate_epistemic_scenarios(N_epistemic_runs=50)

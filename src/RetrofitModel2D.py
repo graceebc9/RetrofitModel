@@ -9,7 +9,7 @@ import numpy as np
 
 # Assuming these imports are available in your environment
 from .BuildingCharacteristics import BuildingCharacteristics  
-from .RetrofitCostsScalingRules2D import  CostEstimator, InterventionConfig
+from .RetrofitCosts import  CostEstimator, InterventionConfig
 from .RetrofitEnergy import RetrofitEnergy 
 from .RetrofitUtils import calculate_estimated_flats_per_building 
 from .RetrofitConfig import RetrofitConfig 
@@ -69,12 +69,12 @@ class RetrofitModel2D:
         '1960-1979': 1.15, '1945-1959': 1.35, '1919-1944': 1.6, 'Pre 1919': 2.0
     })
     
-    typology_complexity: Dict[str, float] = field(default_factory=lambda: {
-        'Very tall point block flats': 1.4,
-        'Tall flats 6-15 storeys': 1.2,
-        'Medium height flats 5-6 storeys': 1.1,
-        'Tall terraces 3-4 storeys': 1.1,
-    })
+    # typology_complexity: Dict[str, float] = field(default_factory=lambda: {
+    #     'Very tall point block flats': 1.4,
+    #     'Tall flats 6-15 storeys': 1.2,
+    #     'Medium height flats 5-6 storeys': 1.1,
+    #     'Tall terraces 3-4 storeys': 1.1,
+    # })
 
     retrofit_packages= retrofit_packages
      
@@ -382,12 +382,13 @@ class RetrofitModel2D:
         
         # 1. GET NOMINAL MULTIPLIERS (from your fixed class defaults)
         age_mult_nominal = self.age_band_multipliers.get(age_band, 1.0)
-        complexity_mult_nominal = self.typology_complexity.get(typology, 1.0)
+        # complexity_mult_nominal = self.typology_complexity.get(typology, 1.0)
         regional_mult_nominal = self.get_regional_multiplier(validated_region)
         
         # 2. GET EPISTEMIC MULTIPLIERS (from the fixed scenario)
         beta_REG = self.epistemic_scenario.get('regional_multipliers_uncertainty', 1.0)
         beta_AGE = self.epistemic_scenario.get('age_band_multipliers_uncertainty', 1.0)
+        cost_epist_scenario = self.epistemic_scenario.get('cost_scenario', 1.0) 
         
         # 3. APPLY EPISTEMIC UNCERTAINTY TO NOMINAL MULTIPLIERS
         
@@ -399,9 +400,10 @@ class RetrofitModel2D:
             f"Sampling {cost_col_name}: region={validated_region}, "
             f"final_age_mult={final_age_mult:.2f}, "
             f"final_regional_mult={final_regional_mult:.2f}, "
-            f"complexity_mult={complexity_mult_nominal:.2f}"
+            # f"complexity_mult={complexity_mult_nominal:.2f}"
             f"Intervention: {intervention}"
             f"Wall Type: {wall_insulation_type}"
+            f"Cost scenario : {cost_epist_scenario}"
         )
         
         try:
@@ -413,9 +415,10 @@ class RetrofitModel2D:
                 age_band=age_band,
                 region=region,
                 cost_col_name=cost_col_name,
+                epist_scenario=cost_epist_scenario,
                 regional_multiplier=final_regional_mult, # NEW: Use corrected multiplier
                 age_multiplier=final_age_mult,           # NEW: Use corrected multiplier
-                complexity_multiplier=complexity_mult_nominal, 
+                # complexity_multiplier=complexity_mult_nominal, 
                 n_samples=self.n_samples
             )
             
@@ -435,6 +438,8 @@ class RetrofitModel2D:
                                     age_band,
                                     region, 
                                     return_statistics,
+                              
+                                    # complexity_multiplier,
                                     include_total=True):
         """
         Calculate Monte Carlo cost statistics for an intervention.
@@ -465,6 +470,9 @@ class RetrofitModel2D:
             samples = self.sample_intervention_cost_monte_carlo(
                 intervention=intervention,
                 building_chars=building_chars,
+                # epist_scenario=epist_scenario,
+                # age_band_multipliers_uncertainty=age_band_multipliers_uncertainty, 
+                # complexity_multiplier=complexity_multiplier,
                 typology=typology,
                 age_band=age_band,
                 region=region,
@@ -534,6 +542,9 @@ class RetrofitModel2D:
                                         scenario_interventions, 
                                         scenario_name, 
                                         # prob_external, 
+                                        # epist_scenario , 
+                                        # age_band_multipliers_uncertainty , 
+                                        # complexity_multiplier ,
                                         region, 
                                         return_statistics  ):
         """
@@ -631,6 +642,9 @@ class RetrofitModel2D:
             typology=typology,
             age_band=age_band,
             region=region,
+            # epist_scenario = epist_scenario, 
+            # age_band_multipliers_uncertainty=age_band_multipliers_uncertainty, 
+            # complexity_multiplier=complexity_multiplier,
             return_statistics=return_statistics,
             cost_col_name = scenario_name, 
         )
