@@ -18,9 +18,9 @@ from datetime import datetime
 # Add RetrofitModel to path
 sys.path.append('/rds/user/gb669/hpc-work/energy_map/RetrofitModel')
 from src.validate import validate_single_scenario_new
-from src.visualisations import plot_col_reduction_by_decile
+
 from src.RetrofitPostProcess import clean_post_proccess 
-from src.visualisations import plot_building_counts_by_age_band 
+from src.visualisations import run_vis_new 
 
 from src.RetrofitAnalysis import run_meta_portoflio
  
@@ -117,101 +117,105 @@ def analyze_uncertainty(df, scenario_name, measure_type, years, output_dir):
     return building_metrics
  
 
-def create_visualizations(df, scenario_name, measure_type, years, output_dir):
-    """Create comprehensive visualizations for the scenario."""
-    print("\n" + "="*60)
-    print(f"CREATING VISUALIZATIONS - {scenario_name}")
-    print("="*60)
+# def create_visualizations(df, scenario_name, measure_type, years, output_dir):
+#     """Create comprehensive visualizations for the scenario."""
+#     print("\n" + "="*60)
+#     print(f"CREATING VISUALIZATIONS - {scenario_name}")
+#     print("="*60)
     
-    # Updated column names with measure_type indexing
-    GAS_MEAN_COL = f'gas_{years}yr_kg_co2_saved_{measure_type}_mean'
-    TOTAL_CO2_COL = f'total_kg_co2_saved_{measure_type}_{years}yr_mean'
-    COST_COL = f'{scenario_name}_cost_{scenario_name}_mean'
-    COST_PER_NET_TON_COL = f'cost_per_net_ton_co2_{measure_type}_thousands'
-    COST_PER_GAS_TON_COL = f'cost_per_gas_ton_reductions_{measure_type}_th'
+#     # Updated column names with measure_type indexing
+#     GAS_MEAN_COL = f'gas_{years}yr_kg_co2_saved_{measure_type}_mean'
+#     TOTAL_CO2_COL = f'total_kg_co2_saved_{measure_type}_{years}yr_mean'
+#     COST_COL = f'{scenario_name}_cost_{scenario_name}_mean'
+#     COST_PER_NET_TON_COL = f'cost_per_net_ton_co2_{measure_type}_mean_thousands'
+#     COST_PER_GAS_TON_COL = f'cost_per_gas_ton_reductions_{measure_type}_mean_th'
     
-    # Installation costs by decile
-    plt.figure(figsize=(10, 6))
-    plot_col_reduction_by_decile(
-        df, 
-        COST_COL,
-        groupby_col='avg_gas_percentile',
-        scenario_name=scenario_name
-    )
-    plt.title(f'Installation Costs by Avg Gas Consumption Decile - {scenario_name}')
-    plt.ylabel('Installation Cost (£)')
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f'{scenario_name}_installation_costs_by_decile.png'), dpi=300)
-    plt.close()
-    print(f"Saved: {output_dir}/{scenario_name}_installation_costs_by_decile.png")
+#     # Installation costs by decile
+#     plt.figure(figsize=(10, 6))
+#     plot_col_reduction_by_decile(
+#         df, 
+#         mean_col = COST_COL,
+#         std_col = f'{scenario_name}_cost_{scenario_name}_std',
+#         groupby_col='avg_gas_percentile',
+#         # scenario_name=scenario_name
+#     )
+#     plt.title(f'Installation Costs by Avg Gas Consumption Decile - {scenario_name}')
+#     plt.ylabel('Installation Cost (£)')
+#     plt.tight_layout()
+#     plt.savefig(os.path.join(output_dir, f'{scenario_name}_installation_costs_by_decile.png'), dpi=300)
+#     plt.close()
+#     print(f"Saved: {output_dir}/{scenario_name}_installation_costs_by_decile.png")
     
-    # CO2 savings by decile
-    plt.figure(figsize=(10, 6))
-    plot_col_reduction_by_decile(
-        df, 
-        TOTAL_CO2_COL,
-        groupby_col='avg_gas_percentile',
-        groupby_label='Avg Gas Consumption Decile',
-        scenario_name=scenario_name
-    )
-    plt.title(f'Total CO2 Savings by Avg Gas Consumption Decile - {scenario_name}')
-    plt.ylabel('CO2 Savings (kg CO2)')
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f'{scenario_name}_co2_savings_by_decile.png'), dpi=300)
-    plt.close()
-    print(f"Saved: {output_dir}/{scenario_name}_co2_savings_by_decile.png")
+#     # CO2 savings by decile
+#     plt.figure(figsize=(10, 6))
+#     plot_col_reduction_by_decile(
+#         df, 
+#         mean_col =f'total_kg_co2_saved_{measure_type}_{years}yr_mean',
+#         std_col = f'total_kg_co2_saved_{measure_type}_{years}yr_std',
+#         groupby_col='avg_gas_percentile',
+#         groupby_label='Avg Gas Consumption Decile',
+#         # scenario_name=scenario_name
+#     )
+#     plt.title(f'Total CO2 Savings by Avg Gas Consumption Decile - {scenario_name}')
+#     plt.ylabel('CO2 Savings (kg CO2)')
+#     plt.tight_layout()
+#     plt.savefig(os.path.join(output_dir, f'{scenario_name}_co2_savings_by_decile.png'), dpi=300)
+#     plt.close()
+#     print(f"Saved: {output_dir}/{scenario_name}_co2_savings_by_decile.png")
     
-    # Gas percentile analysis
-    plt.figure(figsize=(12, 6))
-    gas_cols = [
-        f'gas_{years}yr_kg_co2_saved_{measure_type}_p5',
-        f'gas_{years}yr_kg_co2_saved_{measure_type}_p50',
-        f'gas_{years}yr_kg_co2_saved_{measure_type}_p95'
-    ]
+#     # Gas percentile analysis
+#     plt.figure(figsize=(12, 6))
+#     gas_cols = [
+#         f'gas_{years}yr_kg_co2_saved_{measure_type}_p5',
+#         f'gas_{years}yr_kg_co2_saved_{measure_type}_p50',
+#         f'gas_{years}yr_kg_co2_saved_{measure_type}_p95'
+#     ]
     
-    if all(col in df.columns for col in gas_cols):
-        df[gas_cols].boxplot()
-        plt.title(f'Gas Savings Percentile Analysis - {scenario_name}')
-        plt.ylabel('Gas Savings (kg CO2)')
-        plt.xticks([1, 2, 3], ['P5', 'P50', 'P95'])
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f'{scenario_name}_gas_percentile_analysis.png'), dpi=300)
-        plt.close()
-        print(f"Saved: {output_dir}/{scenario_name}_gas_percentile_analysis.png")
+#     if all(col in df.columns for col in gas_cols):
+#         df[gas_cols].boxplot()
+#         plt.title(f'Gas Savings Percentile Analysis - {scenario_name}')
+#         plt.ylabel('Gas Savings (kg CO2)')
+#         plt.xticks([1, 2, 3], ['P5', 'P50', 'P95'])
+#         plt.tight_layout()
+#         plt.savefig(os.path.join(output_dir, f'{scenario_name}_gas_percentile_analysis.png'), dpi=300)
+#         plt.close()
+#         print(f"Saved: {output_dir}/{scenario_name}_gas_percentile_analysis.png")
     
-    # Cost per gas ton by decile
-    if COST_PER_GAS_TON_COL in df.columns:
-        plt.figure(figsize=(10, 6))
-        plot_col_reduction_by_decile(
-            df, 
-            COST_PER_GAS_TON_COL,
-            groupby_col='avg_gas_percentile',
-            groupby_label='AVg Gas Consumption Decile',
-            scenario_name=scenario_name
-        )
-        plt.title(f'Cost per Gas Ton CO2 Reduction by Avg Gas Decile - {scenario_name}')
-        plt.ylabel('Cost per Ton CO2 (£/ton, thousands)')
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f'{scenario_name}_cost_per_gas_ton_by_decile.png'), dpi=300)
-        plt.close()
-        print(f"Saved: {output_dir}/{scenario_name}_cost_per_gas_ton_by_decile.png")
+#     # Cost per gas ton by decile
+#     if COST_PER_GAS_TON_COL in df.columns:
+#         plt.figure(figsize=(10, 6))
+#         plot_col_reduction_by_decile(
+#             df, 
+#             mean_col = f'cost_per_gas_ton_reductions_{measure_type}_mean_th',
+#             std_col = f'cost_per_gas_ton_reductions_{measure_type}_std_th',
+#             groupby_col='avg_gas_percentile',
+#             groupby_label='Avg Gas Consumption Decile',
+#             # scenario_name=scenario_name
+#         )
+#         plt.title(f'Cost per Gas Ton CO2 Reduction by Avg Gas Decile - {scenario_name}')
+#         plt.ylabel('Cost per Ton CO2 (£/ton, thousands)')
+#         plt.tight_layout()
+#         plt.savefig(os.path.join(output_dir, f'{scenario_name}_cost_per_gas_ton_by_decile.png'), dpi=300)
+#         plt.close()
+#         print(f"Saved: {output_dir}/{scenario_name}_cost_per_gas_ton_by_decile.png")
     
-    # Cost per net ton by decile
-    if COST_PER_NET_TON_COL in df.columns:
-        plt.figure(figsize=(10, 6))
-        plot_col_reduction_by_decile(
-            df, 
-            COST_PER_NET_TON_COL,
-            groupby_col='avg_gas_percentile',
-            groupby_label='AVg Gas Consumption Decile',
-            scenario_name=scenario_name
-        )
-        plt.title(f'Cost per Net Ton CO2 Reduction by Avg Gas Percentile - {scenario_name}')
-        plt.ylabel('Cost per Ton CO2 (£/ton, thousands)')
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir,  f'{scenario_name}_cost_per_net_ton_by_decile.png'), dpi=300)
-        plt.close()
-        print(f"Saved: {output_dir}/{scenario_name}_cost_per_net_ton_by_decile.png")
+#     # Cost per net ton by decile
+#     if COST_PER_NET_TON_COL in df.columns:
+#         plt.figure(figsize=(10, 6))
+#         plot_col_reduction_by_decile(
+#             df, 
+#             mean_col = COST_PER_NET_TON_COL,
+#             std_col = f'cost_per_net_ton_co2_{measure_type}_std_thousands',
+#             groupby_col='avg_gas_percentile',
+#             groupby_label='AVg Gas Consumption Decile',
+#             # scenario_name=scenario_name
+#         )
+#         plt.title(f'Cost per Net Ton CO2 Reduction by Avg Gas Percentile - {scenario_name}')
+#         plt.ylabel('Cost per Ton CO2 (£/ton, thousands)')
+#         plt.tight_layout()
+#         plt.savefig(os.path.join(output_dir,  f'{scenario_name}_cost_per_net_ton_by_decile.png'), dpi=300)
+#         plt.close()
+#         print(f"Saved: {output_dir}/{scenario_name}_cost_per_net_ton_by_decile.png")
 
 
 def process_single_scenario(df, scenario_name, measure_type, years, n_simulations,
@@ -294,7 +298,8 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
     portfolio_metrics = run_meta_portoflio(scenario_output_dir, df_processed, scenario_name,  years=5 )
     
     # Create visualizations
-    create_visualizations(df_processed, scenario_name, measure_type, years, scenario_output_dir)
+    # create_visualizations(df_processed, scenario_name, measure_type, years, scenario_output_dir)
+    run_vis_new(df_processed, scenario_name, scenario_output_dir)
     
     # Save summary report
     print("\n" + "="*60)
@@ -315,10 +320,10 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
         f.write(f"Mean: £{mean_total_costs/1000000:.2f}M\n")
         f.write(f"Std:  £{std_total_costs/1000000:.2f}M\n\n")
         
-        f.write("PORTFOLIO METRICS\n")
-        f.write("-"*60 + "\n")
-        for k, v in portfolio_metrics.items():
-            f.write(f"{k:<35}: {v:,.0f} KG CO2/year\n")
+        # f.write("PORTFOLIO METRICS\n")
+        # f.write("-"*60 + "\n")
+        # for k, v in portfolio_metrics.items():
+        #     f.write(f"{k:<35}: {v:,.0f} KG CO2/year\n")
         
         f.write("\n\nOUTPUT FILES\n")
         f.write("-"*60 + "\n")

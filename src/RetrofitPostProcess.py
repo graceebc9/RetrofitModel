@@ -61,12 +61,25 @@ def clean_post_proccess(df, measure_type, scenario_name, years, n_simulations,
     - GAS_CARBON_FACTOR_2022: Carbon factor for gas (kg CO2/kWh)
     - elec_carbon_factor: Carbon factor for electricity (kg CO2/kWh)
     """
-    
+    elec_scenarios = ['heat_pump_only', 'join_heat_ins_decay', 'join_heat_ins_add']
     stats = ['mean', 'p5', 'p50', 'p95', 'std']
-    if scenario_name in ['heat_pump_only', 'join_heat_ins_decay', 'join_heat_ins_add']:
+    if scenario_name in elec_scenarios: 
         fuels = ['gas', 'elec']
     else:
         fuels = ['gas']
+    # ==================================================================
+    # Convert cost to millions  
+    # ==================================================================
+    million = 1_000_000
+ 
+    df[f'{scenario_name}_cost_{scenario_name}_mean_mill'] = (df[f'{scenario_name}_cost_{scenario_name}_mean'] / million ) 
+    df[f'{scenario_name}_cost_{scenario_name}_std_mill'] = (df[f'{scenario_name}_cost_{scenario_name}_std'] / million ) 
+    
+     
+    df[f'{scenario_name}_cost_{scenario_name}_p50_mill'] = (df[f'{scenario_name}_cost_{scenario_name}_p50'] / million ) 
+    df[f'{scenario_name}_cost_{scenario_name}_p5_mill'] = (df[f'{scenario_name}_cost_{scenario_name}_p5'] / million ) 
+    df[f'{scenario_name}_cost_{scenario_name}_p95_mill'] = (df[f'{scenario_name}_cost_{scenario_name}_p95'] / million ) 
+    
     # ==================================================================
     # Gas energy changes
     # ==================================================================
@@ -79,7 +92,7 @@ def clean_post_proccess(df, measure_type, scenario_name, years, n_simulations,
     # ==================================================================
     # Electricity energy changes (for heat pump scenarios only)
     # ==================================================================
-    if scenario_name in ['heat_pump_only', 'join_heat_ins_decay']:
+    if scenario_name in elec_scenarios :
         for stat in stats:
             df[f'elec_{years}yr_kwh_change_{measure_type}_{stat}'] = (
                 df['total_elec_derived'] * years * 
@@ -105,7 +118,7 @@ def clean_post_proccess(df, measure_type, scenario_name, years, n_simulations,
     # ==================================================================
     # Electricity carbon savings (heat pump scenarios only)
     # ==================================================================
-    if scenario_name in ['heat_pump_only', 'join_heat_ins_decay']:
+    if scenario_name in elec_scenarios :
         for stat in stats:
             df[f'elec_{years}yr_kg_co2_saved_{measure_type}_{stat}'] = (
                 df[f'elec_{years}yr_kwh_change_{measure_type}_{stat}'] * elec_carbon_factor
@@ -131,7 +144,6 @@ def clean_post_proccess(df, measure_type, scenario_name, years, n_simulations,
             df[f'gas_{years}yr_kg_co2_saved_{measure_type}_p50'] + 
             df[f'elec_{years}yr_kg_co2_saved_{measure_type}_p50']
         )
-
 
         df[f'total_kg_co2_saved_{measure_type}_{years}yr_std'] = np.sqrt(
             df[f'gas_{years}yr_kg_co2_saved_{measure_type}_std']**2 + 
@@ -163,24 +175,47 @@ def clean_post_proccess(df, measure_type, scenario_name, years, n_simulations,
     # ==================================================================
     # Cost per tonne CO2 metrics - NOW INDEXED
     # ==================================================================
+    cost_mean_mill = df[f'{scenario_name}_cost_{scenario_name}_mean_mill']
+    cost_p95_mill = df[f'{scenario_name}_cost_{scenario_name}_p95_mill']
+    cost_p50_mill = df[f'{scenario_name}_cost_{scenario_name}_p50_mill']
+    cost_std_mill = df[f'{scenario_name}_cost_{scenario_name}_std_mill']
+    
     cost_mean = (df[f'{scenario_name}_cost_{scenario_name}_mean'] / 1000 ) 
-    cost_std = (df[f'{scenario_name}_cost_{scenario_name}_std'] / 1000) 
+    cost_std =  (df[f'{scenario_name}_cost_{scenario_name}_std'] / 1000 )
+    cost_p50 =  (df[f'{scenario_name}_cost_{scenario_name}_p50'] / 1000 ) 
+    cost_p95 =  (df[f'{scenario_name}_cost_{scenario_name}_p95'] / 1000 ) 
     
     # Cost per net ton CO2
     df[f'cost_per_net_ton_co2_{measure_type}_mean_thousands'] = cost_mean / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_mean']
-    df[f'cost_per_net_ton_co2_{measure_type}_p50_thousands'] = cost_mean / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_p50']
-    df[f'cost_per_net_ton_co2_{measure_type}_p95_thousands'] = cost_mean / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_p95']
+    df[f'cost_per_net_ton_co2_{measure_type}_p50_thousands'] = cost_p50 / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_p50']
+    df[f'cost_per_net_ton_co2_{measure_type}_p95_thousands'] = cost_p95 / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_p95']
     df[f'cost_per_net_ton_co2_{measure_type}_std_thousands'] = df[f'cost_per_net_ton_co2_{measure_type}_mean_thousands'] * np.sqrt(
         (cost_std / cost_mean)**2 + 
         (df[f'total_tonne_co2_saved_{measure_type}_{years}yr_std'] / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_mean'])**2
     )
 
+    df[f'cost_per_net_ton_co2_{measure_type}_mean_mill'] = cost_mean_mill / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_mean']
+    df[f'cost_per_net_ton_co2_{measure_type}_p50_mill'] = cost_p50_mill / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_p50']
+    df[f'cost_per_net_ton_co2_{measure_type}_p95_mill'] = cost_p95_mill / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_p95']
+    df[f'cost_per_net_ton_co2_{measure_type}_std_mill'] = df[f'cost_per_net_ton_co2_{measure_type}_mean_mill'] * np.sqrt(
+        (cost_std_mill / cost_mean_mill)**2 + 
+        (df[f'total_tonne_co2_saved_{measure_type}_{years}yr_std'] / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_mean'])**2
+    )
+
     # Cost per gas ton reductions
     df[f'cost_per_gas_ton_reductions_{measure_type}_mean_th'] = cost_mean / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_mean']
-    df[f'cost_per_gas_ton_reductions_{measure_type}_p50_th'] = cost_mean / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_p50']
-    df[f'cost_per_gas_ton_reductions_{measure_type}_p95_th'] = cost_mean / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_p95']
+    df[f'cost_per_gas_ton_reductions_{measure_type}_p50_th'] = cost_p50 / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_p50']
+    df[f'cost_per_gas_ton_reductions_{measure_type}_p95_th'] = cost_p95 / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_p95']
     df[f'cost_per_gas_ton_co2_{measure_type}_std_th'] = df[f'cost_per_gas_ton_reductions_{measure_type}_mean_th'] * np.sqrt(
         (cost_std / cost_mean)**2 + 
+        (df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_std'] / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_mean'])**2
+    )
+        
+    df[f'cost_per_gas_ton_reductions_{measure_type}_mean_mill'] = cost_mean_mill / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_mean']
+    df[f'cost_per_gas_ton_reductions_{measure_type}_p50_mill'] = cost_p50_mill / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_p50']
+    df[f'cost_per_gas_ton_reductions_{measure_type}_p95_mill'] = cost_p95_mill / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_p95']
+    df[f'cost_per_gas_ton_co2_{measure_type}_std_mill'] = df[f'cost_per_gas_ton_reductions_{measure_type}_mean_mill'] * np.sqrt(
+        (cost_std_mill / cost_mean_mill)**2 + 
         (df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_std'] / df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_mean'])**2
     )
 
