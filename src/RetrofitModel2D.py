@@ -470,9 +470,7 @@ class RetrofitModel2D:
             samples = self.sample_intervention_cost_monte_carlo(
                 intervention=intervention,
                 building_chars=building_chars,
-                # epist_scenario=epist_scenario,
-                # age_band_multipliers_uncertainty=age_band_multipliers_uncertainty, 
-                # complexity_multiplier=complexity_multiplier,
+          
                 typology=typology,
                 age_band=age_band,
                 region=region,
@@ -541,10 +539,7 @@ class RetrofitModel2D:
                                         col_mapping, 
                                         scenario_interventions, 
                                         scenario_name, 
-                                        # prob_external, 
-                                        # epist_scenario , 
-                                        # age_band_multipliers_uncertainty , 
-                                        # complexity_multiplier ,
+                            
                                         region, 
                                         return_statistics  ):
         """
@@ -642,9 +637,7 @@ class RetrofitModel2D:
             typology=typology,
             age_band=age_band,
             region=region,
-            # epist_scenario = epist_scenario, 
-            # age_band_multipliers_uncertainty=age_band_multipliers_uncertainty, 
-            # complexity_multiplier=complexity_multiplier,
+       
             return_statistics=return_statistics,
             cost_col_name = scenario_name, 
         )

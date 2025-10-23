@@ -240,7 +240,7 @@ class CostEstimator:
             raise ValueError(f"Unknown intervention: {intervention}")
         
         # 1. Get base cost parameters from the discrete 'scenario'
-        epist_scenario_params = config.epist_scenario.get(epist_scenario, config.scenarios.get('central'))
+        epist_scenario_params = config.epist_scenarios.get(epist_scenario, config.epist_scenarios.get('central'))
         if not epist_scenario_params:
             raise ValueError(f"No 'central' or '{epist_scenario}' epist_scenario found for {intervention}")
         

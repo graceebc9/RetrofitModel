@@ -24,7 +24,7 @@ else:
 log_config_filepath = f"{base_path}/logs/config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 log_path = f"{base_path}/logs/log_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-setup_logging(log_level='DEBUG', log_path=log_path)
+setup_logging(log_level='INFO', log_path=log_path)
 logger = get_logger(__name__)
 
 
