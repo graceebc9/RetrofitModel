@@ -180,10 +180,10 @@ def clean_post_proccess(df, measure_type, scenario_name, years, n_simulations,
     cost_p50_mill = df[f'{scenario_name}_cost_{scenario_name}_p50_mill']
     cost_std_mill = df[f'{scenario_name}_cost_{scenario_name}_std_mill']
     
-    cost_mean = (df[f'{scenario_name}_cost_{scenario_name}_mean'] / 1000 ) 
-    cost_std =  (df[f'{scenario_name}_cost_{scenario_name}_std'] / 1000 )
-    cost_p50 =  (df[f'{scenario_name}_cost_{scenario_name}_p50'] / 1000 ) 
-    cost_p95 =  (df[f'{scenario_name}_cost_{scenario_name}_p95'] / 1000 ) 
+    cost_mean = df[f'{scenario_name}_cost_{scenario_name}_mean']  
+    cost_std =  df[f'{scenario_name}_cost_{scenario_name}_std'] 
+    cost_p50 =  df[f'{scenario_name}_cost_{scenario_name}_p50']
+    cost_p95 = df[f'{scenario_name}_cost_{scenario_name}_p95']
     
     # Cost per net ton CO2
     df[f'cost_per_net_ton_co2_{measure_type}_mean_thousands'] = cost_mean / df[f'total_tonne_co2_saved_{measure_type}_{years}yr_mean']
