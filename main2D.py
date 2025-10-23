@@ -85,21 +85,21 @@ log_size = 10
 n_monte_carlo = 5000
 N_EPISTEMIC_RUNS = 35
 RANDOM_SEED_OUTER = 42
-scenarios = ['wall_installation', 'loft_installation']
-# scenarios=['join_heat_ins_decay' ]
-job_name='walls_insulaion'
+scenarios = ['wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
+scenarios=['join_heat_ins_add' ]
+job_name='join_heat_ins_add'
 region_list = ['NE'] if running_locally else [os.getenv('REGION_LIST')]
 
 STAGE0_split_onsud = False
 
 retrofit_config = RetrofitConfig(
-    energy_cost_per_kwh=0.07,
+    # energy_cost_per_kwh=0.07,
     existing_intervention_probs={
         'loft_insulation': 0,
         'floor_insulation': 0,
         'window_upgrades': 0,
         'roof_scaling_factor': 0.8,
-        'external_wall_occurence': 0.5,
+        # 'external_wall_occurence': 0.5,
     }
 )
 
@@ -191,8 +191,8 @@ def postcode_main(batch_path, data_dir, path_to_onsud_file, path_to_pcshp, INPUT
         'Input GPK': INPUT_GPK,
         'SubBatch log limit': log_size,
         'Batch label': batch_label,
-        'RetrofitConfig_energy_cost_per_kwh': retrofit_config.energy_cost_per_kwh,
-        'RetrofitConfig_existing_intervention_probs': retrofit_config.existing_intervention_probs,
+        # 'RetrofitConfig_energy_cost_per_kwh': retrofit_config.energy_cost_per_kwh,
+        # 'RetrofitConfig_existing_intervention_probs': retrofit_config.existing_intervention_probs,
         'RetrofitModel2DSettings': RetrofitModel2D.n_samples,
         'Scenarios': scenarios,
         'Output dir': data_dir,
