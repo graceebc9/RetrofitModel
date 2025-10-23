@@ -197,10 +197,10 @@ def analyze_portfolio_energy(df, scenario_name, measure_type, years, output_dir,
 def analyze_portfolio_costs(df, scenario_name, measure_type, output_dir, name_suffix):
 
     # Column names
-    COST_PER_GAS_P95_COL = f'cost_per_gas_ton_reductions_{measure_type}_p95_th'
-    COST_PER_GAS_P50_COL = f'cost_per_gas_ton_reductions_{measure_type}_p50_th'
-    TOTAL_P50_COL = f'cost_per_net_ton_co2_{measure_type}_p50_th'
-    TOTAL_P95_COL = f'cost_per_net_ton_co2_{measure_type}_p95_th'
+    COST_PER_GAS_P95_COL = f'cost_per_gas_ton_reductions_{measure_type}_p95'
+    COST_PER_GAS_P50_COL = f'cost_per_gas_ton_reductions_{measure_type}_p50'
+    TOTAL_P50_COL = f'cost_per_net_ton_co2_{measure_type}_p50'
+    TOTAL_P95_COL = f'cost_per_net_ton_co2_{measure_type}_p95'
     
     cost_p50 = f'{scenario_name}_cost_{scenario_name}_p50_mill'
     cost_p95 = f'{scenario_name}_cost_{scenario_name}_p95_mill'
@@ -312,12 +312,12 @@ def analyze_portfolio_costs(df, scenario_name, measure_type, output_dir, name_su
         f.write(f"Final Portfolio Uncertainty Summary: {name_suffix}\n")
         f.write("="*60 + "\n\n")
         
-        f.write("Cost per Ton CO2 (GAS) (£M per Ton)\n")
+        f.write("Cost per Ton CO2 (GAS) (£ per Ton)\n")
         f.write("-"*60 + "\n")
         for k, v in final_gas_metrics.items():
             f.write(f"{k:<50}: £{v:,.2f} per ton\n")
         
-        f.write("\n\nCost per Net Ton CO2 (£M per ton)\n")
+        f.write("\n\nCost per Net Ton CO2 (£ per ton)\n")
         f.write("-"*60 + "\n")
         for k, v in final_net_metrics.items():
             f.write(f"{k:<50}: £{v:,.2f} per ton\n")
@@ -338,7 +338,7 @@ def analyze_portfolio_costs(df, scenario_name, measure_type, output_dir, name_su
         label=f"Mean: £{final_gas_metrics['Cost_per_TonCO2_Gas_Best_Estimate (P50 Mean)']:,.2f}"
     )
     ax1.set_title(f'Portfolio Cost per Ton CO2 Removal: Epistemic Uncertainty\n({scenario_name})')
-    ax1.set_xlabel('Cost per Ton CO2 Savings (£Thou/TON)')
+    ax1.set_xlabel('Cost per Ton CO2 Savings (£/TON)')
     ax1.set_ylabel('Frequency (Number of Epistemic Runs)')
     ax1.legend()
     
@@ -350,7 +350,7 @@ def analyze_portfolio_costs(df, scenario_name, measure_type, output_dir, name_su
         label=f"Mean: £{final_net_metrics['Net Cost per Ton CO2 (P50 Mean)']:,.2f}"
     )
     ax2.set_title(f'Portfolio Net Cost per TON CO2: Epistemic Uncertainty\n({scenario_name})')
-    ax2.set_xlabel('Cost per Net TON CO2 (£Thou/TON)')
+    ax2.set_xlabel('Cost per Net TON CO2 (£/TON)')
     ax2.set_ylabel('Frequency (Number of Epistemic Runs)')
     ax2.legend()
     
@@ -389,9 +389,10 @@ def compare_cost_scenarios(df_processed, scenario_name, measure_type, output_dir
     print("="*60)
     
     # Column names
-    cost_p50 = f'{scenario_name}_cost_{scenario_name}_p50_mill'
-    cost_p95 = f'{scenario_name}_cost_{scenario_name}_p95_mill'
-    
+    cost_p50 = f'{scenario_name}_cost_{scenario_name}_p50'
+    cost_p95 = f'{scenario_name}_cost_{scenario_name}_p95'
+    cost_p50_m =  f'{scenario_name}_cost_{scenario_name}_p50_mill'
+    cost_p95_m =  f'{scenario_name}_cost_{scenario_name}_p95_mill'
     # CO2 savings columns
     base = f'total_tonne_co2_saved_{measure_type}_5yr'
     GAS_P50_COL = f'gas_{base}_p50'
@@ -451,15 +452,15 @@ def compare_cost_scenarios(df_processed, scenario_name, measure_type, output_dir
             portfolio_summary[cost_p95] / portfolio_summary['Total_Net_CO2_P95']
         )
         
-        portfolio_summary['Total_Costs_P50'] = portfolio_summary[cost_p50]
-        portfolio_summary['Total_Costs_P95'] = portfolio_summary[cost_p95]
+        portfolio_summary['Total_Costs_P50'] = portfolio_summary[cost_p50_m]
+        portfolio_summary['Total_Costs_P95'] = portfolio_summary[cost_p95_m]
         
         scenario_data[cost_scenario] = portfolio_summary
     
     # Create comparison plots with overlapping histograms
     metrics_to_plot = [
-        ('Cost_per_Ton_Gas_P50', 'Cost per Ton Gas CO2 (£Thou/TON)', 'cost_per_ton_gas_p50'),
-        ('Cost_per_Net_Ton_P50', 'Cost per Net Ton CO2 (£Thou/TON)', 'cost_per_net_ton_p50'),
+        ('Cost_per_Ton_Gas_P50', 'Cost per Ton Gas CO2 (£/TON)', 'cost_per_ton_gas_p50'),
+        ('Cost_per_Net_Ton_P50', 'Cost per Net Ton CO2 (£/TON)', 'cost_per_net_ton_p50'),
         ('Total_Costs_P50', 'Total Costs (£M)', 'total_costs_p50'),
     ]
     
