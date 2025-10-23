@@ -63,7 +63,10 @@ def clean_post_proccess(df, measure_type, scenario_name, years, n_simulations,
     """
     
     stats = ['mean', 'p5', 'p50', 'p95', 'std']
-    
+    if scenario_name in ['heat_pump_only', 'join_heat_ins_decay']:
+        fuels = ['gas', 'elec']
+    else:
+        fuels = ['gas']
     # ==================================================================
     # Gas energy changes
     # ==================================================================
@@ -130,8 +133,13 @@ def clean_post_proccess(df, measure_type, scenario_name, years, n_simulations,
     # ==================================================================
     # Convert to tonnes - NOW INDEXED
     # ==================================================================
-    df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_mean'] = df[f'gas_{years}yr_kg_co2_saved_{measure_type}_mean'] / 1000
-    df[f'gas_total_tonne_co2_saved_{measure_type}_{years}yr_std'] = df[f'gas_{years}yr_kg_co2_saved_{measure_type}_std'] / 1000
+
+    for fuel in fuels:
+        df[f'{fuel}_total_tonne_co2_saved_{measure_type}_{years}yr_mean'] = df[f'{fuel}_{years}yr_kg_co2_saved_{measure_type}_mean'] / 1000
+        df[f'{fuel}_total_tonne_co2_saved_{measure_type}_{years}yr_std'] = df[f'{fuel}_{years}yr_kg_co2_saved_{measure_type}_std'] / 1000
+        df[f'{fuel}_total_tonne_co2_saved_{measure_type}_{years}yr_p50'] = df[f'{fuel}_{years}yr_kg_co2_saved_{measure_type}_p50'] / 1000
+        df[f'{fuel}_total_tonne_co2_saved_{measure_type}_{years}yr_p95'] = df[f'{fuel}_{years}yr_kg_co2_saved_{measure_type}_p95'] / 1000
+        df[f'{fuel}_total_tonne_co2_saved_{measure_type}_{years}yr_p5'] = df[f'{fuel}_{years}yr_kg_co2_saved_{measure_type}_p5'] / 1000
 
     df[f'total_tonne_co2_saved_{measure_type}_{years}yr_mean'] = df[f'total_kg_co2_saved_{measure_type}_{years}yr_mean'] / 1000
     df[f'total_tonne_co2_saved_{measure_type}_{years}yr_std'] = df[f'total_kg_co2_saved_{measure_type}_{years}yr_std'] / 1000

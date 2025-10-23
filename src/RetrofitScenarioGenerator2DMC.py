@@ -58,6 +58,7 @@ class RetrofitScenarioGenerator2DMC:
 
         typ_config = model_class.retrofit_config
         
+        
         # 1. Define Column Mapping 
         default_mapping = {
             'age_band': 'premise_age_bucketed',
@@ -80,13 +81,13 @@ class RetrofitScenarioGenerator2DMC:
         
         # 2. Initial Vectorized Processing (Only needs to run once)
         # This sets inferred wall types, insulation status, etc., which are NOT epistemic
-        logger.debug('Vectorising preproess ... ')
-        df_typ = vectorized_process_buildings(
-            result_df=result_df,
-            col_mapping=col_mapping, 
-            config=typ_config, 
-            random_seed=random_seed
-        )
+        # logger.debug('Vectorising preproess ... ')
+        # df_typ = vectorized_process_buildings(
+        #     result_df=result_df,
+        #     col_mapping=col_mapping, 
+        #     config=typ_config, 
+        #     random_seed=random_seed
+        # )
         
         # 3. GENERATE EPISTEMIC SCENARIOS (Outer Loop Setup)
         logger.debug('Complete. starting to sample the runs .. ')
@@ -108,7 +109,15 @@ class RetrofitScenarioGenerator2DMC:
             logger.info(f"--- Running Outer Loop Scenario {run_idx + 1}/{self.n_epistemic_runs} ---")
             
             # 5. INSTANTIATE THE INNER LOOP MODEL (RetrofitModel)
-            
+            logger.debug('Vectorising preproess now in epistemic loop ... ')
+            df_typ = vectorized_process_buildings(
+                result_df=result_df,
+                col_mapping=col_mapping, 
+                config=typ_config, 
+                random_seed=random_seed,
+                prob_external = epistemic_scenario['external_wall_probability']
+            )
+        
             # This creates a NEW RetrofitModel instance for each Outer Loop run.
             # It FIXES the Epistemic factors for all N_aleatory runs within this model instance.
             model_instance = model_class(

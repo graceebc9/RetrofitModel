@@ -135,15 +135,23 @@ def analyze_portfolio(df, scenario_name, measure_type, years, output_dir):
 
     # Aggregate portfolio totals by epistemic run
     agg_dict = {
-        'TOTAL_GAS_SAVINGS_P50': (GAS_P50_COL, 'sum'), 
-        'TOTAL_GAS_SAVINGS_P95': (GAS_P95_COL, 'sum'),
+      GAS_P50_COL: 'sum', 
+        GAS_P95_COL: 'sum',
     }
+    rename_dict= {
+    GAS_P50_COL: 'TOTAL_GAS_SAVINGS_P50',
+    GAS_P95_COL: 'TOTAL_GAS_SAVINGS_P95'} 
     
     if has_elec:
-        agg_dict['TOTAL_ELEC_SAVINGS_P50'] = (ELEC_P50_COL, 'sum')
-        agg_dict['TOTAL_ELEC_SAVINGS_P95'] = (ELEC_P95_COL, 'sum')
+        agg_dict[ ELEC_P50_COL] = 'sum'
+        agg_dict[ELEC_P95_COL] =   'sum'
+        rename_dict[ELEC_P50_COL] =  'TOTAL_ELEC_SAVINGS_P50'
+        rename_dict[ELEC_P95_COL] =  'TOTAL_ELEC_SAVINGS_P95' 
+    
+    # portfolio_summary = df.groupby('epistemic_run_id').agg(agg_dict).reset_index()
     
     portfolio_summary = df.groupby('epistemic_run_id').agg(agg_dict).reset_index()
+    portfolio_summary = portfolio_summary.rename(columns=rename_dict) 
     
     # Save portfolio summary
     portfolio_summary.to_csv(
@@ -409,8 +417,8 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
         std_total_costs = df_processed.groupby('epistemic_run_id')[cost_col].sum().std()
         
         mill = 1000000
-        print(f"\nMean Total Costs: £{mean_total_costs/mill:.2f}M")
-        print(f"Std Total Costs: £{std_total_costs/mill:.2f}M")
+        print(f"\nMean Total Costs for {scenario_name}: £{mean_total_costs/mill:.2f}M")
+        print(f"Std Total Costs for {scenario_name}: £{std_total_costs/mill:.2f}M")
     else:
         mean_total_costs = 0
         std_total_costs = 0

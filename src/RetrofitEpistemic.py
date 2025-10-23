@@ -11,7 +11,7 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
     """
     
     # 1. Define the Number of Factors (N=6)
-    N_factors = 7
+    N_factors = 8
     
     # 2. Generate the Latin Hypercube Samples (N_epistemic_runs rows, N_factors columns)
     # The output is uniformly distributed between 0 and 1.
@@ -62,6 +62,11 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
     # Select from the array
     cost_scenario_samples = scenario_choices[indices]
 
+     # Factor 8: External Wall Occurrence (beta_EWO) - Uniform: Range [0.3, 0.7]
+    # This represents the probability/proportion of external wall retrofits
+    # Centered around 0.5 with ±0.2 uncertainty
+    ewo_samples = uniform.ppf(lhs_samples_uniform[:, 7], loc=0.1, scale=0.8)
+
     # 4. Compile into DataFrame
     epistemic_df = pd.DataFrame({
         'time_scale_bias': ts_samples,
@@ -71,6 +76,7 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
         'regional_multipliers_uncertainty': reg_samples,
         'age_band_multipliers_uncertainty': age_samples,
         'cost_scenario': cost_scenario_samples,
+        'external_wall_probability': ewo_samples,
     })
     
     return epistemic_df

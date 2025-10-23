@@ -11,17 +11,18 @@ class RetrofitConfig:
     Generates retrofit scenarios with age-appropriate wall insulation types.
     Includes Monte Carlo uncertainty analysis based on observed performance ranges.
     """
-    energy_cost_per_kwh: float = 0.07  
+    # energy_cost_per_kwh: float = 0.07  
     
     # 1. ALEATORY UNCERTAINTY (Inner Loop)
     n_samples: int = 100
     
     # Existing intervention probabilities (what % already have these installed) - these are defaults but can be overridden 
+    # no longer used 
     existing_intervention_probs: Dict[str, float] = field(default_factory=lambda: {
         'loft_insulation': 0.67,
         'floor_insulation': 0.10,
         'window_upgrades': 0.10,
-        'external_wall_occurence': 0.5,
+        # 'external_wall_occurence': 0.5,
         'roof_scaling_factor': 0.8
     })
 
