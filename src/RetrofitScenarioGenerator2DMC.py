@@ -120,7 +120,7 @@ class RetrofitScenarioGenerator2DMC:
             # 6. RUN ALL SCENARIOS FOR THIS FIXED EPISTEMIC SCENARIO
             
             # Create a base result DataFrame for this run, containing building IDs
-            run_results = df_typ[['verisk_building_id']].copy()
+            run_results = df_typ.copy()
             
             for scenario in scenarios:
                 logger.debug(f"  - Calculating Scenario: {scenario}")
@@ -137,13 +137,26 @@ class RetrofitScenarioGenerator2DMC:
                     logger.warning(f"Scenario {scenario} failed: {scenario_results['error']}")
                     continue
                 
-        
+    
+                # # Merge scenario results into the run_results DataFrame (on index or ID)
+                # run_results = pd.merge(
+                #     run_results,
+                #     scenario_results,
+                #     left_index=True, # Assuming your calculate_building_costs_df_updated preserves index
+                #     right_index=True,
+                #     how='left'
+                # )
+                    
+                # Identify only the NEW scenario-specific output columns 
+                # (exclude columns that already exist in df_typ)
+                output_columns = [col for col in scenario_results.columns 
+                                if col not in df_typ.columns]
                 
-                # Merge scenario results into the run_results DataFrame (on index or ID)
+                # Merge only the new output columns
                 run_results = pd.merge(
                     run_results,
-                    scenario_results,
-                    left_index=True, # Assuming your calculate_building_costs_df_updated preserves index
+                    scenario_results[output_columns],
+                    left_index=True,
                     right_index=True,
                     how='left'
                 )

@@ -73,12 +73,8 @@ else:
     ELEC_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_all_meters_electricity_2022.csv'
 
 
-
-
-
 # Output directory - do not update if you want to save in the repo
 OUTPUT_DIR = 'final_dataset'
-
 
 # ========================================
 # CONFIGURATION
@@ -89,9 +85,9 @@ log_size = 10
 n_monte_carlo = 5000
 N_EPISTEMIC_RUNS = 35
 RANDOM_SEED_OUTER = 42
-# scenarios = ['wall_installation', 'loft_installation']
-scenarios=['join_heat_ins_decay' ]
-job_name='testing'
+scenarios = ['wall_installation', 'loft_installation']
+# scenarios=['join_heat_ins_decay' ]
+job_name='walls_insulaion'
 region_list = ['NE'] if running_locally else [os.getenv('REGION_LIST')]
 
 STAGE0_split_onsud = False

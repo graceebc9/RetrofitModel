@@ -353,7 +353,7 @@ class RetrofitModel2D:
                 energy_stats[col_name] = val
                 logger.debug(f'Electricity {stat}: {val:.4f}')
         else:
-            logger.warning('Skipping electricity statistics - no samples collected!')
+            logger.debug('Skipping electricity statistics - no samples collected!')
             
         return energy_stats
  
@@ -872,7 +872,8 @@ class RetrofitModel2D:
         energy_cols = [] 
         
         if scenario_str == 'wall_installation':
-            interventions = ['cavity_wall_percentile', 'solid_wall_internal_percentile', 'solid_wall_external_percentile']
+            interventions = ['wall_installation']
+            # interventions = ['cavity_wall_percentile', 'solid_wall_internal_percentile', 'solid_wall_external_percentile']
             elec = False 
         elif scenario_str == 'loft_installation':
             interventions = ['loft_percentile']
