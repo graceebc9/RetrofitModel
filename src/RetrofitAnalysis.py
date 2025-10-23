@@ -408,6 +408,9 @@ def compare_cost_scenarios(df_processed, scenario_name, measure_type, output_dir
         cost_p95: 'sum',
         GAS_P50_COL: 'sum',
         GAS_P95_COL: 'sum',
+        cost_p50_m: 'sum', 
+        cost_p95_m: 'sum',
+
     }
     
     if has_elec:
