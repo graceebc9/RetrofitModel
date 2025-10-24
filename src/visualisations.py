@@ -97,6 +97,19 @@ def run_vis_new(res_df, scenario, op_base):
                 dpi=300, bbox_inches='tight')
         plt.close(fig)
 
+        for ins in pl.inferred_insulation_type.unique():
+    
+            plpl=pl[pl['inferred_insulation_type']==ins ]
+            f = plot_col_reduction_by_decile_epistemic(plpl,
+                                            mean_col=f'{scenario}_cost_{scenario}_mean', 
+                                            std_col=f'{scenario}_cost_{scenario}_std',
+                                            groupby_col='avg_gas_percentile',
+                                            groupby_label='Gas Usage Decile',
+                                            ylabel=f'Costs of Installation: {ins}',
+                                            costs=True , 
+                                            percentage=False, 
+                                        ) 
+
     
     print(f"All figures saved to: {op_base}")
                                     
