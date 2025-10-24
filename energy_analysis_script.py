@@ -219,7 +219,7 @@ def analyze_uncertainty(df, scenario_name, measure_type, years, output_dir):
 
 
 def process_single_scenario(df, scenario_name, measure_type, years, n_simulations,
-                            gas_carbon_factor, elec_carbon_factor, output_dir):
+                            gas_carbon_factor, elec_carbon_factor, output_dir , save_proccessed_data=False):
     """Process a single scenario and generate all outputs."""
     print("\n" + "="*80)
     print(f"PROCESSING SCENARIO: {scenario_name} (measure type: {measure_type})")
@@ -290,9 +290,10 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
         print(f"Validation warning: {e}")
     
     # Save processed data
-    df_processed.to_csv(os.path.join(scenario_output_dir, 'processed_data.csv'), index=False)
-    print(f"Saved processed data to: {scenario_output_dir}/processed_data.csv")
-    print(df_processed.columns.tolist() )
+    if save_proccessed_data:
+        df_processed.to_csv(os.path.join(scenario_output_dir, 'processed_data.csv'), index=False)
+        print(f"Saved processed data to: {scenario_output_dir}/processed_data.csv")
+    
     # Perform analyses
     building_metrics = analyze_uncertainty(df_processed, scenario_name, measure_type, years, scenario_output_dir)
     portfolio_metrics = run_meta_portoflio(scenario_output_dir, df_processed, scenario_name,  years=5 )
