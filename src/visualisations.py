@@ -65,9 +65,216 @@ def run_vis_new(res_df, scenario, op_base):
     fig.savefig(os.path.join(op_base, f'{scenario}_gas_reduction_by_premise_type.png'), 
                 dpi=300, bbox_inches='tight')
     plt.close(fig)
+
+
+ 
+    if scenario == 'wall_installation':
+        fig = plot_total_cost_by_decile_epistemic_stacked(pl,
+                                    cost_col=f'{scenario}_cost_{scenario}_mean', 
+                                    cost_std_col=f'{scenario}_cost_{scenario}_std',
+                                    
+                                    stack_by_col='inferred_insulation_type',
+                                    
+                                    groupby_col='avg_gas_percentile',
+                                    groupby_label='Gas Usage Decile',
+                                    ylabel='Costs of Installation',
+                                ) 
+        fig.savefig(os.path.join(op_base, f'{scenario}_wall_type_costssby_decile.png'), 
+                dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+        fig = plot_total_cost_by_decile_epistemic_stacked(pl,
+                                    cost_col=f'{scenario}_cost_{scenario}_mean', 
+                                    cost_std_col=f'{scenario}_cost_{scenario}_std',
+                                    
+                                    stack_by_col='inferred_insulation_type',
+                                    
+                                    groupby_col='premise_type',
+                                    groupby_label='Premise Type',
+                                    ylabel='Costs of Installation',
+                                ) 
+        fig.savefig(os.path.join(op_base, f'{scenario}_wall_type_costssby_premise_type.png'), 
+                dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
     
     print(f"All figures saved to: {op_base}")
                                     
+ 
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+
+def plot_total_cost_by_decile_epistemic_stacked(res_df,
+                                cost_col,
+                                cost_std_col, 
+                                stack_by_col, 
+                                epistemic_run_id=None,
+                                groupby_col='avg_gas_percentile',
+                                groupby_label='Gas Usage Decile',
+                                ylabel='Cost (£)',
+                                title=None,
+                                figsize=(16, 6),
+                               
+                                rot=False):
+    
+    df = res_df.copy()
+    
+    # ==========================================================
+    # ===== LEFT PLOT: Mean Cost per Building =====
+    # ==========================================================
+    if epistemic_run_id is None:
+        epistemic_run_id = df['epistemic_run_id'].iloc[0]
+        print(f"No epistemic_run_id specified, using: {epistemic_run_id}")
+    
+    df_single = df[df['epistemic_run_id'] == epistemic_run_id].copy()
+    
+    # Use cost_std_col for aleatoric uncertainty
+    df_single[f'{cost_std_col}_2'] = (df_single[cost_std_col] ** 2)
+    
+    grouped_single = df_single.groupby(groupby_col).agg({
+        cost_col: ['mean', 'count'],
+        f'{cost_std_col}_2': ['sum']
+    }).reset_index()
+    grouped_single.columns = ['decile', 'mean_cost', 'n_buildings', 'std_squared_summed']
+    grouped_single['pooled_sd'] = np.sqrt(grouped_single['std_squared_summed'] / grouped_single['n_buildings'])
+    
+    # Calculate bounds for single run (LEFT)
+    grouped_single['se'] = grouped_single['pooled_sd'] / np.sqrt(grouped_single['n_buildings'])
+    grouped_single['sd_lower'] = grouped_single['mean_cost'] - 2 * grouped_single['pooled_sd']
+    grouped_single['sd_upper'] = grouped_single['mean_cost'] + 2 * grouped_single['pooled_sd']
+    
+    
+    # =================================================================
+    # ===== RIGHT PLOT: Mean Total Cost & Proportions =====
+    # =================================================================
+    
+    epistemic_subgroup_totals = []
+    epistemic_decile_totals = []
+    
+    for run_id in df['epistemic_run_id'].unique():
+        df_run = df[df['epistemic_run_id'] == run_id].copy()
+        
+        # --- NEW: Get SUM of costs for each subgroup ---
+        grouped_run_sub = df_run.groupby([groupby_col, stack_by_col]).agg(
+            subgroup_total_cost=(cost_col, 'sum')
+        ).reset_index()
+        grouped_run_sub['epistemic_run_id'] = run_id
+        epistemic_subgroup_totals.append(grouped_run_sub)
+        
+        # --- NEW: Get SUM of costs for the whole decile ---
+        grouped_run_total = df_run.groupby(groupby_col).agg(
+            decile_total_cost=(cost_col, 'sum')
+        ).reset_index()
+        grouped_run_total['epistemic_run_id'] = run_id
+        epistemic_decile_totals.append(grouped_run_total)
+    
+    # --- NEW: Aggregate subgroup total costs ---
+    epistemic_df_sub = pd.concat(epistemic_subgroup_totals, ignore_index=True)
+    grouped_epistemic_sub = epistemic_df_sub.groupby([groupby_col, stack_by_col]).agg({
+        'subgroup_total_cost': ['mean'] # Mean of the subgroup's total
+    }).reset_index()
+    grouped_epistemic_sub.columns = ['decile', stack_by_col, 'mean_subgroup_total_cost']
+    
+    # --- NEW: Aggregate decile total costs (for error bars) ---
+    epistemic_df_total = pd.concat(epistemic_decile_totals, ignore_index=True)
+    grouped_epistemic_total = epistemic_df_total.groupby(groupby_col).agg({
+        'decile_total_cost': ['mean', 'std', 'count']
+    }).reset_index()
+    grouped_epistemic_total.columns = ['decile', 'total_mean_cost', 'epistemic_std', 'n_epistemic_runs']
+    grouped_epistemic_total['epistemic_se'] = grouped_epistemic_total['epistemic_std'] / np.sqrt(grouped_epistemic_total['n_epistemic_runs'])
+    
+    # Calculate bounds for epistemic (RIGHT)
+    grouped_epistemic_total['ci_error'] = 2 * grouped_epistemic_total['epistemic_se']
+    
+    
+    # ========================================================
+    # ===== CREATE PLOTS =====
+    # ========================================================
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    
+    # --- LEFT PLOT: Mean Cost per Building ---
+    ax1.plot(grouped_single['decile'], grouped_single['mean_cost'],
+             'o-', linewidth=2, markersize=8, color='steelblue')
+    ax1.fill_between(grouped_single['decile'], grouped_single['sd_lower'], grouped_single['sd_upper'],
+                     alpha=0.3, label='Mean ± 2σ (aleatoric)', color='steelblue')
+    ax1.set_xlabel(groupby_label, fontsize=11)
+    ax1.set_ylabel(f"Mean {ylabel} per Building", fontsize=11)
+    ax1.set_title(f'Mean Cost & Aleatoric Uncertainty\n(Run: {epistemic_run_id})', fontsize=13)
+    ax1.set_xticks(grouped_single['decile'].unique())
+    ax1.legend()
+    ax1.grid(alpha=0.3)
+    ax1.set_ylim(0) # Costs are always positive
+    ax1.axhline(0, color='r', linestyle='--', alpha=0.5)
+    if rot:
+        ax1.tick_params(axis='x', rotation=90)
+    
+    # --- RIGHT PLOT: Mean Total Cost (Stacked) ---
+    
+    # Pivot the mean subgroup totals for stacked plotting
+    pivot_data = grouped_epistemic_sub.pivot(
+        index='decile', 
+        columns=stack_by_col, 
+        values='mean_subgroup_total_cost'
+    )
+    
+    # Plot the stacked bar
+    pivot_data.plot(kind='bar', stacked=True, ax=ax2, alpha=0.8, width=0.8)
+    
+    # Get x-axis positions (0, 1, 2...) for placing error bars
+    x_positions = np.arange(len(grouped_epistemic_total['decile']))
+    
+    # Plot the total error bar over the stacked bars
+    ax2.errorbar(x=x_positions, 
+                 y=grouped_epistemic_total['total_mean_cost'],
+                 yerr=grouped_epistemic_total['ci_error'], fmt='none',
+                 color='black', capsize=5, capthick=2)
+    
+    ax2.set_xlabel(groupby_label, fontsize=11)
+    ax2.set_ylabel(f"Mean Total {ylabel} per Decile", fontsize=11)
+    
+    n_runs = int(grouped_epistemic_total['n_epistemic_runs'].iloc[0])
+    ax2.set_title(f'Mean Total Cost & Epistemic Uncertainty\n(Across {n_runs} runs)', fontsize=13)
+    
+    # --- Combine legends ---
+    handles, labels = ax2.get_legend_handles_labels()
+    error_bar_legend = Line2D([0], [0], color='black', marker='_', markersize=5, 
+                              label='Total Mean Cost ± 2 SE')
+    handles.append(error_bar_legend)
+    ax2.legend(handles=handles, title=stack_by_col)
+    
+    ax2.grid(alpha=0.3, axis='y')
+    ax2.axhline(0, color='r', linestyle='--', alpha=0.5)
+    if rot:
+        # Set ticks and labels for bar chart
+        ax2.set_xticks(x_positions)
+        ax2.set_xticklabels(grouped_epistemic_total['decile'], rotation=90)
+    else:
+        ax2.set_xticks(x_positions)
+        ax2.set_xticklabels(grouped_epistemic_total['decile'])
+
+    
+    if title:
+        fig.suptitle(title, fontsize=14)
+    plt.tight_layout()
+    
+    # ========================================================
+    # ===== Print summaries =====
+    # ========================================================
+    
+    print("\n=== Single Run Summary (Mean Cost per Building) ===")
+    print(grouped_single[['decile', 'mean_cost', 'pooled_sd', 'n_buildings']].to_string(index=False))
+    
+    print(f"\n=== Epistemic Summary (Mean Total Cost Contributions by {stack_by_col}) ===")
+    print(pivot_data.to_string())
+    
+    print("\n=== Epistemic Summary (Mean Total Cost per Decile) ===")
+    print(grouped_epistemic_total[['decile', 'total_mean_cost', 'epistemic_std', 'epistemic_se', 'n_epistemic_runs']].to_string(index=False))
+ 
+        
+    return fig
 
 
 def plot_col_reduction_by_decile_epistemic(res_df,
@@ -79,74 +286,59 @@ def plot_col_reduction_by_decile_epistemic(res_df,
                                 ylabel='Energy Reduction (%)',
                                 title=None,
                                 figsize=(16, 6),
-                                show_plot=True,
+                               
                                 costs=True,
                                 rot=False,
                                 percentage=True):
     
     df = res_df.copy()
     
-    # Check if we have epistemic runs
-    has_epistemic = 'epistemic_run_id' in df.columns
+    # ===== LEFT PLOT: Single epistemic run =====
+    if epistemic_run_id is None:
+        epistemic_run_id = df['epistemic_run_id'].iloc[0]
+        print(f"No epistemic_run_id specified, using: {epistemic_run_id}")
     
-    if has_epistemic:
-        # ===== LEFT PLOT: Single epistemic run =====
-        if epistemic_run_id is None:
-            epistemic_run_id = df['epistemic_run_id'].iloc[0]
-            print(f"No epistemic_run_id specified, using: {epistemic_run_id}")
-        
-        df_single = df[df['epistemic_run_id'] == epistemic_run_id].copy()
-        df_single[f'{std_col}_2'] = (df_single[std_col] ** 2)
-        
-        grouped_single = df_single.groupby(groupby_col).agg({
-            mean_col: ['mean', 'count'],
-            f'{std_col}_2': ['sum']
-        }).reset_index()
-        grouped_single.columns = ['decile', 'mean_reduction', 'n_buildings', 'std_squared_summed']
-        grouped_single['pooled_sd'] = np.sqrt(grouped_single['std_squared_summed'] / grouped_single['n_buildings'])
-        
-        # ===== RIGHT PLOT: Across all epistemic runs =====
-        # Calculate mean for each epistemic run
-        epistemic_means = []
-        for run_id in df['epistemic_run_id'].unique():
-            df_run = df[df['epistemic_run_id'] == run_id].copy()
-            df_run[f'{std_col}_2'] = (df_run[std_col] ** 2)
-            
-            grouped_run = df_run.groupby(groupby_col).agg({
-                mean_col: ['mean', 'count']
-            }).reset_index()
-            grouped_run.columns = ['decile', 'mean_reduction', 'n_buildings']
-            grouped_run['epistemic_run_id'] = run_id
-            epistemic_means.append(grouped_run)
-        
-        epistemic_df = pd.concat(epistemic_means, ignore_index=True)
-        
-        # Aggregate across epistemic runs
-        grouped_epistemic = epistemic_df.groupby('decile').agg({
-            'mean_reduction': ['mean', 'std', 'count']
-        }).reset_index()
-        grouped_epistemic.columns = ['decile', 'mean_reduction', 'epistemic_std', 'n_epistemic_runs']
-        grouped_epistemic['epistemic_se'] = grouped_epistemic['epistemic_std'] / np.sqrt(grouped_epistemic['n_epistemic_runs'])
-        
-    else:
-        # Original behavior if no epistemic runs
-        df[f'{std_col}_2'] = (df[std_col] ** 2)
-        grouped_single = df.groupby(groupby_col).agg({
-            mean_col: ['mean', 'count'],
-            f'{std_col}_2': ['sum']
-        }).reset_index()
-        grouped_single.columns = ['decile', 'mean_reduction', 'n_buildings', 'std_squared_summed']
-        grouped_single['pooled_sd'] = np.sqrt(grouped_single['std_squared_summed'] / grouped_single['n_buildings'])
-        grouped_epistemic = grouped_single.copy()
+    df_single = df[df['epistemic_run_id'] == epistemic_run_id].copy()
+    df_single[f'{std_col}_2'] = (df_single[std_col] ** 2)
     
+    grouped_single = df_single.groupby(groupby_col).agg({
+        mean_col: ['mean', 'count'],
+        f'{std_col}_2': ['sum']
+    }).reset_index()
+    grouped_single.columns = ['decile', 'mean_reduction', 'n_buildings', 'std_squared_summed']
+    grouped_single['pooled_sd'] = np.sqrt(grouped_single['std_squared_summed'] / grouped_single['n_buildings'])
+    
+    # ===== RIGHT PLOT: Across all epistemic runs =====
+    # Calculate mean for each epistemic run
+    epistemic_means = []
+    for run_id in df['epistemic_run_id'].unique():
+        df_run = df[df['epistemic_run_id'] == run_id].copy()
+        
+        # NOTE: Removed unused line `df_run[f'{std_col}_2'] = ...` here
+        
+        grouped_run = df_run.groupby(groupby_col).agg({
+            mean_col: ['mean', 'count']
+        }).reset_index()
+        grouped_run.columns = ['decile', 'mean_reduction', 'n_buildings']
+        grouped_run['epistemic_run_id'] = run_id
+        epistemic_means.append(grouped_run)
+    
+    epistemic_df = pd.concat(epistemic_means, ignore_index=True)
+    
+    # Aggregate across epistemic runs
+    grouped_epistemic = epistemic_df.groupby('decile').agg({
+        'mean_reduction': ['mean', 'std', 'count']
+    }).reset_index()
+    grouped_epistemic.columns = ['decile', 'mean_reduction', 'epistemic_std', 'n_epistemic_runs']
+    grouped_epistemic['epistemic_se'] = grouped_epistemic['epistemic_std'] / np.sqrt(grouped_epistemic['n_epistemic_runs'])
+
     # Apply percentage scaling
     if percentage:
         grouped_single['mean_reduction'] *= 100
         grouped_single['pooled_sd'] *= 100
-        if has_epistemic:
-            grouped_epistemic['mean_reduction'] *= 100
-            grouped_epistemic['epistemic_std'] *= 100
-            grouped_epistemic['epistemic_se'] *= 100
+        grouped_epistemic['mean_reduction'] *= 100
+        grouped_epistemic['epistemic_std'] *= 100
+        grouped_epistemic['epistemic_se'] *= 100
     
     # Calculate bounds for single run (LEFT)
     grouped_single['se'] = grouped_single['pooled_sd'] / np.sqrt(grouped_single['n_buildings'])
@@ -154,13 +346,9 @@ def plot_col_reduction_by_decile_epistemic(res_df,
     grouped_single['sd_upper'] = grouped_single['mean_reduction'] + 2 * grouped_single['pooled_sd']
     
     # Calculate bounds for epistemic (RIGHT)
-    if has_epistemic:
-        grouped_epistemic['epistemic_lower'] = grouped_epistemic['mean_reduction'] - 2 * grouped_epistemic['epistemic_se']
-        grouped_epistemic['epistemic_upper'] = grouped_epistemic['mean_reduction'] + 2 * grouped_epistemic['epistemic_se']
-        grouped_epistemic['ci_error'] = 2 * grouped_epistemic['epistemic_se']
-    else:
-        grouped_epistemic['se'] = grouped_single['se']
-        grouped_epistemic['ci_error'] = 2 * grouped_epistemic['se']
+    grouped_epistemic['epistemic_lower'] = grouped_epistemic['mean_reduction'] - 2 * grouped_epistemic['epistemic_se']
+    grouped_epistemic['epistemic_upper'] = grouped_epistemic['mean_reduction'] + 2 * grouped_epistemic['epistemic_se']
+    grouped_epistemic['ci_error'] = 2 * grouped_epistemic['epistemic_se']
     
     # ===== CREATE PLOTS =====
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
@@ -172,10 +360,7 @@ def plot_col_reduction_by_decile_epistemic(res_df,
                      alpha=0.3, label='Mean ± 2σ (within run)', color='steelblue')
     ax1.set_xlabel(groupby_label, fontsize=11)
     ax1.set_ylabel(ylabel, fontsize=11)
-    if has_epistemic:
-        ax1.set_title(f'Within-Run Variability\n(Run: {epistemic_run_id})', fontsize=13)
-    else:
-        ax1.set_title('Individual Building Variability', fontsize=13)
+    ax1.set_title(f'Within-Run Variability\n(Run: {epistemic_run_id})', fontsize=13)
     ax1.set_xticks(grouped_single['decile'].unique())
     ax1.legend()
     ax1.grid(alpha=0.3)
@@ -195,11 +380,9 @@ def plot_col_reduction_by_decile_epistemic(res_df,
                  label='Mean ± 2 SE (epistemic)')
     ax2.set_xlabel(groupby_label, fontsize=11)
     ax2.set_ylabel(ylabel, fontsize=11)
-    if has_epistemic:
-        n_runs = int(grouped_epistemic['n_epistemic_runs'].iloc[0])
-        ax2.set_title(f'Epistemic Uncertainty\n(Across {n_runs} runs)', fontsize=13)
-    else:
-        ax2.set_title('Confidence in Mean Estimate', fontsize=13)
+    
+    n_runs = int(grouped_epistemic['n_epistemic_runs'].iloc[0])
+    ax2.set_title(f'Epistemic Uncertainty\n(Across {n_runs} runs)', fontsize=13)
     ax2.set_xticks(grouped_epistemic['decile'].unique())
     ax2.legend()
     ax2.grid(alpha=0.3, axis='y')
@@ -216,10 +399,10 @@ def plot_col_reduction_by_decile_epistemic(res_df,
     print("\n=== Single Run Summary ===")
     print(grouped_single[['decile', 'mean_reduction', 'pooled_sd', 'n_buildings']].to_string(index=False))
     
-    if has_epistemic:
-        print("\n=== Epistemic Uncertainty Summary ===")
-        print(grouped_epistemic[['decile', 'mean_reduction', 'epistemic_std', 'epistemic_se', 'n_epistemic_runs']].to_string(index=False))
+    print("\n=== Epistemic Uncertainty Summary ===")
+    print(grouped_epistemic[['decile', 'mean_reduction', 'epistemic_std', 'epistemic_se', 'n_epistemic_runs']].to_string(index=False))
     
+        
     return fig
 
 def plot_col_reduction_by_decile_conservation(res_df,
