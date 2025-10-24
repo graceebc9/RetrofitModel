@@ -67,7 +67,30 @@ def run_vis_new(res_df, scenario, op_base):
     plt.close(fig)
 
 
- 
+    # total csots vs run type ;
+    pl[f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean']= pl['gas_total_tonne_co2_saved_wall_installation_5yr_mean']
+    fig = plot_total_cost_by_decile_epistemic_stacked (pl,
+                                        cost_col= f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean',
+                                        cost_std_col= f'gas_total_tonne_co2_saved_{scenario}_5yr_std',
+                                        stack_by_col='inferred_insulation_type',
+                                        # ylabel='Costs of Installation',
+                                        costs=False, 
+                                    ) 
+    fig.savefig(os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile.png'), dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    fig = plot_total_cost_by_decile_epistemic_stacked (pl,
+                                        cost_col= f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean',
+                                        cost_std_col= f'gas_total_tonne_co2_saved_{scenario}_5yr_std',
+                                        stack_by_col='conservation_area_bool',
+                                        ylabel='Tons CO2 gas removal',
+                                        costs=False, 
+                                    ) 
+    fig.savefig(os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_conservation.png'), dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+
+    
+    # now split out just cavity types to get av costs 
     if scenario == 'wall_installation':
         fig = plot_total_cost_by_decile_epistemic_stacked(pl,
                                     cost_col=f'{scenario}_cost_{scenario}_mean', 
@@ -129,7 +152,8 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
                                 ylabel='Cost (£)',
                                 title=None,
                                 figsize=(16, 6),
-                               
+                                costs=True ,
+                                
                                 rot=False):
     
     df = res_df.copy()
@@ -219,7 +243,9 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
     ax1.set_xticks(grouped_single['decile'].unique())
     ax1.legend()
     ax1.grid(alpha=0.3)
-    ax1.set_ylim(0) # Costs are always positive
+    if costs:
+    
+        ax1.set_ylim(0) # Costs are always positive
     ax1.axhline(0, color='r', linestyle='--', alpha=0.5)
     if rot:
         ax1.tick_params(axis='x', rotation=90)
