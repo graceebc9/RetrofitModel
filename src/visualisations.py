@@ -78,6 +78,7 @@ def run_vis_new(res_df, scenario, op_base):
                                     ) 
     fig.savefig(os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile.png'), dpi=300, bbox_inches='tight')
     plt.close(fig)
+    
     fig = plot_total_cost_by_decile_epistemic_stacked (pl,
                                         cost_col= f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean',
                                         cost_std_col= f'gas_total_tonne_co2_saved_{scenario}_5yr_std',
