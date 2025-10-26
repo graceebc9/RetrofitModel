@@ -30,6 +30,15 @@ def run_meta_portoflio(base_op, df_processed, scenraio,  years=5 ):
         df_processed, scenraio, scenraio, op_comparison, suff_comparison
     )
     metrics['cost_scenario_comparison'] = cost_comparison
+
+    wall_cost_comparison = compare_by_wall_type(
+    df_processed=df_processed,
+    scenario_name=scenraio , 
+    measure_type=scenraio,
+    output_dir=op_comparison , 
+    name_suffix='cost_wall_type',
+    input_col_split='inferred_insulation_type'  
+)
     
     suff = f'{scenraio}_energy'
     op = os.path.join(base_op, scenraio, suff)
@@ -327,56 +336,56 @@ def analyze_portfolio_costs(df, scenario_name, measure_type, output_dir, name_su
         for k, v in final_cost_metrics.items():
             f.write(f"{k:<50}: £{v:,.2f}M\n")
 
-    # Plotting code (your existing code with updated column names)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    # # Plotting code (your existing code with updated column names)
+    # fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
     
-    sns.histplot(portfolio_summary['Cost_per_Ton_Gas_P50'], kde=True, bins=10, ax=ax1)
-    ax1.axvline(
-        portfolio_summary['Cost_per_Ton_Gas_P50'].mean(), 
-        color='r', 
-        linestyle='--', 
-        label=f"Mean: £{final_gas_metrics['Cost_per_TonCO2_Gas_Best_Estimate (P50 Mean)']:,.2f}"
-    )
-    ax1.set_title(f'Portfolio Cost per Ton CO2 Removal: Epistemic Uncertainty\n({scenario_name})')
-    ax1.set_xlabel('Cost per Ton CO2 Savings (£/TON)')
-    ax1.set_ylabel('Frequency (Number of Epistemic Runs)')
-    ax1.legend()
+    # sns.histplot(portfolio_summary['Cost_per_Ton_Gas_P50'], kde=True, bins=10, ax=ax1)
+    # ax1.axvline(
+    #     portfolio_summary['Cost_per_Ton_Gas_P50'].mean(), 
+    #     color='r', 
+    #     linestyle='--', 
+    #     label=f"Mean: £{final_gas_metrics['Cost_per_TonCO2_Gas_Best_Estimate (P50 Mean)']:,.2f}"
+    # )
+    # ax1.set_title(f'Portfolio Cost per Ton CO2 Removal: Epistemic Uncertainty\n({scenario_name})')
+    # ax1.set_xlabel('Cost per Ton CO2 Savings (£/TON)')
+    # ax1.set_ylabel('Frequency (Number of Epistemic Runs)')
+    # ax1.legend()
     
-    sns.histplot(portfolio_summary['Cost_per_Net_Ton_P50'], kde=True, bins=10, ax=ax2)
-    ax2.axvline(
-        portfolio_summary['Cost_per_Net_Ton_P50'].mean(), 
-        color='r', 
-        linestyle='--', 
-        label=f"Mean: £{final_net_metrics['Net Cost per Ton CO2 (P50 Mean)']:,.2f}"
-    )
-    ax2.set_title(f'Portfolio Net Cost per TON CO2: Epistemic Uncertainty\n({scenario_name})')
-    ax2.set_xlabel('Cost per Net TON CO2 (£/TON)')
-    ax2.set_ylabel('Frequency (Number of Epistemic Runs)')
-    ax2.legend()
+    # sns.histplot(portfolio_summary['Cost_per_Net_Ton_P50'], kde=True, bins=10, ax=ax2)
+    # ax2.axvline(
+    #     portfolio_summary['Cost_per_Net_Ton_P50'].mean(), 
+    #     color='r', 
+    #     linestyle='--', 
+    #     label=f"Mean: £{final_net_metrics['Net Cost per Ton CO2 (P50 Mean)']:,.2f}"
+    # )
+    # ax2.set_title(f'Portfolio Net Cost per TON CO2: Epistemic Uncertainty\n({scenario_name})')
+    # ax2.set_xlabel('Cost per Net TON CO2 (£/TON)')
+    # ax2.set_ylabel('Frequency (Number of Epistemic Runs)')
+    # ax2.legend()
     
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f'{name_suffix}_cost_per_ton_distributions.png'), 
-                dpi=300, bbox_inches='tight')
-    plt.close()
+    # plt.tight_layout()
+    # plt.savefig(os.path.join(output_dir, f'{name_suffix}_cost_per_ton_distributions.png'), 
+    #             dpi=300, bbox_inches='tight')
+    # plt.close()
     
-    fig2, ax3 = plt.subplots(1, 1, figsize=(10, 6))
+    # fig2, ax3 = plt.subplots(1, 1, figsize=(10, 6))
     
-    sns.histplot(portfolio_summary['Total_Costs_P50'], kde=True, bins=10, ax=ax3)
-    ax3.axvline(
-        portfolio_summary['Total_Costs_P50'].mean(), 
-        color='r', 
-        linestyle='--', 
-        label=f"Mean: £{final_cost_metrics['Total Costs (P50 Mean)']:,.2f}M"
-    )
-    ax3.set_title(f'Portfolio Total Costs: Epistemic Uncertainty\n({scenario_name})')
-    ax3.set_xlabel('Total Costs (£M)')
-    ax3.set_ylabel('Frequency (Number of Epistemic Runs)')
-    ax3.legend()
+    # sns.histplot(portfolio_summary['Total_Costs_P50'], kde=True, bins=10, ax=ax3)
+    # ax3.axvline(
+    #     portfolio_summary['Total_Costs_P50'].mean(), 
+    #     color='r', 
+    #     linestyle='--', 
+    #     label=f"Mean: £{final_cost_metrics['Total Costs (P50 Mean)']:,.2f}M"
+    # )
+    # ax3.set_title(f'Portfolio Total Costs: Epistemic Uncertainty\n({scenario_name})')
+    # ax3.set_xlabel('Total Costs (£M)')
+    # ax3.set_ylabel('Frequency (Number of Epistemic Runs)')
+    # ax3.legend()
     
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f'{name_suffix}_total_costs_distribution.png'), 
-                dpi=300, bbox_inches='tight')
-    plt.close()
+    # plt.tight_layout()
+    # plt.savefig(os.path.join(output_dir, f'{name_suffix}_total_costs_distribution.png'), 
+    #             dpi=300, bbox_inches='tight')
+    # plt.close()
     
     return final_portfolio_metrics
 
@@ -537,6 +546,182 @@ def compare_cost_scenarios(df_processed, scenario_name, measure_type, output_dir
     
     # Print summary
     print("\n--- Cost Scenario Comparison Summary ---")
+    print(summary_df.to_string(index=False))
+    
+    return summary_df
+
+def compare_by_wall_type(df_processed, scenario_name, measure_type, output_dir, name_suffix, input_col_split='inferred_insulation_type'):
+    """
+    Compare costs across different wall types (or other categorical splits) with overlapping histograms.
+    
+    Parameters:
+    -----------
+    input_col_split : str
+        Column name to split the analysis by (default: 'inferred_insulation_type')
+    """
+    print("\n" + "="*60)
+    print(f"WALL TYPE COMPARISON - {scenario_name}")
+    print("="*60)
+    
+    # Check if split column exists
+    if input_col_split not in df_processed.columns:
+        print(f"Warning: Column '{input_col_split}' not found in dataframe. Skipping wall type comparison.")
+        return None
+    
+    # Column names
+    cost_p50 = f'{scenario_name}_cost_{scenario_name}_p50'
+    cost_p95 = f'{scenario_name}_cost_{scenario_name}_p95'
+    cost_p50_m = f'{scenario_name}_cost_{scenario_name}_p50_mill'
+    cost_p95_m = f'{scenario_name}_cost_{scenario_name}_p95_mill'
+    
+    # CO2 savings columns
+    base = f'total_tonne_co2_saved_{measure_type}_5yr'
+    GAS_P50_COL = f'gas_{base}_p50'
+    GAS_P95_COL = f'gas_{base}_p95'
+    
+    # Check if electricity columns exist
+    ELEC_P50_COL = f'elec_{base}_p50'
+    has_elec = ELEC_P50_COL in df_processed.columns
+    
+    net_co2_col_p50 = f'total_tonne_co2_saved_{measure_type}_5yr_p50'
+    net_co2_col_p95 = f'total_tonne_co2_saved_{measure_type}_5yr_p95'
+
+    # Prepare aggregation dict
+    agg_dict = {
+        cost_p50: 'sum', 
+        cost_p95: 'sum',
+        GAS_P50_COL: 'sum',
+        GAS_P95_COL: 'sum',
+        cost_p50_m: 'sum', 
+        cost_p95_m: 'sum',
+        net_co2_col_p50: 'sum', 
+        net_co2_col_p95: 'sum',
+    }
+    
+    if has_elec:
+        ELEC_P95_COL = f'elec_{base}_p95'
+        agg_dict[ELEC_P50_COL] = 'sum'
+        agg_dict[ELEC_P95_COL] = 'sum'
+    
+    # Store data for each wall type
+    wall_type_data = {}
+    wall_types = df_processed[input_col_split].unique()
+    wall_types = [wt for wt in wall_types if pd.notna(wt)]  # Remove NaN values
+    
+    print(f"\nFound {len(wall_types)} unique values in '{input_col_split}': {wall_types}")
+    
+    for wall_type in wall_types:
+        df_wall = df_processed[df_processed[input_col_split] == wall_type]
+        
+        # Aggregate by epistemic run
+        portfolio_summary = df_wall.groupby('epistemic_run_id').agg(agg_dict).reset_index()
+        
+        # Calculate cost per ton metrics
+        portfolio_summary['Cost_per_Ton_Gas_P50'] = (
+            portfolio_summary[cost_p50] / portfolio_summary[GAS_P50_COL]
+        )
+        portfolio_summary['Cost_per_Ton_Gas_P95'] = (
+            portfolio_summary[cost_p95] / portfolio_summary[GAS_P95_COL]
+        )
+        
+        portfolio_summary['Total_Net_CO2_P50'] = portfolio_summary[net_co2_col_p50]
+        portfolio_summary['Total_Net_CO2_P95'] = portfolio_summary[net_co2_col_p95]
+        
+        portfolio_summary['Cost_per_Net_Ton_P50'] = (
+            portfolio_summary[cost_p50] / portfolio_summary['Total_Net_CO2_P50']
+        )
+        portfolio_summary['Cost_per_Net_Ton_P95'] = (
+            portfolio_summary[cost_p95] / portfolio_summary['Total_Net_CO2_P95']
+        )
+        
+        portfolio_summary['Total_Costs_P50'] = portfolio_summary[cost_p50_m]
+        portfolio_summary['Total_Costs_P95'] = portfolio_summary[cost_p95_m]
+        
+        wall_type_data[wall_type] = portfolio_summary
+    
+    # Create comparison plots with overlapping histograms
+    metrics_to_plot = [
+        ('Cost_per_Ton_Gas_P50', 'Cost per Ton Gas CO2 (£/TON)', 'cost_per_ton_gas_p50'),
+        ('Cost_per_Net_Ton_P50', 'Cost per Net Ton CO2 (£/TON)', 'cost_per_net_ton_p50'),
+        ('Total_Costs_P50', 'Total Costs (£M)', 'total_costs_p50'),
+    ]
+    
+    # Color palette for different wall types
+    colors = plt.cm.tab10(np.linspace(0, 1, len(wall_types)))
+    
+    for metric_col, metric_label, file_suffix in metrics_to_plot:
+        fig, ax = plt.subplots(1, 1, figsize=(14, 8))
+        
+        for idx, (wall_type, portfolio_summary) in enumerate(wall_type_data.items()):
+            # Skip if no valid data
+            valid_data = portfolio_summary[metric_col].replace([np.inf, -np.inf], np.nan).dropna()
+            if len(valid_data) == 0:
+                print(f"Warning: No valid data for {wall_type} in {metric_col}")
+                continue
+            
+            # Plot histogram with transparency
+            sns.histplot(
+                valid_data, 
+                kde=True, 
+                bins=15, 
+                ax=ax,
+                alpha=0.5,
+                color=colors[idx],
+                label=f'{wall_type} (μ={valid_data.mean():,.2f}, n={len(valid_data)})',
+                stat='density'
+            )
+            
+            # Add mean line
+            ax.axvline(
+                valid_data.mean(), 
+                color=colors[idx], 
+                linestyle='--', 
+                linewidth=2,
+                alpha=0.8
+            )
+        
+        ax.set_title(f'{input_col_split.replace("_", " ").title()} Comparison: {metric_label}\n({scenario_name})', 
+                     fontsize=14, fontweight='bold')
+        ax.set_xlabel(metric_label, fontsize=12)
+        ax.set_ylabel('Density', fontsize=12)
+        ax.legend(loc='best', fontsize=9)
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        filename = f'{name_suffix}_{input_col_split}_comparison_{file_suffix}.png'
+        plt.savefig(
+            os.path.join(output_dir, filename), 
+            dpi=300, 
+            bbox_inches='tight'
+        )
+        plt.close()
+        print(f"Saved: {output_dir}/{filename}")
+    
+    # Create summary statistics table
+    summary_stats = []
+    for wall_type, portfolio_summary in wall_type_data.items():
+        stats = {
+            input_col_split: wall_type,
+            'N_Properties': len(portfolio_summary),
+            'Cost_per_Ton_Gas_Mean': portfolio_summary['Cost_per_Ton_Gas_P50'].replace([np.inf, -np.inf], np.nan).mean(),
+            'Cost_per_Ton_Gas_Std': portfolio_summary['Cost_per_Ton_Gas_P50'].replace([np.inf, -np.inf], np.nan).std(),
+            'Cost_per_Net_Ton_Mean': portfolio_summary['Cost_per_Net_Ton_P50'].replace([np.inf, -np.inf], np.nan).mean(),
+            'Cost_per_Net_Ton_Std': portfolio_summary['Cost_per_Net_Ton_P50'].replace([np.inf, -np.inf], np.nan).std(),
+            'Total_Costs_Mean': portfolio_summary['Total_Costs_P50'].mean(),
+            'Total_Costs_Std': portfolio_summary['Total_Costs_P50'].std(),
+        }
+        summary_stats.append(stats)
+    
+    summary_df = pd.DataFrame(summary_stats)
+    csv_filename = f'{name_suffix}_{input_col_split}_comparison.csv'
+    summary_df.to_csv(
+        os.path.join(output_dir, csv_filename),
+        index=False
+    )
+    print(f"\nSaved comparison summary: {output_dir}/{csv_filename}")
+    
+    # Print summary
+    print(f"\n--- {input_col_split.replace('_', ' ').title()} Comparison Summary ---")
     print(summary_df.to_string(index=False))
     
     return summary_df

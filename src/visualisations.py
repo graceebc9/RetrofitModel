@@ -67,14 +67,14 @@ def run_vis_new(res_df, scenario, op_base):
     plt.close(fig)
 
 
-    # total csots vs run type ;
+    # total tons vs run type ;
     pl[f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean']= pl[f'gas_total_tonne_co2_saved_{scenario}_5yr_mean']
     fig = plot_total_cost_by_decile_epistemic_stacked (pl,
                                         cost_col= f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean',
                                         cost_std_col= f'gas_total_tonne_co2_saved_{scenario}_5yr_std',
                                         stack_by_col='inferred_insulation_type',
-                                        ylabel='Total Tons CO2 saved Gas',
-                                        name = 'Total Tons Co2 (gas)', 
+                                        ylabel='Tons CO2 saved Gas',
+                                        name = 'Tons Co2 (gas)', 
                                         costs=False, 
                                     ) 
     fig.savefig(os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile.png'), dpi=300, bbox_inches='tight')
@@ -86,10 +86,23 @@ def run_vis_new(res_df, scenario, op_base):
                                         stack_by_col='conservation_area_bool',
                                         ylabel='Tons CO2 gas removal Gas',
                                         costs=False, 
-                                        name = 'Total Tons Co2 (gas)',
+                                        name = 'Tons Co2 (gas)',
                                     ) 
     fig.savefig(os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_conservation.png'), dpi=300, bbox_inches='tight')
     plt.close(fig)
+
+    pl[f'flip_net_total_tonne_co2_saved_{scenario}_5yr_mean']= pl[f'total_tonne_co2_saved_{scenario}_5yr_mean']
+    fig = plot_total_cost_by_decile_epistemic_stacked (pl,
+                                        cost_col= f'flip_net_total_tonne_co2_saved_{scenario}_5yr_mean',
+                                        cost_std_col= f'total_tonne_co2_saved_{scenario}_5yr_std',
+                                        stack_by_col='inferred_insulation_type',
+                                        ylabel='Net Total Tons CO2 saved',
+                                        name = 'Net Total Tons Co2', 
+                                        costs=False, 
+                                    ) 
+    fig.savefig(os.path.join(op_base, f'{scenario}_net_total_tons_co2_saved_by_decile.png'), dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    
 
     # if scenario in ['join_heat_ins_decay', 'join_heat_ins_add' ]:
 
