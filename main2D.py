@@ -86,8 +86,8 @@ n_monte_carlo = 5000
 N_EPISTEMIC_RUNS = 35
 RANDOM_SEED_OUTER = 42
 scenarios = ['wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
-scenarios=['join_heat_ins_add' ]
-job_name='join_heat_ins_add'
+# scenarios=['join_heat_ins_add' ]
+job_name='all'
 region_list = ['NE'] if running_locally else [os.getenv('REGION_LIST')]
 
 STAGE0_split_onsud = False
