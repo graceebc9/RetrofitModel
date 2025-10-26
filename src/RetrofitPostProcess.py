@@ -17,7 +17,7 @@ import numpy as np
 
 
 def process_multiple_scenarios(df, scenarios_config, years, n_simulations, 
-                                GAS_CARBON_FACTOR_2022, elec_carbon_factor):
+                                GAS_CARBON_FACTOR_2022, elec_carbon_factor, gas_col):
     """
     Process energy and carbon savings data for multiple measure scenarios.
     
@@ -30,6 +30,7 @@ def process_multiple_scenarios(df, scenarios_config, years, n_simulations,
     - n_simulations: Number of Monte Carlo simulations
     - GAS_CARBON_FACTOR_2022: Carbon factor for gas (kg CO2/kWh)
     - elec_carbon_factor: Carbon factor for electricity (kg CO2/kWh)
+    gas_col: if avg usse te avg as total, otherwise defaulys to derived basde on EUI 
     
     Returns:
     - df: DataFrame with all scenarios processed
@@ -55,14 +56,15 @@ def process_multiple_scenarios(df, scenarios_config, years, n_simulations,
             years=years,
             n_simulations=n_simulations,
             GAS_CARBON_FACTOR_2022=GAS_CARBON_FACTOR_2022,
-            elec_carbon_factor=elec_carbon_factor
+            elec_carbon_factor=elec_carbon_factor,
+            gas_col=gas_col,
         )
     
     return df_processed
 
 
 def clean_post_process(df, measure_type, scenario_name, years, n_simulations, 
-                        GAS_CARBON_FACTOR_2022, elec_carbon_factor):
+                        GAS_CARBON_FACTOR_2022, elec_carbon_factor, gas_col):
     """
     Process energy and carbon savings data for different measure scenarios.
     
@@ -78,6 +80,15 @@ def clean_post_process(df, measure_type, scenario_name, years, n_simulations,
     - GAS_CARBON_FACTOR_2022: Carbon factor for gas (kg CO2/kWh)
     - elec_carbon_factor: Carbon factor for electricity (kg CO2/kWh)
     """
+    if gas_col=='avg':
+        print('Using avg gas as totoal')
+        gas_total_col = 'avg_gas'
+        elec_total_col = 'avg_elec'
+    else:
+        
+        gas_total_col = 'total_gas_derived'
+        elec_total_col = 'total_elec_derived'
+    
     elec_scenarios = ['heat_pump_only', 'join_heat_ins_decay', 'join_heat_ins_add']
     stats = ['mean', 'p5', 'p50', 'p95', 'std']
     
@@ -91,7 +102,7 @@ def clean_post_process(df, measure_type, scenario_name, years, n_simulations,
     # ==================================================================
     for stat in stats:
         df[f'gas_{years}yr_kwh_change_{measure_type}_{stat}'] = (
-            df['total_gas_derived'] * years * 
+            df[gas_total_col] * years * 
             df[f'{scenario_name}_{scenario_name}_gas_{stat}']
         )
     
@@ -101,7 +112,7 @@ def clean_post_process(df, measure_type, scenario_name, years, n_simulations,
     if scenario_name in elec_scenarios:
         for stat in stats:
             df[f'elec_{years}yr_kwh_change_{measure_type}_{stat}'] = (
-                df['total_elec_derived'] * years * 
+                df[elec_total_col] * years * 
                 df[f'{scenario_name}_{scenario_name}_electricity_{stat}']
             )
     
