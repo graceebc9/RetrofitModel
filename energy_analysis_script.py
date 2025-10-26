@@ -19,7 +19,7 @@ from datetime import datetime
 sys.path.append('/rds/user/gb669/hpc-work/energy_map/RetrofitModel')
 from src.validate import validate_single_scenario_new
 
-from src.RetrofitPostProcess import clean_post_proccess 
+from src.RetrofitPostProcess import clean_post_process 
 from src.visualisations import run_vis_new 
 
 from src.RetrofitAnalysis import run_meta_portoflio
@@ -132,7 +132,7 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
     
     # Process data
     print("\nProcessing energy and carbon metrics...")
-    df_processed = clean_post_proccess(
+    df_processed = clean_post_process(
         df, 
         measure_type, 
         scenario_name, 

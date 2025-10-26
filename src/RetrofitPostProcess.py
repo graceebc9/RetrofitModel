@@ -228,7 +228,10 @@ def clean_post_process(df, measure_type, scenario_name, years, n_simulations,
     cost_p50 = df[f'{scenario_name}_cost_{scenario_name}_p50']
     cost_p5 = df[f'{scenario_name}_cost_{scenario_name}_p5']
     cost_p95 = df[f'{scenario_name}_cost_{scenario_name}_p95']
-    
+    mill= 1_000_000
+    for s in stats:
+        df[f'{scenario_name}_cost_{scenario_name}_{s}_mill'] = df[f'{scenario_name}_cost_{scenario_name}_{s}'] / mill
+
     # Get carbon savings columns (in tonnes, negative = reduction)
     carbon_mean = df[f'total_tonne_co2_saved_{measure_type}_{years}yr_mean']
     carbon_std = df[f'total_tonne_co2_saved_{measure_type}_{years}yr_std']
