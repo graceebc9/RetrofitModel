@@ -258,7 +258,7 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
                      alpha=0.3, label='Mean ± 2σ (aleatoric)', color='steelblue')
     ax1.set_xlabel(groupby_label, fontsize=11)
     ax1.set_ylabel(f"Mean {ylabel} per Building", fontsize=11)
-    ax1.set_title(f'Mean Cost & Aleatoric Uncertainty\n(Run: {epistemic_run_id})', fontsize=13)
+    ax1.set_title(f'Mean {name} & Aleatoric Uncertainty\n(Run: {epistemic_run_id})', fontsize=13)
     ax1.set_xticks(grouped_single['decile'].unique())
     ax1.legend()
     ax1.grid(alpha=0.3)
@@ -291,10 +291,10 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
                  color='black', capsize=5, capthick=2)
     
     ax2.set_xlabel(groupby_label, fontsize=11)
-    ax2.set_ylabel(f"Mean Total {ylabel} per Decile", fontsize=11)
+    ax2.set_ylabel(f"Total {ylabel} per Decile", fontsize=11)
     
     n_runs = int(grouped_epistemic_total['n_epistemic_runs'].iloc[0])
-    ax2.set_title(f'Mean Total {name} & Epistemic Uncertainty\n(Across {n_runs} runs)', fontsize=13)
+    ax2.set_title(f'Total {name} & Epistemic Uncertainty\n(Across {n_runs} runs)', fontsize=13)
     
     # --- Combine legends ---
     handles, labels = ax2.get_legend_handles_labels()

@@ -562,6 +562,7 @@ class RetrofitModel2D:
         footprint_circumference = float(row[col_mapping['footprint_circumference']])
         building_footprint_area = float(row[col_mapping['building_footprint_area']])
         avg_gas_percentile = int(row[col_mapping['avg_gas_percentile']])
+        typology = row['premise_type']
         # Use max(1) for flat count to ensure valid input to cost calcs
         raw_flat_count = row.get(col_mapping['flat_count'])
         flat_count = int(raw_flat_count) if pd.notna(raw_flat_count) and raw_flat_count > 0 else 1
@@ -583,6 +584,7 @@ class RetrofitModel2D:
             flat_count=flat_count,
             building_footprint_area=building_footprint_area,
             avg_gas_percentile=avg_gas_percentile,
+            typology =typology , 
         )
         
         # run_percentile= True 
