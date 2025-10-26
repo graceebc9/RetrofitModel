@@ -393,6 +393,7 @@ def compare_cost_scenarios(df_processed, scenario_name, measure_type, output_dir
     cost_p95 = f'{scenario_name}_cost_{scenario_name}_p95'
     cost_p50_m =  f'{scenario_name}_cost_{scenario_name}_p50_mill'
     cost_p95_m =  f'{scenario_name}_cost_{scenario_name}_p95_mill'
+    
     # CO2 savings columns
     base = f'total_tonne_co2_saved_{measure_type}_5yr'
     GAS_P50_COL = f'gas_{base}_p50'
@@ -402,6 +403,9 @@ def compare_cost_scenarios(df_processed, scenario_name, measure_type, output_dir
     ELEC_P50_COL = f'elec_{base}_p50'
     has_elec = ELEC_P50_COL in df_processed.columns
     
+    net_co2_col_p50 = f'total_tonne_co2_saved_{measure_type}_5yr_p50'
+    net_co2_col_p95 = f'total_tonne_co2_saved_{measure_type}_5yr_p95'
+
     # Prepare aggregation dict
     agg_dict = {
         cost_p50: 'sum', 
@@ -410,6 +414,9 @@ def compare_cost_scenarios(df_processed, scenario_name, measure_type, output_dir
         GAS_P95_COL: 'sum',
         cost_p50_m: 'sum', 
         cost_p95_m: 'sum',
+        net_co2_col_p50: 'sum', 
+        net_co2_col_p95: 'sum',
+
 
     }
     
@@ -436,17 +443,14 @@ def compare_cost_scenarios(df_processed, scenario_name, measure_type, output_dir
             portfolio_summary[cost_p95] / portfolio_summary[GAS_P95_COL]
         )
         
-        # Calculate NET cost per ton
-        if has_elec:
-            portfolio_summary['Total_Net_CO2_P50'] = (
-                portfolio_summary[GAS_P50_COL] - portfolio_summary[ELEC_P50_COL]
-            )
-            portfolio_summary['Total_Net_CO2_P95'] = (
-                portfolio_summary[GAS_P95_COL] - portfolio_summary[ELEC_P95_COL]
-            )
-        else:
-            portfolio_summary['Total_Net_CO2_P50'] = portfolio_summary[GAS_P50_COL]
-            portfolio_summary['Total_Net_CO2_P95'] = portfolio_summary[GAS_P95_COL]
+
+        portfolio_summary['Total_Net_CO2_P50'] = (
+            portfolio_summary[net_co2_col_p50] 
+        )
+        portfolio_summary['Total_Net_CO2_P95'] = (
+            portfolio_summary[net_co2_col_p95]
+        )
+ 
         
         portfolio_summary['Cost_per_Net_Ton_P50'] = (
             portfolio_summary[cost_p50] / portfolio_summary['Total_Net_CO2_P50']

@@ -15,7 +15,7 @@ def run_vis_new(res_df, scenario, op_base):
     fig = plot_col_reduction_by_decile_epistemic(pl,
                                     mean_col=f'{scenario}_cost_{scenario}_mean', 
                                     std_col=f'{scenario}_cost_{scenario}_std',
-                                    ylabel='Installation Costs (£)',
+                                    ylabel='Avg Installation Costs (£)',
                                     costs=True, 
                                     percentage=False,
                                     groupby_col='premise_type',
@@ -30,7 +30,7 @@ def run_vis_new(res_df, scenario, op_base):
     fig = plot_col_reduction_by_decile_epistemic(pl,
                                     mean_col=f'{scenario}_cost_{scenario}_mean', 
                                     std_col=f'{scenario}_cost_{scenario}_std',
-                                    ylabel='Installation Costs (£)',
+                                    ylabel='Avg Installation Costs (£)',
                                     costs=True, 
                                     percentage=False,
                                     rot=True,
@@ -43,7 +43,7 @@ def run_vis_new(res_df, scenario, op_base):
     fig = plot_col_reduction_by_decile_epistemic(pl,
                                     mean_col=f'{scenario}_{scenario}_gas_mean', 
                                     std_col=f'{scenario}_{scenario}_gas_std',
-                                    ylabel='Gas Reduction (%)',
+                                    ylabel='Avg Gas Reduction (%)',
                                     costs=False, 
                                     percentage=True
                                     )
@@ -55,7 +55,7 @@ def run_vis_new(res_df, scenario, op_base):
     fig = plot_col_reduction_by_decile_epistemic(pl,
                                     mean_col=f'{scenario}_{scenario}_gas_mean', 
                                     std_col=f'{scenario}_{scenario}_gas_std',
-                                    ylabel='Gas Reduction (%)',
+                                    ylabel='Avg Gas Reduction (%)',
                                     costs=False, 
                                     percentage=True,
                                     groupby_col='premise_type',
@@ -73,7 +73,7 @@ def run_vis_new(res_df, scenario, op_base):
                                         cost_col= f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean',
                                         cost_std_col= f'gas_total_tonne_co2_saved_{scenario}_5yr_std',
                                         stack_by_col='inferred_insulation_type',
-                                        # ylabel='Costs of Installation',
+                                        ylabel='Total Tons CO2 saved Gas',
                                         costs=False, 
                                     ) 
     fig.savefig(os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile.png'), dpi=300, bbox_inches='tight')
@@ -83,7 +83,7 @@ def run_vis_new(res_df, scenario, op_base):
                                         cost_col= f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean',
                                         cost_std_col= f'gas_total_tonne_co2_saved_{scenario}_5yr_std',
                                         stack_by_col='conservation_area_bool',
-                                        ylabel='Tons CO2 gas removal',
+                                        ylabel='Tons CO2 gas removal Gas',
                                         costs=False, 
                                     ) 
     fig.savefig(os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_conservation.png'), dpi=300, bbox_inches='tight')
