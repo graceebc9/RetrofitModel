@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 import sys
 sys.path.append('/rds/user/gb669/hpc-work/energy_map/RetrofitModel')
 from src.validate import validate
-
 import numpy as np 
 
 
