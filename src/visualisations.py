@@ -68,12 +68,13 @@ def run_vis_new(res_df, scenario, op_base):
 
 
     # total csots vs run type ;
-    pl[f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean']= pl['gas_total_tonne_co2_saved_wall_installation_5yr_mean']
+    pl[f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean']= pl[f'gas_total_tonne_co2_saved_{scenario}_5yr_mean']
     fig = plot_total_cost_by_decile_epistemic_stacked (pl,
                                         cost_col= f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean',
                                         cost_std_col= f'gas_total_tonne_co2_saved_{scenario}_5yr_std',
                                         stack_by_col='inferred_insulation_type',
                                         ylabel='Total Tons CO2 saved Gas',
+                                        name = 'Total Tons Co2 (gas)', 
                                         costs=False, 
                                     ) 
     fig.savefig(os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile.png'), dpi=300, bbox_inches='tight')
@@ -85,9 +86,13 @@ def run_vis_new(res_df, scenario, op_base):
                                         stack_by_col='conservation_area_bool',
                                         ylabel='Tons CO2 gas removal Gas',
                                         costs=False, 
+                                        name = 'Total Tons Co2 (gas)',
                                     ) 
     fig.savefig(os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_conservation.png'), dpi=300, bbox_inches='tight')
     plt.close(fig)
+
+    # if scenario in ['join_heat_ins_decay', 'join_heat_ins_add' ]:
+
 
 
     
@@ -151,7 +156,7 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
                                 groupby_col='avg_gas_percentile',
                                 groupby_label='Gas Usage Decile',
                                 ylabel='Cost (£)',
-                                title=None,
+                                name='Cost',
                                 figsize=(16, 6),
                                 costs=True ,
                                 
@@ -276,7 +281,7 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
     ax2.set_ylabel(f"Mean Total {ylabel} per Decile", fontsize=11)
     
     n_runs = int(grouped_epistemic_total['n_epistemic_runs'].iloc[0])
-    ax2.set_title(f'Mean Total Cost & Epistemic Uncertainty\n(Across {n_runs} runs)', fontsize=13)
+    ax2.set_title(f'Mean Total {name} & Epistemic Uncertainty\n(Across {n_runs} runs)', fontsize=13)
     
     # --- Combine legends ---
     handles, labels = ax2.get_legend_handles_labels()
@@ -296,8 +301,7 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
         ax2.set_xticklabels(grouped_epistemic_total['decile'])
 
     
-    if title:
-        fig.suptitle(title, fontsize=14)
+ 
     plt.tight_layout()
     
     # ========================================================
