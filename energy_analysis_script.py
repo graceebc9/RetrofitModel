@@ -57,7 +57,7 @@ def analyze_uncertainty(df, scenario_name, measure_type, years, output_dir):
     GAS_STD_COL = f'gas_{years}yr_kg_co2_saved_{measure_type}_std'
     
     # Building-level metrics
-    building_metrics = df.groupby('verisk_building_id').agg(
+    building_metrics = df.groupby('upn').agg(
         EPISTEMIC_GAS_STD=(GAS_P50_COL, 'std'),
         MEAN_ALEATORIC_GAS_STD=(GAS_STD_COL, 'mean'),
         MEAN_ALEATORIC_GAS_SPREAD=(GAS_P95_COL, 'mean'),
