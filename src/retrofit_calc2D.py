@@ -119,8 +119,8 @@ def process_postcodes_for_retrofit_with_uncertainty2D(
     logger.debug('Pre process buildigns')
     building_data = pre_process_building_data(uprn_match)
     gas_eui, elec_eui = get_eui_factor(pc=pc, eui_df= energy, region = region)
-    building_data['total_gas_derived'] =  building_data['total_fl_area_meta'] * gas_eui
-    building_data['total_elec_derived'] =  building_data['total_fl_area_meta'] * elec_eui
+    building_data['total_gas_derived'] =  building_data['scaled_floor_area'] * gas_eui
+    building_data['total_elec_derived'] =  building_data['scaled_floor_area'] * elec_eui
     building_data['total_energy_dervied'] = building_data['total_gas_derived']  + building_data['total_elec_derived']
     deciles = load_gas_deciles(f'{root_dir}/src/global_avs/neb_unfil_final_gas_deciles.csv')
 
