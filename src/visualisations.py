@@ -5,6 +5,16 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 
+
+typologies =  [
+        'Medium height flats 5-6 storeys', 'Small low terraces', '3-4 storey and smaller flats',
+        'Tall terraces 3-4 storeys', 'Large semi detached', 'Standard size detached',
+        'Standard size semi detached', '2 storeys terraces with t rear extension',
+        'Semi type house in multiples', 'Tall flats 6-15 storeys', 'Large detached',
+        'Very tall point block flats', 'Very large detached', 'Planned balanced mixed estates',
+        'Linked and step linked premises'
+    ]
+
 def run_vis_new(res_df, scenario, op_base):
     # Create output directory if it doesn't exist
     os.makedirs(op_base, exist_ok=True)
@@ -523,12 +533,15 @@ def plot_col_reduction_by_decile_epistemic(res_df,
         
     return fig
 
+from src.RetrofitModel2D import RetrofitModel2D
+
 def plot_col_reduction_by_decile_epistemic_by_wall_type(res_df,
                                                         mean_col,
                                                         std_col,
                                                         wall_type_col='inferred_insulation_type',
                                                         epistemic_run_id=None,
                                                         groupby_col='avg_gas_percentile',
+                                                        
                                                         groupby_label='Gas Usage Decile',
                                                         ylabel='Energy Reduction (%)',
                                                         title=None,
@@ -537,19 +550,31 @@ def plot_col_reduction_by_decile_epistemic_by_wall_type(res_df,
                                                         rot=False,
                                                         percentage=True):
     
+
+
     df = res_df.copy()
     
     if df.empty:
         print(f"Warning: DataFrame is empty, skipping plot")
         return None
-    og_shape = df.shape[0]
+    
     # Drop rows with missing wall type values
     df = df.dropna(subset=[wall_type_col])
-    post_shape= df.shape[0]
-    print('post drop we retrina: {post_shape/ og_shape*100 }%' )
-    # Get unique wall types
-    wall_types = sorted(df[wall_type_col].unique())
+    
+    if df.empty:
+        print(f"Warning: No data after removing missing {wall_type_col} values")
+        return None
+
+    if groupby_col=='premise_type': 
+        
+        group_values =typologies
+    else:
+        group_values = sorted(df[groupby_col].unique())
+    
+    # Get unique wall types and convert to string for consistent sorting
+    wall_types = sorted(df[wall_type_col].astype(str).unique())
     n_wall_types = len(wall_types)
+    
     
     # Define colors for different wall types
     colors = ['steelblue', 'darkorange', 'forestgreen', 'crimson', 'purple'][:n_wall_types]
@@ -614,7 +639,10 @@ def plot_col_reduction_by_decile_epistemic_by_wall_type(res_df,
     
     # LEFT: Individual building variability within one epistemic run - by wall type
     for i, wall_type in enumerate(wall_types):
-        df_wall = grouped_single_by_wall[grouped_single_by_wall['wall_type'] == wall_type]
+        df_wall = grouped_single_by_wall[grouped_single_by_wall['wall_type'] == wall_type].copy()
+        
+        # Reindex to match specified order
+        df_wall = df_wall.set_index('decile').reindex(group_values).reset_index()
         
         ax1.plot(df_wall['decile'], df_wall['mean_reduction'],
                  'o-', linewidth=2, markersize=8, color=colors[i], label=wall_type)
@@ -624,7 +652,8 @@ def plot_col_reduction_by_decile_epistemic_by_wall_type(res_df,
     ax1.set_xlabel(groupby_label, fontsize=11)
     ax1.set_ylabel(ylabel, fontsize=11)
     ax1.set_title(f'Within-Run Variability by Wall Type\n(Run: {epistemic_run_id})', fontsize=13)
-    ax1.set_xticks(grouped_single_by_wall['decile'].unique())
+    ax1.set_xticks(range(len(group_values)))
+    ax1.set_xticklabels(group_values)
     ax1.legend()
     ax1.grid(alpha=0.3)
     if costs:
@@ -635,15 +664,14 @@ def plot_col_reduction_by_decile_epistemic_by_wall_type(res_df,
         ax1.tick_params(axis='x', rotation=90)
     
     # RIGHT: Epistemic uncertainty across runs - grouped bars by wall type
-    deciles = sorted(grouped_epistemic_by_wall['decile'].unique())
-    x = np.arange(len(deciles))
+    x = np.arange(len(group_values))
     width = 0.8 / n_wall_types  # Total width divided by number of wall types
     
     for i, wall_type in enumerate(wall_types):
-        df_wall = grouped_epistemic_by_wall[grouped_epistemic_by_wall['wall_type'] == wall_type]
+        df_wall = grouped_epistemic_by_wall[grouped_epistemic_by_wall['wall_type'] == wall_type].copy()
         
-        # Align bars by decile
-        df_wall = df_wall.set_index('decile').reindex(deciles).reset_index()
+        # Align bars by decile using the specified order
+        df_wall = df_wall.set_index('decile').reindex(group_values).reset_index()
         
         offset = (i - n_wall_types/2 + 0.5) * width
         
@@ -659,7 +687,7 @@ def plot_col_reduction_by_decile_epistemic_by_wall_type(res_df,
     n_runs = int(grouped_epistemic_by_wall['n_epistemic_runs'].iloc[0])
     ax2.set_title(f'Epistemic Uncertainty by Wall Type\n(Across {n_runs} runs)', fontsize=13)
     ax2.set_xticks(x)
-    ax2.set_xticklabels(deciles)
+    ax2.set_xticklabels(group_values)
     ax2.legend()
     ax2.grid(alpha=0.3, axis='y')
     if percentage:
