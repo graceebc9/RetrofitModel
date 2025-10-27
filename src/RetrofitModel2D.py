@@ -159,26 +159,27 @@ class RetrofitModel2D:
             return {'error': f'No interventions defined for scenario "{scenario}"'}
         return scenario_interventions
 
-    def _get_column_mapping(self, col_mapping):
-        # ... (Original logic) ...
-        default_mapping = {
-            'floor_count': 'validated_fc',
-            'gross_external_area': 'total_fl_area_avg',
-            'gross_internal_area': 'scaled_fl_area',
-              'footprint_circumference': 'perimeter_length',
-            'flat_count': 'est_num_flats',
-             'building_type': 'premise_type',
-            'age_band': 'premise_age',
-            'building_footprint_area': 'premise_area',
-            'avg_gas_percentile':'avg_gas_percentile', 'inferred_wall_type': 'inferred_wall_type',
-            'inferred_insulation_type': 'inferred_insulation_type',
-        }
-        if col_mapping is None:
-            return default_mapping
-        for key, default_val in default_mapping.items():
-            if key not in col_mapping:
-                col_mapping[key] = default_val
-        return col_mapping
+    # def _get_column_mapping(self, col_mapping):
+    #     # ... (Original logic) ...
+    #     # default_mapping = {
+    #     #     'floo',
+    #     #     'gross_external_area': 'total_fl_area_avg',
+    #     #     'gross_internr_count': 'fc_filledal_area': 'scaled_fl_area',
+    #     #       'footprint_circumference': 'perimeter_length',
+    #     #     'flat_count': 'est_num_flats',
+    #     #      'building_type': 'premise_type',
+    #     #     'age_band': 'premise_age',
+    #     #     'building_footprint_area': 'premise_area',
+    #     #     'avg_gas_percentile':'avg_gas_percentile', 
+    # 'inferred_wall_type': 'inferred_wall_type',
+    #     #     'inferred_insulation_type': 'inferred_insulation_type',
+    #     # }
+    #     if col_mapping is None:
+    #         return default_mapping
+    #     for key, default_val in default_mapping.items():
+    #         if key not in col_mapping:
+    #             col_mapping[key] = default_val
+    #     return col_mapping
 
     def _prepare_dataframe(self, df, col_mapping):
         # ... (Original logic) ...
@@ -192,9 +193,9 @@ class RetrofitModel2D:
         
         result_df['est_num_flats'] = result_df.apply(
             lambda row: calc_est_flats_building(
-                building_footprint_area=row['premise_area'],
-                typology_col=row['premise_type'],
-                floor_count=row['premise_floor_count'],
+                building_footprint_area=row[col_mapping['footprint_area']],
+                typology_col=row[col_mapping['building_type']] ,
+                floor_count=row[col_mapping['floor_count']],
                 fp_mean=fp_mean, 
                 fp_std = fp_std, 
                 eff_mean=eff_mean, 
@@ -323,7 +324,7 @@ class RetrofitModel2D:
                         all_gas_perc_samples.append(gas_perc_samples_adjusted)
                     
                     if elec_perc_samples is not None:
-                        logger.debug('We have elec samples here in calculate_intervention_energy_savings ')
+                        
                         elec_samples_adjusted = (elec_perc_samples+ effective_beta_DEC) * beta_TS
                         all_elec_perc_samples.append(elec_samples_adjusted)
 
@@ -345,12 +346,12 @@ class RetrofitModel2D:
         
         # 2. AGGREGATE SAMPLES  
         # CHECK 5: Verify aggregation lists before calculating statistics
-        logger.debug(f'Total gas sample arrays collected: {len(all_gas_perc_samples)}')
-        logger.debug(f'Total elec sample arrays collected: {len(all_elec_perc_samples)}')
-        if all_elec_perc_samples:
-            for i, elec_arr in enumerate(all_elec_perc_samples):
-                logger.debug(f'Elec array {i}: shape={elec_arr.shape}, mean={np.mean(elec_arr):.4f}, '
-                           f'all_zeros={np.all(elec_arr == 0)}, has_nan={np.any(np.isnan(elec_arr))}')
+        # logger.debug(f'Total gas sample arrays collected: {len(all_gas_perc_samples)}')
+        # logger.debug(f'Total elec sample arrays collected: {len(all_elec_perc_samples)}')
+        # if all_elec_perc_samples:
+        #     for i, elec_arr in enumerate(all_elec_perc_samples):
+                # logger.debug(f'Elec array {i}: shape={elec_arr.shape}, mean={np.mean(elec_arr):.4f}, '
+                        #    f'all_zeros={np.all(elec_arr == 0)}, has_nan={np.any(np.isnan(elec_arr))}')
  
         
         # --- Gas Aggregation  ---
@@ -368,7 +369,7 @@ class RetrofitModel2D:
                 val = self._calculate_single_statistic(all_elec_perc_samples, stat)
                 col_name = f"electricity_{stat}"
                 energy_stats[col_name] = val
-                logger.debug(f'Electricity {stat}: {val:.4f}')
+                
         else:
             logger.debug('Skipping electricity statistics - no samples collected!')
             
@@ -439,7 +440,7 @@ class RetrofitModel2D:
                 n_samples=self.n_samples
             )
             
-            logger.debug(f"{cost_col_name} samples: mean=£{samples.mean():,.0f}")
+            # logger.debug(f"{cost_col_name} samples: mean=£{samples.mean():,.0f}")
             return samples
             
         except ValueError as e:
@@ -571,7 +572,10 @@ class RetrofitModel2D:
         missing_cols = [col for col in required_cols if col_mapping[col] not in row.index]
         if missing_cols:
             raise ValueError(f'Missing columns: {missing_cols}')
-        
+        # Check for NaN values in required columns
+        nan_cols = [col_mapping[col] for col in required_cols if pd.isna(row[col_mapping[col]])]
+        if nan_cols:
+            raise ValueError(f'NaN values found in required columns: {nan_cols}')
         # Convert and validate building characteristics
         floor_count = int(row[col_mapping['floor_count']])
         gross_external_area = float(row[col_mapping['gross_external_area']])
@@ -579,7 +583,7 @@ class RetrofitModel2D:
         footprint_circumference = float(row[col_mapping['footprint_circumference']])
         building_footprint_area = float(row[col_mapping['building_footprint_area']])
         avg_gas_percentile = int(row[col_mapping['avg_gas_percentile']])
-        typology = row['premise_type']
+        typology = row[col_mapping['building_type']] 
         # Use max(1) for flat count to ensure valid input to cost calcs
         raw_flat_count = row.get(col_mapping['flat_count'])
         flat_count = int(raw_flat_count) if pd.notna(raw_flat_count) and raw_flat_count > 0 else 1
@@ -614,7 +618,8 @@ class RetrofitModel2D:
         existing_windows = bool(row['existing_window_upgrades'])
         wall_type = str(row['inferred_wall_type']).lower().strip()
         insulation_type = str(row['inferred_insulation_type']).lower().strip()
-        
+        logger.debug(f'Extracted the info : {wall_insulated}, {insulation_type} ')
+
         # Validate wall_type
         if wall_type not in ['cavity_wall', 'solid_wall']:
             raise ValueError(f"Invalid wall_type: '{wall_type}'. Must be 'cavity_wall' or 'solid_wall'")
@@ -625,6 +630,7 @@ class RetrofitModel2D:
         selected_wall_insulation = insulation_type
         interventions_to_calculate= [] 
         
+        logger.debug('Getting wall type ')
         for intervention in scenario_interventions:
             if intervention=='WALL_INSULATION':
                 if selected_wall_insulation =='cavity_wall_insulation': 
@@ -641,12 +647,12 @@ class RetrofitModel2D:
         # skip_interventions = self.get_skip_interventions(
         #     wall_insulated, existing_loft, existing_floor, existing_windows
         # )
-        
+        logger.debug('Getting typolgoy and age band for the row..')
         # Calculate costs for all interventions
         typology = row[col_mapping['building_type']]
         age_band = row[col_mapping['age_band']]
         
-        
+        logger.debug('Starting the cost stats for scenarios ..')
         # there should be one cost col per scenario which is the total costs 
         cost_stats = self.calculate_intervention_costs(
             intervention=interventions_to_calculate,
@@ -678,13 +684,18 @@ class RetrofitModel2D:
             wall_type = insulation_type ,
         )
         
- 
+        logger.debug('Add selcted wall type: ')
         # Add selected wall type to results
         cost_stats['selected_wall_insulation_type'] = selected_wall_insulation
         energy_stats_prefixed = {f'{key}': value for key, value in energy_stats.items()}
         energy_result = pd.Series(energy_stats_prefixed )
-        logger.debug('calculate_ONLY_row_costs_only complete')
-        return cost_result, energy_result
+        logger.debug('Complete. rweturning resul')
+        logger.debug(f'cost_result: {cost_result}')
+        logger.debug(f'energy_resu;ts: {energy_result}')
+        combined_result = pd.concat([cost_result, energy_result])
+        combined_result.index = combined_result.index.astype(str)  # Ensure string index
+    
+        return combined_result
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
@@ -706,11 +717,10 @@ class RetrofitModel2D:
                                      return_statistics,
                                     ):
         """Calculate costs  and add them to the DataFrame. method is only for joint sampling """
-        
+        result_df_reset = result_df.reset_index(drop=False)
+        original_index_name = result_df.index.name
         energy_res = result_df.copy() 
-        
-        
-        # Apply cost calculations to all rows, this calc the total at sample time 
+        logger.debug(f'Col mapping is " {col_mapping }')
         results  = result_df.apply(
             lambda row: self.calculate_ONLY_row_costs_only(row, 
                                                             col_mapping=col_mapping, 
@@ -721,13 +731,53 @@ class RetrofitModel2D:
                                                             
                                                              ), axis=1
                                     )
+        logger.debug('Row Calc complete')
+        # results_list=[]
+        # for idx, row in result_df.iterrows():
+        #     try:
+        #         result = self.calculate_ONLY_row_costs_only(
+        #             row, 
+        #             col_mapping=col_mapping, 
+        #             scenario_interventions=scenario_interventions, 
+        #             region=region,  
+        #             return_statistics=return_statistics,
+        #             scenario_name=scenario,
+        #         )
+        #         results_list.append(result)
+        #     except Exception as e:
+        #         logger.error(f"Error processing row {idx}: {e}")
+        #         logger.error(f"Row data: {row.to_dict()}")
+        #         raise
+        # results = pd.DataFrame(results_list, index=result_df.index)
         
-        # Unpack the results - each element is a tuple of (cost_series, energy_series)
-        cost_results = pd.DataFrame([x[0] for x in results])
-        energy_results = pd.DataFrame([x[1] for x in results])
+    
+        # Convert list of Series to DataFrame
+  
+        # if 'index' in result_df_reset.columns:
+        #     results.index = result_df_reset['index'].values
+        # else:
+        #     results.index = result_df.index
+        
+        # if original_index_name:
+        #     results.index.name = original_index_name
+
+        # logger.debug('Row Calc complete ')
+        # result_df = result_df.join(results)
+        print(result_df.columns.tolist() )
+            # results is now a DataFrame with all columns combined
+        # Split back into cost and energy based on column prefixes
+        cost_cols = [col for col in results.columns if col.startswith('cost_')]
+        energy_cols = [col for col in results.columns if not col.startswith('cost_')]
+        
+        cost_results = results[cost_cols]
+        energy_results = results[energy_cols]
+    
+        # # Unpack the results - each element is a tuple of (cost_series, energy_series)
+        # cost_results = pd.DataFrame([x[0] for x in results])
+        # energy_results = pd.DataFrame([x[1] for x in results])
         
         # CHECK: Verify energy_results columns are not all NaN
-        logger.debug(f'Energy results shape: {energy_results.shape}, columns: {list(energy_results.columns)}')
+        # logger.debug(f'Energy results shape: {energy_results.shape}, columns: {list(energy_results.columns)}')
         
         for col in energy_results.columns:
             if energy_results[col].isna().all():
@@ -740,27 +790,27 @@ class RetrofitModel2D:
                 logger.warning(f'Energy column "{col}" is all zeros in energy_results. '
                              f'This may indicate missing energy savings data.')
             
-            # Log summary statistics for debugging
-            logger.debug(f'Energy column "{col}": mean={energy_results[col].mean():.4f}, '
-                       f'nan_count={energy_results[col].isna().sum()}, '
-                       f'zero_count={(energy_results[col] == 0).sum()}')
+            # # Log summary statistics for debugging
+            # logger.debug(f'Energy column "{col}": mean={energy_results[col].mean():.4f}, '
+            #            f'nan_count={energy_results[col].isna().sum()}, '
+            #            f'zero_count={(energy_results[col] == 0).sum()}')
         
         # CHECK: Also verify cost_results columns
-        logger.debug(f'Cost results shape: {cost_results.shape}, columns: {list(cost_results.columns)}')
-        
+        # logger.debug(f'Cost results shape: {cost_results.shape}, columns: {list(cost_results.columns)}')
+        logger.debug('Starting validations on costs results colmns ')
         for col in cost_results.columns:
             if cost_results[col].isna().all():
                 logger.error(f'Cost column "{col}" is all NaN in cost_results!')
                 raise ValueError(f'Cost column "{col}" contains all NaN values. '
                                f'Check cost calculations for scenario: {scenario}')
             
-            logger.debug(f'Cost column "{col}": mean={cost_results[col].mean():.4f}, '
-                       f'nan_count={cost_results[col].isna().sum()}')
+            # logger.debug(f'Cost column "{col}": mean={cost_results[col].mean():.4f}, '
+            #            f'nan_count={cost_results[col].isna().sum()}')
         
         self._add_cost_columns(result_df, cost_results, scenario)
         # Add energy columns (individual interventions)
         self._add_individual_energy_columns(energy_res, energy_results, scenario)
-        logger.debug('_calculate_and_add_costs Added costs total complete for all rows.')
+        logger.debug('About to return results ')
         return result_df, energy_res
  
 
@@ -855,7 +905,7 @@ class RetrofitModel2D:
                                             df, 
                                             region, 
                                             scenario, 
-                                            col_mapping=None, 
+                                            col_mapping, 
                                             return_statistics=None, 
                                           ):
         """
@@ -892,7 +942,7 @@ class RetrofitModel2D:
             return scenario_interventions
         
         # Get column mapping
-        col_mapping = self._get_column_mapping(col_mapping)
+        # col_mapping = self._get_column_mapping(col_mapping)
         
         # Prepare DataFrame
         result_df = self._prepare_dataframe(df, col_mapping )
@@ -916,13 +966,13 @@ class RetrofitModel2D:
                                                                             return_statistics = return_statistics,
                                                                             
         )
- 
+        logger.debug('Results retuend,starting to prcess ')
         # extra_cols = ['wall_insulated', 'existing_loft_insulation', 'existing_floor_insulation', 'existing_window_upgrades']
         cost_cols, energy_cols = self._get_cols_scenario_intervention(scenario )
  
         cost_overlap = set(cost_cols).intersection(costs_result_df.columns)
         energy_overlap = set(energy_cols).intersection(energy_results_df.columns)
-
+        logger.debug('Next validations ??/ ')
         if not cost_overlap:
             logger.warning(f"No overlap found between expected cost columns and DataFrame columns for scenario {scenario}.")
             logger.warning(f"Expected cost cols: {cost_cols}")
@@ -939,14 +989,14 @@ class RetrofitModel2D:
  
         energy_results_df = expand_dict_columns(energy_results_df)
         
-       
-        logger.debug(f'base cold: {base_cols}')
+        logger.debug('Final col extractions .. ')
+        
         c_df =  costs_result_df[ cost_cols ]
         e_df = energy_results_df[energy_cols]
         
         # CHECK 5: Verify final selection of columns
-        logger.debug(f'Final cost columns selected: {c_df.columns.tolist()}')
-        logger.debug(f'Final energy columns selected: {e_df.columns.tolist()}')
+        # logger.debug(f'Final cost columns selected: {c_df.columns.tolist()}')
+        # logger.debug(f'Final energy columns selected: {e_df.columns.tolist()}')
         
         for col in c_df.columns:
             if c_df[col].isna().all():
@@ -967,24 +1017,21 @@ class RetrofitModel2D:
         e_df = e_df.rename(
             columns=lambda c: f"{scenario}_{c}"
         )    
-        
-        # CHECK 6: Final verification before concatenation
-        logger.debug(f'Final renamed cost columns: {c_df.columns.tolist()}')
-        logger.debug(f'Final renamed energy columns: {e_df.columns.tolist()}')
-        
+ 
+        logger.debug('Final concat: ')
         data = pd.concat(
             [result_df[base_cols], c_df, e_df ],
             axis=1
                 )   
         
         # CHECK 7: Final output verification
-        logger.debug(f'Final concatenated data shape: {data.shape}')
+        # logger.debug(f'Final concatenated data shape: {data.shape}')
         final_cols = data.columns.tolist()
-        logger.debug(f'Total columns in final output: {len(final_cols)}')
+        # logger.debug(f'Total columns in final output: {len(final_cols)}')
         
         # Verify scenario-specific energy columns exist in final output
         scenario_energy_cols = [col for col in final_cols if scenario in col and any(x in col for x in ['gas', 'electricity', 'elec'])]
-        logger.debug(f'Scenario {scenario} energy columns in final output: {scenario_energy_cols}')
+        # logger.debug(f'Scenario {scenario} energy columns in final output: {scenario_energy_cols}')
         
         if not scenario_energy_cols:
             logger.error(f'No energy columns found in final output for scenario {scenario}!')

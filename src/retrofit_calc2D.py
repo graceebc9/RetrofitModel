@@ -54,6 +54,7 @@ def get_conservation_area(uprn_match, conservation_data):
     """
     Tag buildings with conservation areas downloaded from ons 
     """
+    logger.debug('Loading Conservatio narea ')
     uprn_match.to_crs(epsg='4326', inplace=True )
     conservation_data.to_crs(epsg='4326', inplace=True )
     cons_uprn = uprn_match.sjoin(conservation_data, how='left')
@@ -95,7 +96,7 @@ def process_postcodes_for_retrofit_with_uncertainty2D(
         else: 
             return res.avg_gas_decile.unique()
 
-
+    
     pc = pc.strip()
     logger.debug('Finding UPRN Data')
     uprn_match = find_data_pc_joint(pc, onsud_data, input_gpk=INPUT_GPK)
@@ -114,9 +115,9 @@ def process_postcodes_for_retrofit_with_uncertainty2D(
     
     if uprn_match is None or uprn_match.empty:
         return error_dict
-    logger.debug('Loading EUI' ) 
+    logger.debug('Loading EUI...' ) 
     energy = load_eui() 
-    logger.debug('Pre process buildigns')
+    logger.debug('Pre process buildigns...')
     building_data = pre_process_building_data(uprn_match)
     
     gas_eui, elec_eui = get_eui_factor(pc=pc, eui_df= energy, region = region)
