@@ -139,7 +139,8 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
         years=years,
         GAS_CARBON_FACTOR_2022=gas_carbon_factor,
         elec_carbon_factor=elec_carbon_factor,
-        n_simulations=n_simulations
+        n_simulations=n_simulations,
+        gas_col='derived',
     )
     
     # Calculate and print summary statistics

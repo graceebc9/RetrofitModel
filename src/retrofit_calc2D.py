@@ -118,7 +118,7 @@ def process_postcodes_for_retrofit_with_uncertainty2D(
     energy = load_eui() 
     logger.debug('Pre process buildigns')
     building_data = pre_process_building_data(uprn_match)
-    print(building_data.columns.tolist() )
+    
     gas_eui, elec_eui = get_eui_factor(pc=pc, eui_df= energy, region = region)
     building_data['total_gas_derived'] =  building_data['scaled_fl_area'] * gas_eui
     building_data['total_elec_derived'] =  building_data['scaled_fl_area'] * elec_eui
