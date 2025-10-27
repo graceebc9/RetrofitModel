@@ -11,7 +11,7 @@ import numpy as np
 from .BuildingCharacteristics import BuildingCharacteristics  
 from .RetrofitCosts import  CostEstimator, InterventionConfig
 from .RetrofitEnergy import RetrofitEnergy 
-from .RetrofitUtils import calculate_estimated_flats_per_building 
+from .RetrofitUtils import calc_est_flats_building 
 from .RetrofitConfig import RetrofitConfig 
 from .RetrofitPackages import retrofit_packages 
 
@@ -93,8 +93,8 @@ class RetrofitModel2D:
         # 3. PULL EPISTEMIC FACTORS AND APPLY TO RETROFITENERGY
         
         # Factors defining the technical performance of wall measures
-        int_factor = self.epistemic_scenario.get('solid_wall_internal_improvement_factor', self._SOLID_WALL_INT_NOMINAL)
-        ext_factor = self.epistemic_scenario.get('solid_wall_external_improvement_factor', self._SOLID_WALL_EXT_NOMINAL)
+        int_factor = self.epistemic_scenario.get('solid_wall_internal_improvement_factor'  )
+        ext_factor = self.epistemic_scenario.get('solid_wall_external_improvement_factor')
         
         # Create/Update RetrofitEnergy config
         if self.energy_config is None:
@@ -180,11 +180,24 @@ class RetrofitModel2D:
         # ... (Original logic) ...
         result_df = df.copy()
         result_df = result_df[result_df[col_mapping['building_type']] != 'Domestic outbuilding']
+        
+        fp_mean =  self.epistemic_scenario.get('flat_fp_mean') 
+        fp_std =  self.epistemic_scenario.get('flat_fp_std') 
+        eff_mean =  self.epistemic_scenario.get('flat_eff_mean') 
+        eff_std = self.epistemic_scenario.get('flat_eff_std') 
+        
         result_df['est_num_flats'] = result_df.apply(
-            lambda row: calculate_estimated_flats_per_building(
+            lambda row: calc_est_flats_building(
                 building_footprint_area=row['premise_area'],
                 typology_col=row['premise_type'],
-                floor_count=row['premise_floor_count']
+                floor_count=row['premise_floor_count'],
+                fp_mean=fp_mean, 
+                fp_std = fp_std, 
+                eff_mean=eff_mean, 
+                eff_std=eff_std,
+
+                
+                
             ), axis=1
         )
         return result_df
@@ -265,11 +278,11 @@ class RetrofitModel2D:
         """
         # Epistemic Factors for Final Adjustment (Retrieved from fixed scenario)
         
-        beta_TS = self.epistemic_scenario.get('time_scale_bias', 1.0)
-        beta_DEC = self.epistemic_scenario.get('decile_misclassification_bias', 0.0)
+        beta_TS = self.epistemic_scenario.get('time_scale_bias')
+        beta_DEC = self.epistemic_scenario.get('decile_misclassification_bias')
         
         # 1. Look up the Decile Risk Multiplier
-        decile_scale = self.decile_risk_scaling.get(building_chars.avg_gas_percentile, 1.0)
+        decile_scale = self.decile_risk_scaling.get(building_chars.avg_gas_percentile)
         effective_beta_DEC = beta_DEC * decile_scale
 
         energy_stats = {}
@@ -745,44 +758,7 @@ class RetrofitModel2D:
         self._add_individual_energy_columns(energy_res, energy_results, scenario)
         logger.debug('_calculate_and_add_costs Added costs total complete for all rows.')
         return result_df, energy_res
-
-    # def _calculate_and_add_costs(self, 
-    #                              result_df,
-    #                               col_mapping,
-    #                                 scenario_interventions, 
-    #                             # prob_external,
-    #                               region,
-    #                                scenario,
-    #                                  return_statistics,
-    #                                 ):
-    #     """Calculate costs  and add them to the DataFrame. method is only for joint sampling """
-        
-    #     energy_res = result_df.copy() 
-        
-        
-    #     # Apply cost calculations to all rows, this calc the total at sample time 
-    #     results  = result_df.apply(
-    #         lambda row: self.calculate_ONLY_row_costs_only(row, 
-    #                                                         col_mapping=col_mapping, 
-    #                                                         scenario_interventions=scenario_interventions, 
-    #                                                         region=region,  
-    #                                                         return_statistics=return_statistics,
-    #                                                         scenario_name=scenario,
-                                                            
-    #                                                          ), axis=1
-    #                                 )
-        
-    #     # Unpack the results - each element is a tuple of (cost_series, energy_series)
-    #     cost_results = pd.DataFrame([x[0] for x in results])
-    #     energy_results = pd.DataFrame([x[1] for x in results])
-        
-    #     self._add_cost_columns(result_df, cost_results, scenario)
-    #     # Add energy columns (individual interventions)
-    #     self._add_individual_energy_columns(energy_res, energy_results, scenario)
-    #     logger.debug('_calculate_and_add_costs Added costs total complete for all rows.')
-    #     return result_df, energy_res
-
-
+ 
 
     def _add_cost_columns(self, result_df, cost_results, scenario):
         """Add individual and total cost columns to result DataFrame."""
@@ -799,76 +775,7 @@ class RetrofitModel2D:
         for col in energy_results.columns:
             result_df[f'{scenario}_{col}'] = energy_results[col]
 
-
-    # def _add_aggregated_energy_columns(self, result_df, energy_results, scenario, return_statistics):
-    #     """Add aggregated gas and electricity energy columns using combined_savings columns."""
-    #     # Add gas energy columns (using combined_savings from multiplicative aggregation)
-    #     self._add_gas_energy_totals(result_df, energy_results, scenario, return_statistics)
-        
-    #     # Add electricity energy columns (using combined_savings from additive aggregation)
-    #     self._add_electricity_energy_totals(result_df, energy_results, scenario, return_statistics)
-
-
-    # def _add_gas_energy_totals(self, result_df, energy_results, scenario, return_statistics):
-    #     """Calculate and add total gas energy using combined_savings columns."""
-    #     for stat in return_statistics:
-    #         # Look for the combined_savings column for this statistic
-    #         combined_col = f'combined_savings_{stat}_gas'
-            
-    #         if combined_col in energy_results.columns:
-    #             # Use the pre-calculated combined savings (multiplicative aggregation already done)
-    #             result_df[f'energy_{scenario}_gas_{stat}'] = energy_results[combined_col]
-    #         else:
-    #             # Fallback: if no combined column exists (e.g., only 1 intervention or solar only)
-    #             # Look for individual gas columns for this statistic
-    #             gas_stat_cols = [col for col in energy_results.columns 
-    #                         if f'_{stat}_gas' in col.lower() and 'combined' not in col.lower()]
-                
-    #             if len(gas_stat_cols) == 1:
-    #                 # Single intervention: just use its value
-    #                 result_df[f'energy_{scenario}_gas_{stat}'] = energy_results[gas_stat_cols[0]]
-    #             elif len(gas_stat_cols) > 1:
-    #                 # Multiple interventions but no combined column: multiply them
-    #                 # (This shouldn't happen with new structure, but kept for safety)
-    #                 result_df[f'energy_{scenario}_gas_{stat}'] = energy_results[gas_stat_cols].prod(axis=1)
-    #             else:
-    #                 # No gas interventions
-    #                 result_df[f'energy_{scenario}_gas_{stat}'] = 1.0
-
-
-    # def _add_electricity_energy_totals(self, result_df, energy_results, scenario, return_statistics):
-    #     """Calculate and add total electricity energy using combined_savings columns."""
-    #     for stat in return_statistics:
-    #         # Look for the combined_savings column for this statistic
-    #         combined_col = f'combined_savings_{stat}_electricity'
-            
-    #         if combined_col in energy_results.columns:
-    #             # Use the pre-calculated combined savings (additive aggregation already done)
-    #             result_df[f'energy_{scenario}_electricity_{stat}'] = energy_results[combined_col]
-    #         else:
-    #             # Fallback: if no combined column exists
-    #             # Look for individual electricity columns for this statistic
-    #             elec_stat_cols = [col for col in energy_results.columns 
-    #                             if f'_{stat}_electricity' in col.lower() and 'combined' not in col.lower()]
-                
-    #             if len(elec_stat_cols) == 1:
-    #                 # Single intervention: just use its value
-    #                 result_df[f'energy_{scenario}_electricity_{stat}'] = energy_results[elec_stat_cols[0]]
-    #             elif len(elec_stat_cols) > 1:
-    #                 # Multiple interventions but no combined column: add them
-    #                 # (This shouldn't happen with new structure, but kept for safety)
-    #                 result_df[f'energy_{scenario}_electricity_{stat}'] = energy_results[elec_stat_cols].sum(axis=1)
-    #             else:
-    #                 # No electricity interventions
-    #                 result_df[f'energy_{scenario}_electricity_{stat}'] = 0.0
-
-
-    # def _add_default_electricity(self, result_df, energy_results, elec_cols, scenario, return_statistics):
-    #     """Default behavior: Sum electricity additively for other scenarios."""
-    #     for stat in return_statistics:
-    #         elec_intervention_cols = [col for col in elec_cols if col.endswith(f'_{stat}')]
-    #         if elec_intervention_cols:
-    #             result_df[f'energy_{scenario}_elec_{stat}'] = energy_results[elec_intervention_cols].sum(axis=1)
+ 
     def _get_cols_scenario_intervention(self, scenario_str, stats=['mean', 'std', 'p5', 'p50', 'p95']):
         cost_cols = [] 
         energy_cols = [] 
@@ -918,41 +825,7 @@ class RetrofitModel2D:
         
         return cost_cols, energy_cols
     
-    # def _get_cols_scenario_intervention(self, scenario_str, stats = ['mean', 'std', 'p5', 'p50', 'p95']):
-    #     cost_cols= [] 
-    #     energy_cols= [] 
-    #     if scenario_str == 'wall_installation':
-    #         interventions = ['cavity_wall_percentile', 'solid_wall_internal_percentile', 'solid_wall_external_percentile' ]
-    #         elec=False 
-    #     elif scenario_str =='loft_installation':
-    #         interventions = ['loft_percentile']
-    #         elec=False 
-    #     elif scenario_str =='joint_loft_wall_add':
-    #         interventions =['joint_loft_wall_add']
-    #         elec=False 
-    #     elif scenario_str =='joint_loft_wall_decay':
-    #         interventions =['joint_loft_wall_decay']
-    #         elec=False 
-    #     elif scenario_str =='heat_pump_only':
-    #         interventions = ['heat_pump_percentile']
-    #         elec =True 
-    #     elif scenario_str =='join_heat_ins_decay':
-    #         interventions = ['join_heat_ins_decay']
-    #         elec =True 
-    #     elif scenario_str =='join_heat_ins_add':
-    #         interventions = ['join_heat_ins_add']
-    #         elec =True 
-    #     else:
-    #         raise Exception(f'Need to define the interventions  for scenarioi  ({scenario_str}) in RetrofitModel _get_cols_scenario_intervention')
-        
-    #     for iint in interventions:
-    #         for s in stats:
-    #             cost_cols.append( f'cost_{scenario_str}_{s}' ) 
-    #             energy_cols.append(  f'{scenario_str}_gas_{s}' ) 
-    #             if elec:
-    #                 energy_cols.append(  f'{scenario_str}_electricity_{s}' ) 
-        
-    #     return cost_cols,  energy_cols
+    
 
 
     def _ensure_columns_exist(self, df, required_cols):
@@ -972,107 +845,7 @@ class RetrofitModel2D:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
-
-    # def calculate_building_costs_df_updated(self,
-    #                                         df, 
-    #                                         region, 
-    #                                         scenario, 
-    #                                         col_mapping=None, 
-    #                                         return_statistics=None, 
-    #                                       ):
-    #     """
-    #     Apply Monte Carlo building cost calculations to all rows in a DataFrame for a specific scenario.
-        
-    #     Main orchestrator function that coordinates validation, preparation, and cost calculations.
-    #     """
-    #     def expand_dict_columns(df):
-    #         df_expanded = df.copy()
-            
-    #         for col in df.columns:
-    #             if isinstance(df[col].iloc[0], dict):
-    #                 # Expand dictionary column
-    #                 temp_df = df[col].apply(pd.Series)
-    #                 temp_df.columns = [f"{col}_{subcol}" for subcol in temp_df.columns]
-    #                 df_expanded = pd.concat([df_expanded.drop(columns=[col]), temp_df], axis=1)
-            
-    #         return df_expanded
-    #     # Validate inputs
-    #     error = self._validate_inputs(df, region, scenario)
-    #     if error:
-    #         return error
-        
-    #     # Validate and get statistics
-    #     return_statistics = self._validate_statistics(return_statistics)
-    #     if isinstance(return_statistics, dict) and 'error' in return_statistics:
-    #         return return_statistics
-        
-    #     # Get scenario interventions
-    #     scenario_interventions = self._get_scenario_interventions(scenario)
-    #     if isinstance(scenario_interventions, dict) and 'error' in scenario_interventions:
-    #         return scenario_interventions
-        
-    #     # Get column mapping
-    #     col_mapping = self._get_column_mapping(col_mapping)
-        
-    #     # Prepare DataFrame
-    #     result_df = self._prepare_dataframe(df, col_mapping)
-    #     base_cols = result_df.columns.tolist() 
-    #     # Validate DataFrame columns
-    #     error = self._validate_dataframe_columns(result_df, col_mapping)
-    #     if error:
-    #         return error
-        
-    #     costs_result_df  = result_df.copy() 
-    #     energy_results_df = result_df.copy() 
-    #     dfcols = result_df.columns.tolist()
-         
-    #     # Calculate and add costs  
-    #     costs_result_df, energy_results_df = self._calculate_and_add_costs(result_df = costs_result_df, 
-    #                                                                         col_mapping = col_mapping, 
-    #                                                                         scenario_interventions = scenario_interventions, 
-    #                                                                         # prob_external = prob_external,
-    #                                                                         region =region, 
-    #                                                                         scenario = scenario,
-    #                                                                         return_statistics = return_statistics,
-                                                                            
-    #     )
-
-     
-    #     # extra_cols = ['wall_insulated', 'existing_loft_insulation', 'existing_floor_insulation', 'existing_window_upgrades']
-    #     cost_cols, energy_cols = self._get_cols_scenario_intervention(scenario )
  
-    #     cost_overlap = set(cost_cols).intersection(costs_result_df.columns)
-    #     energy_overlap = set(energy_cols).intersection(energy_results_df.columns)
-
-    #     if not cost_overlap:
-    #         logger.warning(f"No overlap found between expected cost columns and DataFrame columns for scenario {scenario}.")
-    #         logger.warning(f"Expected cost cols: {cost_cols}")
-    #         logger.warning(f"Actual cost DF cols: {[x for x in costs_result_df.columns.tolist() if x not in dfcols ] }")
-
-    #     if not energy_overlap:
-    #         logger.warning(f"No overlap found between expected energy columns and DataFrame columns for scenario {scenario}.")
-    #         logger.warning(f"Expected energy cols: {energy_cols}")
-    #         logger.warning(f"Actual energy DF cols: {[x for x in energy_results_df.columns.tolist() if x not in dfcols ] }")
-
-    #     costs_result_df = self._ensure_columns_exist(costs_result_df, cost_cols)
-    #     energy_results_df = self._ensure_columns_exist(energy_results_df, energy_cols)
-    #     energy_results_df = expand_dict_columns(energy_results_df)
-    #     logger.debug(f'base cold: {base_cols}')
-    #     c_df =  costs_result_df[ cost_cols ]
-    #     e_df = energy_results_df[energy_cols]
-    #     c_df = c_df.rename(
-    #         columns=lambda c: f"{scenario}_{c}"
-    #     )    
-    #     e_df = e_df.rename(
-    #         columns=lambda c: f"{scenario}_{c}"
-    #     )    
-    #     data = pd.concat(
-    #         [result_df[base_cols], c_df, e_df ],
-    #         axis=1
-    #             )   
-           
-    #     return  data
-
 
     def calculate_building_costs_df_updated(self,
                                             df, 
@@ -1118,7 +891,7 @@ class RetrofitModel2D:
         col_mapping = self._get_column_mapping(col_mapping)
         
         # Prepare DataFrame
-        result_df = self._prepare_dataframe(df, col_mapping)
+        result_df = self._prepare_dataframe(df, col_mapping )
         base_cols = result_df.columns.tolist() 
         # Validate DataFrame columns
         error = self._validate_dataframe_columns(result_df, col_mapping)
@@ -1133,48 +906,13 @@ class RetrofitModel2D:
         costs_result_df, energy_results_df = self._calculate_and_add_costs(result_df = costs_result_df, 
                                                                             col_mapping = col_mapping, 
                                                                             scenario_interventions = scenario_interventions, 
-                                                                            # prob_external = prob_external,
+                                                                           
                                                                             region =region, 
                                                                             scenario = scenario,
                                                                             return_statistics = return_statistics,
                                                                             
         )
-
-        # # CHECK 1: Verify costs_result_df after _calculate_and_add_costs
-        # logger.debug(f'Costs result DF shape after calculation: {costs_result_df.shape}')
-        # new_cost_cols = [col for col in costs_result_df.columns if col not in dfcols]
-        # logger.debug(f'New cost columns added: {new_cost_cols}')
-        
-        # for col in new_cost_cols:
-        #     if costs_result_df[col].isna().all():
-        #         logger.error(f'Cost column "{col}" is all NaN after calculation for scenario {scenario}!')
-        #         raise ValueError(f'Cost column "{col}" contains all NaN values for scenario {scenario}')
-        #     logger.debug(f'Cost column "{col}": mean={costs_result_df[col].mean():.4f}, '
-        #                f'nan_count={costs_result_df[col].isna().sum()}')
-        
-        # # CHECK 2: Verify energy_results_df after _calculate_and_add_costs
-        # logger.debug(f'Energy result DF shape after calculation: {energy_results_df.shape}')
-        # new_energy_cols = [col for col in energy_results_df.columns if col not in dfcols]
-        # logger.debug(f'New energy columns added: {new_energy_cols}')
-        
-        # for col in new_energy_cols:
-        #     if energy_results_df[col].isna().all():
-        #         logger.error(f'Energy column "{col}" is all NaN after calculation for scenario {scenario}!')
-        #         raise ValueError(f'Energy column "{col}" contains all NaN values for scenario {scenario}')
-            
-        #     # Check for all zeros
-        #     if (energy_results_df[col] == 0).all():
-        #         logger.warning(f'Energy column "{col}" is all zeros for scenario {scenario}. '
-        #                      f'This may indicate missing energy savings data.')
-            
-        #     # Check if column contains dict values (before expansion)
-        #     if isinstance(energy_results_df[col].iloc[0], dict):
-        #         logger.debug(f'Energy column "{col}" contains dict values - will be expanded')
-        #     else:
-        #         logger.debug(f'Energy column "{col}": mean={energy_results_df[col].mean():.4f}, '
-        #                    f'nan_count={energy_results_df[col].isna().sum()}, '
-        #                    f'zero_count={(energy_results_df[col] == 0).sum()}')
-     
+ 
         # extra_cols = ['wall_insulated', 'existing_loft_insulation', 'existing_floor_insulation', 'existing_window_upgrades']
         cost_cols, energy_cols = self._get_cols_scenario_intervention(scenario )
  
@@ -1194,31 +932,10 @@ class RetrofitModel2D:
         costs_result_df = self._ensure_columns_exist(costs_result_df, cost_cols)
         energy_results_df = self._ensure_columns_exist(energy_results_df, energy_cols)
         
-        # # CHECK 3: Before expanding dict columns
-        # logger.debug(f'Energy columns before dict expansion: {[c for c in energy_results_df.columns if c in energy_cols]}')
-        
+ 
         energy_results_df = expand_dict_columns(energy_results_df)
         
-        # # CHECK 4: After expanding dict columns
-        # logger.debug(f'Energy result DF shape after dict expansion: {energy_results_df.shape}')
-        # expanded_energy_cols = [col for col in energy_results_df.columns if col not in dfcols]
-        # logger.debug(f'Energy columns after dict expansion: {expanded_energy_cols}')
-        
-        # # Verify expanded columns are not all NaN
-        # for col in expanded_energy_cols:
-        #     if col in energy_results_df.columns:
-        #         if energy_results_df[col].isna().all():
-        #             logger.error(f'Expanded energy column "{col}" is all NaN for scenario {scenario}!')
-        #             raise ValueError(f'Expanded energy column "{col}" contains all NaN values for scenario {scenario}')
-                
-        #         # Check for all zeros
-        #         if (energy_results_df[col] == 0).all():
-        #             logger.warning(f'Expanded energy column "{col}" is all zeros for scenario {scenario}.')
-                
-        #         logger.debug(f'Expanded energy column "{col}": mean={energy_results_df[col].mean():.4f}, '
-        #                    f'nan_count={energy_results_df[col].isna().sum()}, '
-        #                    f'zero_count={(energy_results_df[col] == 0).sum()}')
-        
+       
         logger.debug(f'base cold: {base_cols}')
         c_df =  costs_result_df[ cost_cols ]
         e_df = energy_results_df[energy_cols]

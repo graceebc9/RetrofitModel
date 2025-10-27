@@ -11,7 +11,7 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
     """
     
     # 1. Define the Number of Factors (N=6)
-    N_factors = 8
+    N_factors = 12
     
     # 2. Generate the Latin Hypercube Samples (N_epistemic_runs rows, N_factors columns)
     # The output is uniformly distributed between 0 and 1.
@@ -67,6 +67,27 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
     # Centered around 0.5 with ±0.2 uncertainty
     ewo_samples = uniform.ppf(lhs_samples_uniform[:, 7], loc=0.1, scale=0.8)
 
+    # --- NEW: 4 Factors (Flat Estimation Model, Default Typology) ---
+    
+    # Based on epistemic_footprint_default = ( (55, 5), (8, 2) )
+    # Based on epistemic_efficiency_default = ( (0.75, 0.03), (0.05, 0.02) )
+
+    # Factor 9: Mean Flat Footprint (fp_mean) - Truncated Normal: loc=55, scale=5, bounds [40, 70]
+    a_fp_m, b_fp_m = (40 - 55) / 5, (70 - 55) / 5
+    fp_mean_samples = truncnorm.ppf(lhs_samples_uniform[:, 8], a=a_fp_m, b=b_fp_m, loc=55, scale=5)
+
+    # Factor 10: StdDev of Flat Footprint (fp_std) - Truncated Normal: loc=8, scale=2, bounds [2, 15]
+    a_fp_s, b_fp_s = (2 - 8) / 2, (15 - 8) / 2
+    fp_std_samples = truncnorm.ppf(lhs_samples_uniform[:, 9], a=a_fp_s, b=b_fp_s, loc=8, scale=2)
+    
+    # Factor 11: Mean Efficiency (eff_mean) - Truncated Normal: loc=0.75, scale=0.03, bounds [0.5, 0.8]
+    a_ef_m, b_ef_m = (0.5 - 0.75) / 0.03, (0.8 - 0.75) / 0.03
+    eff_mean_samples = truncnorm.ppf(lhs_samples_uniform[:, 10], a=a_ef_m, b=b_ef_m, loc=0.75, scale=0.03)
+
+    # Factor 12: StdDev of Efficiency (eff_std) - Truncated Normal: loc=0.05, scale=0.02, bounds [0.01, 0.1]
+    a_ef_s, b_ef_s = (0.01 - 0.05) / 0.02, (0.1 - 0.05) / 0.02
+    eff_std_samples = truncnorm.ppf(lhs_samples_uniform[:, 11], a=a_ef_s, b=b_ef_s, loc=0.05, scale=0.02)
+
     # 4. Compile into DataFrame
     epistemic_df = pd.DataFrame({
         'time_scale_bias': ts_samples,
@@ -77,6 +98,11 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
         'age_band_multipliers_uncertainty': age_samples,
         'cost_scenario': cost_scenario_samples,
         'external_wall_probability': ewo_samples,
+        
+        'flat_fp_mean': fp_mean_samples,
+        'flat_fp_std': fp_std_samples,
+        'flat_eff_mean': eff_mean_samples,
+        'flat_eff_std': eff_std_samples,
     })
     
     return epistemic_df
