@@ -162,10 +162,14 @@ class RetrofitModel2D:
     def _get_column_mapping(self, col_mapping):
         # ... (Original logic) ...
         default_mapping = {
-            'floor_count': 'total_fl_area_avg', 'gross_external_area': 'total_fl_area_avg',
-            'gross_internal_area': 'scaled_fl_area', 'footprint_circumference': 'perimeter_length',
-            'flat_count': 'est_num_flats', 'building_type': 'premise_type',
-            'age_band': 'premise_age', 'building_footprint_area': 'premise_area',
+            'floor_count': 'validated_fc',
+            'gross_external_area': 'total_fl_area_avg',
+            'gross_internal_area': 'scaled_fl_area',
+              'footprint_circumference': 'perimeter_length',
+            'flat_count': 'est_num_flats',
+             'building_type': 'premise_type',
+            'age_band': 'premise_age',
+            'building_footprint_area': 'premise_area',
             'avg_gas_percentile':'avg_gas_percentile', 'inferred_wall_type': 'inferred_wall_type',
             'inferred_insulation_type': 'inferred_insulation_type',
         }

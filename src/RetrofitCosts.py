@@ -54,15 +54,15 @@ INTERVENTION_CONFIGS: Dict[str, InterventionConfig] = {
         epist_scenarios={
             'central': {
                 'cost_min': 10, 'cost_mode': 20, 'cost_max': 30,
-                'cap_min': 500, 'cap_max': 5000
+                'cap_min': 500, 'cap_max': 8500
             },
             'optimistic': { # 20% cheaper
                 'cost_min': 8, 'cost_mode': 16, 'cost_max': 24,
-                'cap_min': 400, 'cap_max': 4000
+                'cap_min': 400, 'cap_max': 6800
             },
             'pessimistic': { # 30% more expensive
                 'cost_min': 13, 'cost_mode': 26, 'cost_max': 39,
-                'cap_min': 650, 'cap_max': 6500
+                'cap_min': 650, 'cap_max': 11000
             }
         }
     ),
@@ -72,15 +72,15 @@ INTERVENTION_CONFIGS: Dict[str, InterventionConfig] = {
         epist_scenarios={
             'central': {
                 'cost_min': 55, 'cost_mode': 95, 'cost_max': 140,
-                'cap_min': 6000, 'cap_max': 9000
+                'cap_min': 6000, 'cap_max': 35000
             },
             'optimistic': { # 20% cheaper
                 'cost_min': 44, 'cost_mode': 76, 'cost_max': 112,
-                'cap_min': 4800, 'cap_max': 7200
+                'cap_min': 4800, 'cap_max': 28000
             },
             'pessimistic': { # 30% more expensive
                 'cost_min': 72, 'cost_mode': 124, 'cost_max': 182,
-                'cap_min': 7800, 'cap_max': 11700
+                'cap_min': 7800, 'cap_max': 45500
             }
         }
     ),
@@ -89,15 +89,15 @@ INTERVENTION_CONFIGS: Dict[str, InterventionConfig] = {
         epist_scenarios={
             'central': {
                 'cost_min': 70, 'cost_mode': 115, 'cost_max': 160,
-                'cap_min': 7100, 'cap_max': 15000
+                'cap_min': 7100, 'cap_max': 40000
             },
             'optimistic': { # 20% cheaper
                 'cost_min': 56, 'cost_mode': 92, 'cost_max': 128,
-                'cap_min': 5680, 'cap_max': 12000
+                'cap_min': 5680, 'cap_max': 32000
             },
             'pessimistic': { # 30% more expensive
                 'cost_min': 91, 'cost_mode': 150, 'cost_max': 208,
-                'cap_min': 9230, 'cap_max': 19500
+                'cap_min': 9230, 'cap_max': 52000
             }
         }
     ),
@@ -188,6 +188,7 @@ class CostEstimator:
         It passes all **kwargs (including n_samples, typology, and
         any epistemic multipliers) down to the single cost sampler.
         """ 
+        print(f'Starting Package: {intervention}')
         try:
             interventions_list = get_intervention_list(kwargs.get('wall_type'), intervention)
             logger.debug('Intervention list found')
@@ -258,6 +259,8 @@ class CostEstimator:
             base_costs = np.random.triangular(min_cost, mode_cost, max_cost, n_samples)
         else:
             area = self.get_area_for_intervention(intervention, building_chars)
+            typology = kwargs.get('typology', 'all_unknown_typology')
+            print(f'Logging the area:{typology}:  {area} for scneario {epist_scenario} for {building_chars}')
             base_costs = area * np.random.triangular(
                 epist_scenario_params['cost_min'], 
                 epist_scenario_params['cost_mode'], 
@@ -275,7 +278,19 @@ class CostEstimator:
         cap_min = epist_scenario_params.get('cap_min')
         cap_max = epist_scenario_params.get('cap_max')
         
+
         if cap_min is not None and cap_max is not None:
+            # NEW: Scale caps for wall insulation in multi-flat buildings
+            if config.area_type == 'wall':
+                # Check if building has flats
+                num_flats = getattr(building_chars, 'number_of_flats', 1)
+                if num_flats > 1:
+                    # Scale caps proportionally  
+                    flat_scaling_factor = max(1, num_flats * 0.8)  # 0.8 for economies of scale
+                    cap_min = cap_min * flat_scaling_factor
+                    cap_max = cap_max * flat_scaling_factor
+                    logger.debug(f"Scaled caps for {num_flats} flats: min={cap_min:.0f}, max={cap_max:.0f}")
+            
             final_costs = np.clip(final_costs, cap_min, cap_max)
             
         return final_costs
