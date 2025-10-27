@@ -38,6 +38,61 @@ def run_vis_new(res_df, scenario, op_base):
     fig.savefig(os.path.join(op_base, f'{scenario}_costs_by_decile.png'), 
                 dpi=300, bbox_inches='tight')
     plt.close(fig)
+
+    if scenario=='wall_installation':
+        fig = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
+                                        mean_col=f'{scenario}_cost_{scenario}_mean', 
+                                        std_col=f'{scenario}_cost_{scenario}_std',
+                                        ylabel='Avg Installation Costs (£)',
+                                        costs=True, 
+                                        percentage=False,
+                                        rot=False ,
+                                        )
+        fig.savefig(os.path.join(op_base, f'{scenario}_costs_by_decile_split_wall_types.png'), 
+                    dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+        fig = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
+                                        mean_col=f'{scenario}_cost_{scenario}_mean', 
+                                        std_col=f'{scenario}_cost_{scenario}_std',
+                                        groupby_col='premise_type',
+                                        groupby_label='Premise Type',
+                                        ylabel='Avg Installation Costs (£)',
+                                        costs=True, 
+                                        percentage=False,
+                                        rot=True,
+                                        )
+        fig.savefig(os.path.join(op_base, f'{scenario}_costs_by_premise_type_split_wall_types.png'), 
+                    dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+        fig = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
+                                         mean_col=f'{scenario}_{scenario}_gas_mean', 
+                                    std_col=f'{scenario}_{scenario}_gas_std',
+                                        groupby_col='premise_type',
+                                        groupby_label='Premise Type',
+                                        ylabel='Avg Installation Costs (£)',
+                                        costs=False, 
+                                        percentage=True,
+                                        rot=True,
+                                        )
+        fig.savefig(os.path.join(op_base, f'{scenario}_energy_by_premise_type_split_wall_types.png'), 
+                    dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+        fig = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
+                                         mean_col=f'{scenario}_{scenario}_gas_mean', 
+                                    std_col=f'{scenario}_{scenario}_gas_std',
+                                        ylabel='Avg Installation Costs (£)',
+                                        costs=False, 
+                                        percentage=True,
+                                        rot=True,
+                                        )
+        fig.savefig(os.path.join(op_base, f'{scenario}_energy_by_decile_split_wall_types.png'), 
+                    dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+    
     
     # Gas reduction by decile
     fig = plot_col_reduction_by_decile_epistemic(pl,
@@ -120,6 +175,7 @@ def run_vis_new(res_df, scenario, op_base):
                                     groupby_col='avg_gas_percentile',
                                     groupby_label='Gas Usage Decile',
                                     ylabel='Costs of Installation',
+                                    rot=True, 
                                 ) 
         fig.savefig(os.path.join(op_base, f'{scenario}_wall_type_costssby_decile.png'), 
                 dpi=300, bbox_inches='tight')
@@ -134,6 +190,7 @@ def run_vis_new(res_df, scenario, op_base):
                                     groupby_col='premise_type',
                                     groupby_label='Premise Type',
                                     ylabel='Costs of Installation',
+                                    rot=True, 
                                 ) 
         fig.savefig(os.path.join(op_base, f'{scenario}_wall_type_costssby_premise_type.png'), 
                 dpi=300, bbox_inches='tight')
@@ -418,7 +475,7 @@ def plot_col_reduction_by_decile_epistemic(res_df,
     ax1.plot(grouped_single['decile'], grouped_single['mean_reduction'],
              'o-', linewidth=2, markersize=8, color='steelblue')
     ax1.fill_between(grouped_single['decile'], grouped_single['sd_lower'], grouped_single['sd_upper'],
-                     alpha=0.3, label='Mean ± 2σ (within run)', color='steelblue')
+                     alpha=0.3, label='Mean ± 2σ', color='steelblue')
     ax1.set_xlabel(groupby_label, fontsize=11)
     ax1.set_ylabel(ylabel, fontsize=11)
     ax1.set_title(f'Within-Run Variability\n(Run: {epistemic_run_id})', fontsize=13)
@@ -464,6 +521,169 @@ def plot_col_reduction_by_decile_epistemic(res_df,
     print(grouped_epistemic[['decile', 'mean_reduction', 'epistemic_std', 'epistemic_se', 'n_epistemic_runs']].to_string(index=False))
     
         
+    return fig
+
+def plot_col_reduction_by_decile_epistemic_by_wall_type(res_df,
+                                                        mean_col,
+                                                        std_col,
+                                                        wall_type_col='inferred_insulation_type',
+                                                        epistemic_run_id=None,
+                                                        groupby_col='avg_gas_percentile',
+                                                        groupby_label='Gas Usage Decile',
+                                                        ylabel='Energy Reduction (%)',
+                                                        title=None,
+                                                        figsize=(16, 6),
+                                                        costs=True,
+                                                        rot=False,
+                                                        percentage=True):
+    
+    df = res_df.copy()
+    
+    if df.empty:
+        print(f"Warning: DataFrame is empty, skipping plot")
+        return None
+    og_shape = df.shape[0]
+    # Drop rows with missing wall type values
+    df = df.dropna(subset=[wall_type_col])
+    post_shape= df.shape[0]
+    print('post drop we retrina: {post_shape/ og_shape*100 }%' )
+    # Get unique wall types
+    wall_types = sorted(df[wall_type_col].unique())
+    n_wall_types = len(wall_types)
+    
+    # Define colors for different wall types
+    colors = ['steelblue', 'darkorange', 'forestgreen', 'crimson', 'purple'][:n_wall_types]
+    
+    # ===== LEFT PLOT: Single epistemic run by wall type =====
+    if epistemic_run_id is None:
+        epistemic_run_id = df['epistemic_run_id'].iloc[0]
+        print(f"No epistemic_run_id specified, using: {epistemic_run_id}")
+    
+    df_single = df[df['epistemic_run_id'] == epistemic_run_id].copy()
+    df_single[f'{std_col}_2'] = (df_single[std_col] ** 2)
+    
+    # Group by both decile and wall type
+    grouped_single_by_wall = df_single.groupby([groupby_col, wall_type_col]).agg({
+        mean_col: ['mean', 'count'],
+        f'{std_col}_2': ['sum']
+    }).reset_index()
+    grouped_single_by_wall.columns = ['decile', 'wall_type', 'mean_reduction', 'n_buildings', 'std_squared_summed']
+    grouped_single_by_wall['pooled_sd'] = np.sqrt(grouped_single_by_wall['std_squared_summed'] / grouped_single_by_wall['n_buildings'])
+    
+    # ===== RIGHT PLOT: Across all epistemic runs by wall type =====
+    epistemic_means = []
+    for run_id in df['epistemic_run_id'].unique():
+        df_run = df[df['epistemic_run_id'] == run_id].copy()
+        
+        grouped_run = df_run.groupby([groupby_col, wall_type_col]).agg({
+            mean_col: ['mean', 'count']
+        }).reset_index()
+        grouped_run.columns = ['decile', 'wall_type', 'mean_reduction', 'n_buildings']
+        grouped_run['epistemic_run_id'] = run_id
+        epistemic_means.append(grouped_run)
+    
+    epistemic_df = pd.concat(epistemic_means, ignore_index=True)
+    
+    # Aggregate across epistemic runs by decile and wall type
+    grouped_epistemic_by_wall = epistemic_df.groupby(['decile', 'wall_type']).agg({
+        'mean_reduction': ['mean', 'std', 'count']
+    }).reset_index()
+    grouped_epistemic_by_wall.columns = ['decile', 'wall_type', 'mean_reduction', 'epistemic_std', 'n_epistemic_runs']
+    grouped_epistemic_by_wall['epistemic_se'] = grouped_epistemic_by_wall['epistemic_std'] / np.sqrt(grouped_epistemic_by_wall['n_epistemic_runs'])
+
+    # Apply percentage scaling
+    if percentage:
+        grouped_single_by_wall['mean_reduction'] *= 100
+        grouped_single_by_wall['pooled_sd'] *= 100
+        grouped_epistemic_by_wall['mean_reduction'] *= 100
+        grouped_epistemic_by_wall['epistemic_std'] *= 100
+        grouped_epistemic_by_wall['epistemic_se'] *= 100
+    
+    # Calculate bounds for single run (LEFT)
+    grouped_single_by_wall['se'] = grouped_single_by_wall['pooled_sd'] / np.sqrt(grouped_single_by_wall['n_buildings'])
+    grouped_single_by_wall['sd_lower'] = grouped_single_by_wall['mean_reduction'] - 2 * grouped_single_by_wall['pooled_sd']
+    grouped_single_by_wall['sd_upper'] = grouped_single_by_wall['mean_reduction'] + 2 * grouped_single_by_wall['pooled_sd']
+    
+    # Calculate bounds for epistemic (RIGHT)
+    grouped_epistemic_by_wall['epistemic_lower'] = grouped_epistemic_by_wall['mean_reduction'] - 2 * grouped_epistemic_by_wall['epistemic_se']
+    grouped_epistemic_by_wall['epistemic_upper'] = grouped_epistemic_by_wall['mean_reduction'] + 2 * grouped_epistemic_by_wall['epistemic_se']
+    grouped_epistemic_by_wall['ci_error'] = 2 * grouped_epistemic_by_wall['epistemic_se']
+    
+    # ===== CREATE PLOTS =====
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    
+    # LEFT: Individual building variability within one epistemic run - by wall type
+    for i, wall_type in enumerate(wall_types):
+        df_wall = grouped_single_by_wall[grouped_single_by_wall['wall_type'] == wall_type]
+        
+        ax1.plot(df_wall['decile'], df_wall['mean_reduction'],
+                 'o-', linewidth=2, markersize=8, color=colors[i], label=wall_type)
+        ax1.fill_between(df_wall['decile'], df_wall['sd_lower'], df_wall['sd_upper'],
+                         alpha=0.2, color=colors[i])
+    
+    ax1.set_xlabel(groupby_label, fontsize=11)
+    ax1.set_ylabel(ylabel, fontsize=11)
+    ax1.set_title(f'Within-Run Variability by Wall Type\n(Run: {epistemic_run_id})', fontsize=13)
+    ax1.set_xticks(grouped_single_by_wall['decile'].unique())
+    ax1.legend()
+    ax1.grid(alpha=0.3)
+    if costs:
+        ax1.set_ylim(0)
+    if percentage:
+        ax1.axhline(0, color='r', linestyle='--', alpha=0.5)
+    if rot:
+        ax1.tick_params(axis='x', rotation=90)
+    
+    # RIGHT: Epistemic uncertainty across runs - grouped bars by wall type
+    deciles = sorted(grouped_epistemic_by_wall['decile'].unique())
+    x = np.arange(len(deciles))
+    width = 0.8 / n_wall_types  # Total width divided by number of wall types
+    
+    for i, wall_type in enumerate(wall_types):
+        df_wall = grouped_epistemic_by_wall[grouped_epistemic_by_wall['wall_type'] == wall_type]
+        
+        # Align bars by decile
+        df_wall = df_wall.set_index('decile').reindex(deciles).reset_index()
+        
+        offset = (i - n_wall_types/2 + 0.5) * width
+        
+        ax2.bar(x + offset, df_wall['mean_reduction'],
+                width=width, color=colors[i], alpha=0.7, label=wall_type)
+        ax2.errorbar(x + offset, df_wall['mean_reduction'],
+                     yerr=df_wall['ci_error'], fmt='none',
+                     color='black', capsize=3, capthick=1, alpha=0.8)
+    
+    ax2.set_xlabel(groupby_label, fontsize=11)
+    ax2.set_ylabel(ylabel, fontsize=11)
+    
+    n_runs = int(grouped_epistemic_by_wall['n_epistemic_runs'].iloc[0])
+    ax2.set_title(f'Epistemic Uncertainty by Wall Type\n(Across {n_runs} runs)', fontsize=13)
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(deciles)
+    ax2.legend()
+    ax2.grid(alpha=0.3, axis='y')
+    if percentage:
+        ax2.axhline(0, color='r', linestyle='--', alpha=0.5)
+    if rot:
+        ax2.tick_params(axis='x', rotation=90)
+    
+    if title:
+        fig.suptitle(title, fontsize=14)
+    plt.tight_layout()
+    
+    # Print summaries by wall type
+    print("\n=== Single Run Summary by Wall Type ===")
+    for wall_type in wall_types:
+        print(f"\n{wall_type_col}: {wall_type}")
+        df_wall = grouped_single_by_wall[grouped_single_by_wall['wall_type'] == wall_type]
+        print(df_wall[['decile', 'mean_reduction', 'pooled_sd', 'n_buildings']].to_string(index=False))
+    
+    print("\n=== Epistemic Uncertainty Summary by Wall Type ===")
+    for wall_type in wall_types:
+        print(f"\n{wall_type_col}: {wall_type}")
+        df_wall = grouped_epistemic_by_wall[grouped_epistemic_by_wall['wall_type'] == wall_type]
+        print(df_wall[['decile', 'mean_reduction', 'epistemic_std', 'epistemic_se', 'n_epistemic_runs']].to_string(index=False))
+    
     return fig
 
 def plot_col_reduction_by_decile_conservation(res_df,
