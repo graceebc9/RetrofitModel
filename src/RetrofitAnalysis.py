@@ -32,13 +32,23 @@ def run_meta_portoflio(base_op, df_processed, scenraio,  years=5 ):
     metrics['cost_scenario_comparison'] = cost_comparison
 
     wall_cost_comparison = compare_by_wall_type(
-    df_processed=df_processed,
-    scenario_name=scenraio , 
-    measure_type=scenraio,
-    output_dir=op_comparison , 
-    name_suffix='cost_wall_type',
-    input_col_split='inferred_insulation_type'  
-)
+                                                df_processed=df_processed,
+                                                scenario_name=scenraio , 
+                                                measure_type=scenraio,
+                                                output_dir=op_comparison , 
+                                                name_suffix='cost_wall_type',
+                                                input_col_split='inferred_insulation_type'  
+                                            )
+    
+    wall_cost_comparison = compare_by_wall_type_2d(
+                                                df_processed=df_processed,
+                                                scenario_name=scenraio , 
+                                                measure_type=scenraio,
+                                                output_dir=op_comparison , 
+                                                name_suffix='cost_wall_type_scenario',
+                                                input_col_split='inferred_insulation_type'  ,
+                                                cost_scenario_col='epistemic__cost_scenario',
+                                            )
     
     suff = f'{scenraio}_energy'
     op = os.path.join(base_op, scenraio, suff)
@@ -722,6 +732,344 @@ def compare_by_wall_type(df_processed, scenario_name, measure_type, output_dir, 
     
     # Print summary
     print(f"\n--- {input_col_split.replace('_', ' ').title()} Comparison Summary ---")
+    print(summary_df.to_string(index=False))
+    
+    return summary_df
+
+
+
+def compare_by_wall_type_2d(df_processed, scenario_name, measure_type, output_dir, name_suffix, 
+                        input_col_split='inferred_insulation_type',
+                        cost_scenario_col='epistemic__cost_scenario'):
+    """
+    Compare costs across different wall types and cost scenarios using combined color/pattern coding.
+    
+    Parameters:
+    -----------
+    input_col_split : str
+        Column name to split the analysis by (default: 'inferred_insulation_type')
+    cost_scenario_col : str
+        Column name for cost scenario split (default: 'epistemic__cost_scenario')
+    
+    Visual Encoding:
+    ---------------
+    - Colors: Wall types (consistent across all scenarios)
+    - Line styles: Cost scenarios (solid, dashed, dotted, dashdot)
+    - Hatching: Cost scenarios (for bar patterns)
+    """
+    print("\n" + "="*60)
+    print(f"WALL TYPE × COST SCENARIO COMPARISON - {scenario_name}")
+    print("="*60)
+    
+    # Check if split columns exist
+    if input_col_split not in df_processed.columns:
+        print(f"Warning: Column '{input_col_split}' not found. Skipping.")
+        return None
+    
+    if cost_scenario_col not in df_processed.columns:
+        print(f"Warning: Column '{cost_scenario_col}' not found. Will proceed without cost scenario split.")
+        cost_scenarios = [None]
+    else:
+        cost_scenarios = df_processed[cost_scenario_col].unique()
+        cost_scenarios = [cs for cs in cost_scenarios if pd.notna(cs)]
+        print(f"\nFound {len(cost_scenarios)} cost scenarios: {cost_scenarios}")
+    
+    # Column definitions (same as before)
+    cost_p50 = f'{scenario_name}_cost_{scenario_name}_p50'
+    cost_p95 = f'{scenario_name}_cost_{scenario_name}_p95'
+    cost_p50_m = f'{scenario_name}_cost_{scenario_name}_p50_mill'
+    cost_p95_m = f'{scenario_name}_cost_{scenario_name}_p95_mill'
+    
+    base = f'total_tonne_co2_saved_{measure_type}_5yr'
+    GAS_P50_COL = f'gas_{base}_p50'
+    GAS_P95_COL = f'gas_{base}_p95'
+    ELEC_P50_COL = f'elec_{base}_p50'
+    has_elec = ELEC_P50_COL in df_processed.columns
+    net_co2_col_p50 = f'total_tonne_co2_saved_{measure_type}_5yr_p50'
+    net_co2_col_p95 = f'total_tonne_co2_saved_{measure_type}_5yr_p95'
+
+    agg_dict = {
+        cost_p50: 'sum', cost_p95: 'sum',
+        GAS_P50_COL: 'sum', GAS_P95_COL: 'sum',
+        cost_p50_m: 'sum', cost_p95_m: 'sum',
+        net_co2_col_p50: 'sum', net_co2_col_p95: 'sum',
+    }
+    if has_elec:
+        ELEC_P95_COL = f'elec_{base}_p95'
+        agg_dict[ELEC_P50_COL] = 'sum'
+        agg_dict[ELEC_P95_COL] = 'sum'
+    
+    # Get wall types
+    wall_types = df_processed[input_col_split].unique()
+    wall_types = [wt for wt in wall_types if pd.notna(wt)]
+    print(f"\nFound {len(wall_types)} wall types: {wall_types}")
+    
+    # Nested data structure
+    nested_data = {}
+    
+    for cost_scenario in cost_scenarios:
+        nested_data[cost_scenario] = {}
+        
+        if cost_scenario is not None:
+            df_scenario = df_processed[df_processed[cost_scenario_col] == cost_scenario]
+        else:
+            df_scenario = df_processed.copy()
+        
+        for wall_type in wall_types:
+            df_wall = df_scenario[df_scenario[input_col_split] == wall_type]
+            
+            if len(df_wall) == 0:
+                continue
+            
+            portfolio_summary = df_wall.groupby('epistemic_run_id').agg(agg_dict).reset_index()
+            
+            # Calculate metrics
+            portfolio_summary['Cost_per_Ton_Gas_P50'] = (
+                portfolio_summary[cost_p50] / portfolio_summary[GAS_P50_COL]
+            )
+            portfolio_summary['Cost_per_Ton_Gas_P95'] = (
+                portfolio_summary[cost_p95] / portfolio_summary[GAS_P95_COL]
+            )
+            portfolio_summary['Total_Net_CO2_P50'] = portfolio_summary[net_co2_col_p50]
+            portfolio_summary['Total_Net_CO2_P95'] = portfolio_summary[net_co2_col_p95]
+            portfolio_summary['Cost_per_Net_Ton_P50'] = (
+                portfolio_summary[cost_p50] / portfolio_summary['Total_Net_CO2_P50']
+            )
+            portfolio_summary['Cost_per_Net_Ton_P95'] = (
+                portfolio_summary[cost_p95] / portfolio_summary['Total_Net_CO2_P95']
+            )
+            portfolio_summary['Total_Costs_P50'] = portfolio_summary[cost_p50_m]
+            portfolio_summary['Total_Costs_P95'] = portfolio_summary[cost_p95_m]
+            
+            nested_data[cost_scenario][wall_type] = portfolio_summary
+    
+    # ========================================================================
+    # VISUAL ENCODING SETUP
+    # ========================================================================
+    
+    # Colors for wall types (consistent across scenarios)
+    wall_type_colors = {}
+    base_colors = plt.cm.tab10(np.linspace(0, 1, 10))
+    for idx, wall_type in enumerate(wall_types):
+        wall_type_colors[wall_type] = base_colors[idx % 10]
+    
+    # Line styles for cost scenarios
+    line_styles = ['-', '--', '-.', ':']
+    scenario_line_styles = {}
+    for idx, scenario in enumerate(cost_scenarios):
+        scenario_line_styles[scenario] = line_styles[idx % len(line_styles)]
+    
+    # Hatching patterns for cost scenarios (for histogram bars)
+    hatch_patterns = ['', '///', '\\\\\\', '|||', '---', '+++', 'xxx', 'ooo', '...', '***']
+    scenario_hatches = {}
+    for idx, scenario in enumerate(cost_scenarios):
+        scenario_hatches[scenario] = hatch_patterns[idx % len(hatch_patterns)]
+    
+    # Alpha adjustments for better visibility
+    base_alpha = 0.3 if len(cost_scenarios) > 2 else 0.4
+    
+    # ========================================================================
+    # CREATE COMBINED PLOTS
+    # ========================================================================
+    
+    metrics_to_plot = [
+        ('Cost_per_Ton_Gas_P50', 'Cost per Ton Gas CO2 (£/TON)', 'cost_per_ton_gas_p50'),
+        ('Cost_per_Net_Ton_P50', 'Cost per Net Ton CO2 (£/TON)', 'cost_per_net_ton_p50'),
+        ('Total_Costs_P50', 'Total Costs (£M)', 'total_costs_p50'),
+    ]
+    
+    for metric_col, metric_label, file_suffix in metrics_to_plot:
+        fig, ax = plt.subplots(1, 1, figsize=(16, 10))
+        
+        # Track legend entries to avoid duplicates
+        legend_entries = []
+        legend_labels = []
+        
+        for cost_scenario in cost_scenarios:
+            scenario_data = nested_data[cost_scenario]
+            scenario_label = cost_scenario if cost_scenario is not None else 'All'
+            
+            for wall_type in wall_types:
+                if wall_type not in scenario_data:
+                    continue
+                    
+                portfolio_summary = scenario_data[wall_type]
+                
+                # Skip if no valid data
+                valid_data = portfolio_summary[metric_col].replace([np.inf, -np.inf], np.nan).dropna()
+                if len(valid_data) == 0:
+                    continue
+                
+                # Combination label
+                combo_label = f'{wall_type} | {scenario_label}'
+                
+                # Get color and style
+                color = wall_type_colors[wall_type]
+                linestyle = scenario_line_styles[cost_scenario]
+                hatch = scenario_hatches[cost_scenario]
+                
+                # Plot histogram with both color (wall type) and hatch (cost scenario)
+                n, bins, patches = ax.hist(
+                    valid_data,
+                    bins=15,
+                    alpha=base_alpha,
+                    color=color,
+                    edgecolor=color,
+                    linewidth=1.5,
+                    label=combo_label,
+                    density=True
+                )
+                
+                # Apply hatching pattern to bars
+                for patch in patches:
+                    patch.set_hatch(hatch)
+                
+                # Plot KDE line with matching color and line style
+                from scipy import stats
+                kde = stats.gaussian_kde(valid_data)
+                x_range = np.linspace(valid_data.min(), valid_data.max(), 200)
+                kde_values = kde(x_range)
+                
+                line = ax.plot(
+                    x_range,
+                    kde_values,
+                    color=color,
+                    linestyle=linestyle,
+                    linewidth=2.5,
+                    alpha=0.9
+                )[0]
+                
+                # Add mean line
+                mean_val = valid_data.mean()
+                ax.axvline(
+                    mean_val,
+                    color=color,
+                    linestyle=linestyle,
+                    linewidth=2,
+                    alpha=0.7
+                )
+                
+                # Store for legend
+                legend_entries.append(line)
+                legend_labels.append(f'{combo_label} (μ={mean_val:,.0f}, n={len(valid_data)})')
+        
+        # Title and labels
+        ax.set_title(
+            f'{input_col_split.replace("_", " ").title()} × Cost Scenario: {metric_label}\n'
+            f'({scenario_name})\n'
+            f'Color = Wall Type | Line Style = Cost Scenario',
+            fontsize=14, fontweight='bold', pad=20
+        )
+        ax.set_xlabel(metric_label, fontsize=12)
+        ax.set_ylabel('Density', fontsize=12)
+        
+        # Enhanced legend with visual guide
+        # Split legend into two columns if many combinations
+        n_combos = len(legend_entries)
+        ncol = 2 if n_combos > 6 else 1
+        
+        legend = ax.legend(
+            legend_entries,
+            legend_labels,
+            loc='upper right',
+            fontsize=8,
+            ncol=ncol,
+            framealpha=0.95,
+            edgecolor='black',
+            title='Wall Type | Cost Scenario (mean, count)',
+            title_fontsize=9
+        )
+        
+        # Add visual guide for encoding
+        guide_text = (
+            'Visual Encoding:\n'
+            f'• Colors = Wall Types: {", ".join(wall_types)}\n'
+            f'• Line Styles = Scenarios: {", ".join([str(s) if s else "All" for s in cost_scenarios])}'
+        )
+        ax.text(
+            0.02, 0.98, guide_text,
+            transform=ax.transAxes,
+            fontsize=9,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7)
+        )
+        
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        filename = f'{name_suffix}_{input_col_split}_by_cost_scenario_combined_{file_suffix}.png'
+        plt.savefig(
+            os.path.join(output_dir, filename),
+            dpi=300,
+            bbox_inches='tight'
+        )
+        plt.close()
+        print(f"Saved: {output_dir}/{filename}")
+    
+    # ========================================================================
+    # ALTERNATIVE: Separate Legend Visualization
+    # ========================================================================
+    # Create a separate figure showing the encoding scheme
+    fig_legend, (ax_color, ax_style) = plt.subplots(1, 2, figsize=(14, 4))
+    
+    # Wall type color legend
+    ax_color.set_title('Wall Type Colors', fontsize=12, fontweight='bold')
+    for idx, (wall_type, color) in enumerate(wall_type_colors.items()):
+        ax_color.barh(idx, 1, color=color, alpha=0.7, edgecolor='black')
+        ax_color.text(0.5, idx, wall_type, ha='center', va='center', fontsize=10, fontweight='bold')
+    ax_color.set_xlim(0, 1)
+    ax_color.set_ylim(-0.5, len(wall_types) - 0.5)
+    ax_color.axis('off')
+    
+    # Cost scenario line style legend
+    ax_style.set_title('Cost Scenario Line Styles', fontsize=12, fontweight='bold')
+    for idx, (scenario, linestyle) in enumerate(scenario_line_styles.items()):
+        scenario_label = scenario if scenario is not None else 'All'
+        ax_style.plot([0, 1], [idx, idx], linestyle=linestyle, linewidth=3, color='black')
+        ax_style.text(1.1, idx, f'{scenario_label} ({hatch_patterns[idx]})', 
+                     va='center', fontsize=10)
+    ax_style.set_xlim(0, 1)
+    ax_style.set_ylim(-0.5, len(cost_scenarios) - 0.5)
+    ax_style.axis('off')
+    
+    plt.tight_layout()
+    legend_filename = f'{name_suffix}_{input_col_split}_encoding_legend.png'
+    plt.savefig(
+        os.path.join(output_dir, legend_filename),
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close()
+    print(f"Saved encoding legend: {output_dir}/{legend_filename}")
+    
+    # ========================================================================
+    # SUMMARY STATISTICS TABLE
+    # ========================================================================
+    summary_stats = []
+    for cost_scenario in cost_scenarios:
+        for wall_type, portfolio_summary in nested_data[cost_scenario].items():
+            stats = {
+                'cost_scenario': cost_scenario if cost_scenario is not None else 'All',
+                input_col_split: wall_type,
+                'N_Properties': len(portfolio_summary),
+                'Cost_per_Ton_Gas_Mean': portfolio_summary['Cost_per_Ton_Gas_P50'].replace([np.inf, -np.inf], np.nan).mean(),
+                'Cost_per_Ton_Gas_Std': portfolio_summary['Cost_per_Ton_Gas_P50'].replace([np.inf, -np.inf], np.nan).std(),
+                'Cost_per_Net_Ton_Mean': portfolio_summary['Cost_per_Net_Ton_P50'].replace([np.inf, -np.inf], np.nan).mean(),
+                'Cost_per_Net_Ton_Std': portfolio_summary['Cost_per_Net_Ton_P50'].replace([np.inf, -np.inf], np.nan).std(),
+                'Total_Costs_Mean': portfolio_summary['Total_Costs_P50'].mean(),
+                'Total_Costs_Std': portfolio_summary['Total_Costs_P50'].std(),
+            }
+            summary_stats.append(stats)
+    
+    summary_df = pd.DataFrame(summary_stats)
+    csv_filename = f'{name_suffix}_{input_col_split}_by_cost_scenario_comparison.csv'
+    summary_df.to_csv(
+        os.path.join(output_dir, csv_filename),
+        index=False
+    )
+    print(f"\nSaved comparison summary: {output_dir}/{csv_filename}")
+    
+    print(f"\n--- {input_col_split.replace('_', ' ').title()} × Cost Scenario Summary ---")
     print(summary_df.to_string(index=False))
     
     return summary_df

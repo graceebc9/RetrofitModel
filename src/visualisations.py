@@ -350,6 +350,10 @@ def plot_col_reduction_by_decile_epistemic(res_df,
     
     df = res_df.copy()
     
+    if df.empty:
+        print(f"Warning: DataFrame is empty, skipping plot")
+        return None
+    
     # ===== LEFT PLOT: Single epistemic run =====
     if epistemic_run_id is None:
         epistemic_run_id = df['epistemic_run_id'].iloc[0]
