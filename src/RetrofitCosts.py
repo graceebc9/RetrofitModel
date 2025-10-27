@@ -188,7 +188,7 @@ class CostEstimator:
         It passes all **kwargs (including n_samples, typology, and
         any epistemic multipliers) down to the single cost sampler.
         """ 
-        print(f'Starting Package: {intervention}')
+        
         try:
             interventions_list = get_intervention_list(kwargs.get('wall_type'), intervention)
             logger.debug('Intervention list found')
@@ -260,7 +260,6 @@ class CostEstimator:
         else:
             area = self.get_area_for_intervention(intervention, building_chars)
             typology = kwargs.get('typology', 'all_unknown_typology')
-            print(f'Logging the area:{typology}:  {area} for scneario {epist_scenario} for {building_chars}')
             base_costs = area * np.random.triangular(
                 epist_scenario_params['cost_min'], 
                 epist_scenario_params['cost_mode'], 
