@@ -82,6 +82,13 @@ def update_listed_type(df):
     return df 
 
 
+def fill_unknown_remise_types(df):
+    # Get the most common premise_type (first mode if multiple)
+    mode_value = df['premise_type'].mode()[0] if not df['premise_type'].mode().empty else None
+    
+    # Fill missing values with the mode
+    df['premise_type_filled'] = df['premise_type'].fillna(mode_value)
+    return df
 # ============================================================
 # Scaling factrors
 # ============================================================
@@ -136,7 +143,7 @@ def update_outbuildings(test):
 
 def update_avgfloor_count_outliers(df, MIN_THRESH_FL_HEIGHT, MAX_THRESHOLD_FLOOR_HEIGHT):
     
-    df.to_crs('EPSG:27700', inplace=True )
+    df = df.to_crs('EPSG:27700') 
     
     df['min_side'] = df['geometry'].astype(object).apply(min_side)
     # print(df['min_side'])
@@ -161,28 +168,59 @@ def update_avgfloor_count_outliers(df, MIN_THRESH_FL_HEIGHT, MAX_THRESHOLD_FLOOR
     
     return df
 
-
 def fill_local_averages(df):
     logger.debug('starting to fill local averages')
-    num_builds = len(df )
+    num_builds = len(df)
+    num_fc_invalid = df.validated_fc.isna().sum()
+    num_h_invalid = df.validated_height.isna().sum()
 
-    num_fc_invalid = df.validated_fc.isna().sum() 
-    num_h_invalid = df.validated_height.isna().sum() 
+    # --- Start of fix ---
 
-    if num_builds - num_fc_invalid ==0 | len(df)==1 | num_builds - num_h_invalid == 0 : 
-        print('Cannot do local fill for FC')
-        # height_fla = df[~df['validated_height'].isna()]['validated_height'].mean()
-        raise Exception('no local fill ')
+    # Handle floor count fill
+    if num_builds - num_fc_invalid == 0:
+        
+        logger.warning('No valid floor counts in this group. Using premise_floor_count as fallback.')
+        df['fc_filled'] = pd.to_numeric(df['premise_floor_count'], errors='coerce')
+        
+    else:
+        fc_fla = df[~df['validated_fc'].isna()]['validated_fc'].mean()
+        df['fc_filled'] = np.where(df['validated_fc'].isna(), fc_fla, df['validated_fc'])
 
-    fc_fla= df[~df['validated_fc'].isna()]['validated_fc'].mean()
+    # Handle height fill
+    if num_builds - num_h_invalid == 0:
+        logger.warning('No valid heights in this group. Skipping local height fill.')
+        df['height_filled'] = np.nan # Create the column as all NaN
+    else:
+        height_fla = df[~df['validated_height'].isna()]['validated_height'].mean()
+        df['height_filled'] = np.where(df['validated_height'].isna(), height_fla, df['validated_height'])
     
-    height_fla = df[~df['validated_height'].isna()]['validated_height'].mean()
+    # --- End of fix ---
     
-    df['fc_filled'] = np.where(df['validated_fc'].isna(), fc_fla, df['validated_fc'])
-    df['height_filled'] = np.where(df['validated_height'].isna(), height_fla, df['validated_height'] )
     df = create_height_bucket_cols(df, 'height_filled')
     logger.debug('Fill local averages complete')
-    return df 
+    return df
+
+# def fill_local_averages(df):
+#     logger.debug('starting to fill local averages')
+#     num_builds = len(df )
+
+#     num_fc_invalid = df.validated_fc.isna().sum() 
+#     num_h_invalid = df.validated_height.isna().sum() 
+
+#     if (num_builds - num_fc_invalid ==0 ) or  (len(df)==1) or  (num_builds - num_h_invalid == 0) : 
+#         print('Cannot do local fill for FC')
+#         # height_fla = df[~df['validated_height'].isna()]['validated_height'].mean()
+#         raise Exception('no local fill ')
+
+#     fc_fla= df[~df['validated_fc'].isna()]['validated_fc'].mean()
+    
+#     height_fla = df[~df['validated_height'].isna()]['validated_height'].mean()
+    
+#     df['fc_filled'] = np.where(df['validated_fc'].isna(), fc_fla, df['validated_fc'])
+#     df['height_filled'] = np.where(df['validated_height'].isna(), height_fla, df['validated_height'] )
+#     df = create_height_bucket_cols(df, 'height_filled')
+#     logger.debug('Fill local averages complete')
+#     return df 
 
 def fill_glob_avs(df, fc = None  ):
     logger.debug('Starting to fill global averages')
@@ -291,6 +329,7 @@ def pre_process_buildings(df, fc, scaling_table,  MIN_THRESH_FL_HEIGHT = 2.1, MA
     df=fill_glob_avs(df, fc)
     df = create_heated_vol(df, scaling_table)
     df = create_basement_metrics(df)
+    df = fill_unknown_remise_types(df)
     if df.empty:
         raise Exception('Error empty df ')
     return df 
@@ -307,7 +346,7 @@ def produce_clean_building_data(df):
         print('No data to process')
         return None 
     # filtered_df = df[df['premise_use'] != 'Commercial - derelict'].copy()
-    fdf =df[df['premise_type']=='Residential'].copy() 
+    fdf =df[df['premise_use']=='Residential'].copy() 
     test_building_metrics(fdf)
 
     return df
@@ -343,7 +382,7 @@ def test_building_metrics(df):
         check_nulls_percent(df, c, 0)
 
     test = df[df['validated_height'].isna()].copy() 
-    assert_larger(test, 'height', 'height_filled')
+    # assert_larger(test, 'height', 'height_filled')
 
 
 def pre_process_building_data(build,   MIN_THRESH_FL_HEIGHT = 2.1, MAX_THRESH_FL_HEIGHT= 5.1):

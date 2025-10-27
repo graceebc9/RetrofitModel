@@ -54,18 +54,16 @@ def process_retrofit_batch_with_uncertainty(
         
         try:
             if use_uncertainty:
+                
                 pc_result = process_postcodes_for_retrofit_with_uncertainty2D(
                     pc=pc,
                     onsud_data=data,
                     INPUT_GPK=INPUT_GPK,
                     region=region,
                     retrofit_config=retrofit_config, 
-                    # retrofig_model=retrofig_model,
                     scenarios=scenarios,
                     conservation_data=conservation_data,
                     energy_column=energy_column,
-                    # n_monte_carlo=n_monte_carlo,
-                    # random_seed=random_seed,
                     RANDOM_SEED_OUTER=RANDOM_SEED_OUTER,
                     N_EPISTEMIC_RUNS=N_EPISTEMIC_RUNS,
                 )
@@ -254,29 +252,3 @@ def run_retrofit_calc_with_uncertainty2D(
     
     logger.info(f'Completed all batches for {batch_label}')
 
-
-# # Legacy function - kept for backwards compatibility
-# def process_retrofit_batch(pc_batch, data, INPUT_GPK, process_batch_name, log_file, region):
-#     """Legacy function - costs only, no uncertainty analysis."""
-#     return process_retrofit_batch_with_uncertainty(
-#         pc_batch=pc_batch,
-#         data=data,
-#         INPUT_GPK=INPUT_GPK,
-#         process_batch_name=process_batch_name,
-#         log_file=log_file,
-#         region=region,
-#         use_uncertainty=False
-#     )
-
-
-# def run_retrofit_calc(pcs_list, data, INPUT_GPK, batch_size, batch_label, log_file):
-#     """Legacy function - costs only, no uncertainty analysis."""
-#     return run_retrofit_calc_with_uncertainty(
-#         pcs_list=pcs_list,
-#         data=data,
-#         INPUT_GPK=INPUT_GPK,
-#         batch_size=batch_size,
-#         batch_label=batch_label,
-#         log_file=log_file,
-#         use_uncertainty=False
-#     )

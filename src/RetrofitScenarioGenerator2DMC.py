@@ -30,7 +30,8 @@ class RetrofitScenarioGenerator2DMC:
                                 model_class: Any,  # The RetrofitModel (now Inner Loop) class
                                 region: str,
                                 random_seed: Optional[int] = None,
-                                col_mapping: Optional[Dict[str, str]] = None) -> pd.DataFrame:
+                                # col_mapping: Optional[Dict[str, str]] = None
+                                ) -> pd.DataFrame:
         """
         Process scenarios for all buildings across N_epistemic_runs.
         
@@ -62,32 +63,29 @@ class RetrofitScenarioGenerator2DMC:
         # 1. Define Column Mapping 
         default_mapping = {
             'age_band': 'premise_age_bucketed',
-            'current_energy_kwh': 'total_gas_derived',
-            'floor_count': 'total_fl_area_avg',
-            'gross_external_area': 'total_fl_area_avg',
+            # 'current_energy_kwh': 'total',
+            'floor_count': 'fc_filled',
+        'gross_external_area': 'total_fl_area_avg',
             'gross_internal_area': 'scaled_fl_area',
+            'footprint_area': 'premise_area',
             'footprint_circumference': 'perimeter_length',
             'flat_count': 'est_num_flats',
-            'building_type': 'premise_type',
+            'building_type': 'premise_type_filled',
             'building_footprint_area': 'premise_area',
-            'avg_gas_decile': 'avg_gas_decile',
+            'avg_gas_percentile':'avg_gas_percentile',
             'cons_bool': 'conservation_area_bool', 
+            'inferred_insulation_type': 'inferred_insulation_type',
+            'inferred_wall_type': 'inferred_wall_type',
+            
+            
         }
-        if col_mapping:
-            default_mapping.update(col_mapping)
+        
+            
         col_mapping = default_mapping
         
         result_df = df.copy()
         
-        # 2. Initial Vectorized Processing (Only needs to run once)
-        # This sets inferred wall types, insulation status, etc., which are NOT epistemic
-        # logger.debug('Vectorising preproess ... ')
-        # df_typ = vectorized_process_buildings(
-        #     result_df=result_df,
-        #     col_mapping=col_mapping, 
-        #     config=typ_config, 
-        #     random_seed=random_seed
-        # )
+ 
         
         # 3. GENERATE EPISTEMIC SCENARIOS (Outer Loop Setup)
         logger.debug('Complete. starting to sample the runs .. ')
@@ -109,7 +107,7 @@ class RetrofitScenarioGenerator2DMC:
             logger.info(f"--- Running Outer Loop Scenario {run_idx + 1}/{self.n_epistemic_runs} ---")
             
             # 5. INSTANTIATE THE INNER LOOP MODEL (RetrofitModel)
-            logger.debug('Vectorising preproess now in epistemic loop ... ')
+            logger.info('Vectorising preproess now in epistemic loop ... ')
             df_typ = vectorized_process_buildings(
                 result_df=result_df,
                 col_mapping=col_mapping, 
@@ -132,30 +130,21 @@ class RetrofitScenarioGenerator2DMC:
             run_results = df_typ.copy()
             
             for scenario in scenarios:
-                logger.debug(f"  - Calculating Scenario: {scenario}")
+                logger.info(f"  - Calculating Scenario: {scenario}")
                 
                 # Call the vectorised calculation function (requires update in RetrofitModel)
                 scenario_results = model_instance.calculate_building_costs_df_updated(
                     df=df_typ, 
                     region=region,
                     scenario=scenario,
+                    col_mapping = col_mapping,
                 )
                 
                 # Check for errors and merge results 
                 if isinstance(scenario_results, dict) and 'error' in scenario_results:
                     logger.warning(f"Scenario {scenario} failed: {scenario_results['error']}")
                     continue
-                
     
-                # # Merge scenario results into the run_results DataFrame (on index or ID)
-                # run_results = pd.merge(
-                #     run_results,
-                #     scenario_results,
-                #     left_index=True, # Assuming your calculate_building_costs_df_updated preserves index
-                #     right_index=True,
-                #     how='left'
-                # )
-                    
                 # Identify only the NEW scenario-specific output columns 
                 # (exclude columns that already exist in df_typ)
                 output_columns = [col for col in scenario_results.columns 
