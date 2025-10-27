@@ -65,7 +65,7 @@ class BuildingCharacteristics:
                 self.typology, 
                 0.70  # Default conservative estimate
             )
-            
+           
             # Determine opening factor based on building type
             if 'flat' in self.typology.lower():
                 opening_factor = self.OPENING_FACTORS['flat']
