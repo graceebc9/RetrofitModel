@@ -1,9 +1,13 @@
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+ 
+ 
 import numpy as np
 
 import os
-import matplotlib.pyplot as plt
+ 
 
 
 typologies =  [
@@ -223,10 +227,7 @@ def run_vis_new(res_df, scenario, op_base):
     print(f"All figures saved to: {op_base}")
                                     
  
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
+
 
 def plot_total_cost_by_decile_epistemic_stacked(res_df,
                                 cost_col,
@@ -882,8 +883,8 @@ def plot_col_reduction_by_decile(res_df,
     
 
     # Print summary
-    print("\nSummary Statistics:")
-    print(grouped[['decile', 'mean_reduction', 'pooled_sd', 'se', 'n_buildings']])
+    # print("\nSummary Statistics:")
+    # print(grouped[['decile', 'mean_reduction', 'pooled_sd', 'se', 'n_buildings']])
     return fig
 
 def plot_col_reduction_by_decile_sum(res_df,
@@ -979,8 +980,8 @@ def plot_col_reduction_by_decile_sum(res_df,
     plt.tight_layout()
 
     # Print summary
-    print("\nSummary Statistics:")
-    print(grouped[['decile', 'total_reduction', 'pooled_sd', 'se', 'n_buildings']])
+    # print("\nSummary Statistics:")
+    # print(grouped[['decile', 'total_reduction', 'pooled_sd', 'se', 'n_buildings']])
     return fig
 
 
@@ -1097,11 +1098,7 @@ def plot_energy_reduction_by_decile(
     
     if show_plot:
         plt.show()
-    
-    # Print summary
-    print("\nSummary Statistics:")
-    print(grouped[['decile', 'mean_reduction', 'std_reduction', 'se', 'n_buildings']])
-    
+ 
     if return_data:
         return grouped
 
@@ -1238,10 +1235,10 @@ def plot_building_counts_by_age_band(
     if show_plot:
         plt.show()
     
-    # Print summary
-    for age_band, counts in all_counts.items():
-        print(f"\n{age_band}:")
-        print(counts[['decile', 'cavity_count', 'solid_internal_count', 'solid_external_count', 'total_count']])
+    # # Print summary
+    # for age_band, counts in all_counts.items():
+    #     print(f"\n{age_band}:")
+    #     print(counts[['decile', 'cavity_count', 'solid_internal_count', 'solid_external_count', 'total_count']])
     
     if return_data:
         return all_counts
@@ -1388,23 +1385,23 @@ def plot_building_counts_by_conservation_area(
     if show_plot:
         plt.show()
     
-    # Print summary
-    print("\nBuilding Counts by Decile, Conservation Area, and Intervention Type:")
-    print(counts[['decile', 'conservation_area', 'cavity_count', 'solid_internal_count', 
-                  'solid_external_count', 'total_count']])
+    # # Print summary
+    # print("\nBuilding Counts by Decile, Conservation Area, and Intervention Type:")
+    # print(counts[['decile', 'conservation_area', 'cavity_count', 'solid_internal_count', 
+    #               'solid_external_count', 'total_count']])
     
-    print("\n" + "="*80)
-    print("SUMMARY BY CONSERVATION AREA:")
-    print("="*80)
+    # print("\n" + "="*80)
+    # print("SUMMARY BY CONSERVATION AREA:")
+    # print("="*80)
     
-    for conservation_val in [False, True]:
-        subset = counts[counts['conservation_area'] == conservation_val]
-        if len(subset) > 0:
-            print(f"\nConservation Area = {conservation_val}:")
-            print(f"  Total Cavity Eligible: {subset['cavity_count'].sum()}")
-            print(f"  Total Solid Internal Eligible: {subset['solid_internal_count'].sum()}")
-            print(f"  Total Solid External Eligible: {subset['solid_external_count'].sum()}")
-            print(f"  Grand Total: {subset['total_count'].sum()}")
+    # for conservation_val in [False, True]:
+    #     subset = counts[counts['conservation_area'] == conservation_val]
+    #     if len(subset) > 0:
+    #         print(f"\nConservation Area = {conservation_val}:")
+    #         print(f"  Total Cavity Eligible: {subset['cavity_count'].sum()}")
+    #         print(f"  Total Solid Internal Eligible: {subset['solid_internal_count'].sum()}")
+    #         print(f"  Total Solid External Eligible: {subset['solid_external_count'].sum()}")
+    #         print(f"  Grand Total: {subset['total_count'].sum()}")
     
     if return_data:
         return counts

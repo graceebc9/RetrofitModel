@@ -860,7 +860,7 @@ def compare_by_wall_type_2d(df_processed, scenario_name, measure_type, output_di
         scenario_line_styles[scenario] = line_styles[idx % len(line_styles)]
     
     # Hatching patterns for cost scenarios (for histogram bars)
-    hatch_patterns = ['', '///', '\\\\\\', '|||', '---', '+++', 'xxx', 'ooo', '...', '***']
+    hatch_patterns = ['', '\\\\\\', '|||', '---', '+++', 'xxx', 'ooo', '...', '***']
     scenario_hatches = {}
     for idx, scenario in enumerate(cost_scenarios):
         scenario_hatches[scenario] = hatch_patterns[idx % len(hatch_patterns)]
