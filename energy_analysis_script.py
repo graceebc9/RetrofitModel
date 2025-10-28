@@ -155,6 +155,9 @@ def get_scenario_columns(scenario_list):
             cols =  [ 
              f'{scenario_name}_{scenario_name}_electricity_mean',
             f'{scenario_name}_{scenario_name}_electricity_std',
+            f'{scenario_name}_{scenario_name}_electricity_p5',
+            f'{scenario_name}_{scenario_name}_electricity_p50',
+            f'{scenario_name}_{scenario_name}_electricity_p95',
                     ]
             fin_cols += cols
             for col in cols:
@@ -284,6 +287,7 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
     elec_cols = [
         f'{scenario_name}_{scenario_name}_electricity_mean',
         f'{scenario_name}_{scenario_name}_electricity_std',
+        
     ]
 
     available_cols = [col for col in scenario_cols + elec_cols if col in df_processed.columns]
