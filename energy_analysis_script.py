@@ -75,6 +75,8 @@ def load_data(input_pattern, scenario_list):
     print(f"Loading data from: {input_pattern}")
     files = glob.glob(input_pattern)
     print(f"Found {len(files)} files")
+    
+    files =[x for x in files if 'failed' not in x]
 
     if len(files) == 0:
         raise FileNotFoundError(f"No files found matching pattern: {input_pattern}")
