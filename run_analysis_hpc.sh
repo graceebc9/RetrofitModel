@@ -34,12 +34,12 @@ RUN_NAME="NE_all_scenarios_5yr_$(date +%Y%m%d)"
 # Each scenario will be submitted as a separate job (when running on HPC)
 
 # Option 1: Single scenario  
-SCENARIOS=("wall_installation")
-MEASURE_TYPES=("wall_installation")
+#SCENARIOS=("wall_installation")
+#MEASURE_TYPES=("wall_installation")
 
 # Option 2: Multiple scenarios (use arrays for pairing)
-# SCENARIOS=("wall_installation" "loft_installation" "join_heat_ins_decay" "heat_pump_only")
-# MEASURE_TYPES=("wall_installation" "loft_installation" "join_heat_ins_decay" "heat_pump_only")
+SCENARIOS=("wall_installation" "loft_installation" "join_heat_ins_decay" "heat_pump_only" "join_heat_ins_add")
+MEASURE_TYPES=("wall_installation" "loft_installation" "join_heat_ins_decay" "heat_pump_only" "join_heat_ins_add")
 
  
 # ==============================================================================
