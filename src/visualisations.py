@@ -7,7 +7,26 @@ from matplotlib.lines import Line2D
 import numpy as np
 
 import os
- 
+
+
+def prepare_decile_for_plotting(grouped_df, decile_col='decile'):
+    """
+    Convert decile column to numeric for matplotlib compatibility.
+    Handles both numeric deciles and categorical groups (like premise_type).
+    
+    Returns:
+        tuple: (is_categorical, decile_labels) for x-axis configuration
+    """
+    if grouped_df[decile_col].dtype == 'object':
+        # Categorical grouping (e.g., premise_type)
+        grouped_df['decile_original'] = grouped_df[decile_col].copy()
+        grouped_df['decile_numeric'] = range(len(grouped_df))
+        grouped_df[decile_col] = grouped_df['decile_numeric']
+        return True, grouped_df['decile_original'].tolist()
+    else:
+        # Numeric grouping (e.g., avg_gas_percentile)
+        grouped_df[decile_col] = pd.to_numeric(grouped_df[decile_col], errors='coerce').astype(float)
+        return False, None
 
 
 typologies =  [
@@ -269,7 +288,10 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
     grouped_single['sd_lower'] = grouped_single['mean_cost'] - 2 * grouped_single['pooled_sd']
     grouped_single['sd_upper'] = grouped_single['mean_cost'] + 2 * grouped_single['pooled_sd']
     
-    
+        # After grouped_single is created
+    is_categorical, decile_labels = prepare_decile_for_plotting(grouped_single)
+
+  
     # =================================================================
     # ===== RIGHT PLOT: Mean Total Cost & Proportions =====
     # =================================================================
@@ -312,7 +334,13 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
     # Calculate bounds for epistemic (RIGHT)
     grouped_epistemic_total['ci_error'] = 2 * grouped_epistemic_total['epistemic_se']
     
-    
+      # Also do the same for grouped_epistemic when it's created
+    if is_categorical:
+        # Map categorical labels to numeric indices
+        label_to_numeric = dict(zip(decile_labels, range(len(decile_labels))))
+        grouped_epistemic_total['decile'] = grouped_epistemic_total['decile'].map(label_to_numeric)
+    else:
+        grouped_epistemic_total['decile'] = pd.to_numeric(grouped_epistemic_total['decile'], errors='coerce').astype(float)
     # ========================================================
     # ===== CREATE PLOTS =====
     # ========================================================
@@ -327,7 +355,14 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
     ax1.set_xlabel(groupby_label, fontsize=11)
     ax1.set_ylabel(f"Mean {ylabel} per Building", fontsize=11)
     ax1.set_title(f'Mean {name} & Aleatoric Uncertainty\n(Run: {epistemic_run_id})', fontsize=13)
-    ax1.set_xticks(grouped_single['decile'].unique())
+    # ax1.set_xticks(grouped_single['decile'].unique())
+     
+    if is_categorical:
+        ax1.set_xticks(range(len(decile_labels)))
+        ax1.set_xticklabels(decile_labels, rotation=45, ha='right')
+    else:
+        ax1.set_xticks(grouped_single['decile'].unique())
+
     ax1.legend()
     ax1.grid(alpha=0.3)
     if costs:
@@ -381,7 +416,29 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
         ax2.set_xticks(x_positions)
         ax2.set_xticklabels(grouped_epistemic_total['decile'])
 
-    
+        # For ax1 and ax2
+    if is_categorical:
+        if rot:
+        # Set ticks and labels for bar chart
+            ax2.set_xticks(range(len(decile_labels)))
+            ax2.set_xticklabels(decile_labels, rotation=90, ha='right')
+        else:
+            ax2.set_xticks(range(len(decile_labels)))
+            ax2.set_xticklabels(decile_labels , rotation=45, ha='right')
+        
+        ax1.set_xticks(range(len(decile_labels)))
+        ax1.set_xticklabels(decile_labels, rotation=45, ha='right')
+    else:
+        # ax1.set_xticks(grouped_single['decile'].unique())
+
+        if rot:
+            # Set ticks and labels for bar chart
+            ax2.set_xticks(grouped_single['decile'].unique())
+            ax2.set_xticklabels(grouped_epistemic_total['decile'], rotation=90)
+        else:
+            ax2.set_xticks(grouped_single['decile'].unique())
+            ax2.set_xticklabels(grouped_epistemic_total['decile'])
+
  
     plt.tight_layout()
     
@@ -460,6 +517,16 @@ def plot_col_reduction_by_decile_epistemic(res_df,
     }).reset_index()
     grouped_epistemic.columns = ['decile', 'mean_reduction', 'epistemic_std', 'n_epistemic_runs']
     grouped_epistemic['epistemic_se'] = grouped_epistemic['epistemic_std'] / np.sqrt(grouped_epistemic['n_epistemic_runs'])
+        # Handle both numeric deciles and categorical groups
+    if grouped_single['decile'].dtype == 'object':
+        # Categorical grouping (e.g., premise_type)
+        grouped_single['decile_original'] = grouped_single['decile']
+        grouped_single['decile_numeric'] = range(len(grouped_single))
+        is_categorical = True
+    else:
+        # Numeric grouping (e.g., avg_gas_percentile)
+        grouped_single['decile_numeric'] = pd.to_numeric(grouped_single['decile'], errors='coerce').astype(float)
+        is_categorical = False
 
     # Apply percentage scaling
     if percentage:
@@ -474,6 +541,19 @@ def plot_col_reduction_by_decile_epistemic(res_df,
     grouped_single['sd_lower'] = grouped_single['mean_reduction'] - 2 * grouped_single['pooled_sd']
     grouped_single['sd_upper'] = grouped_single['mean_reduction'] + 2 * grouped_single['pooled_sd']
     
+    # DEBUG: Check data types and values
+    print("\n=== DEBUG: Data types ===")
+    print(grouped_single[['decile', 'mean_reduction', 'pooled_sd', 'sd_lower', 'sd_upper']].dtypes)
+    print("\n=== DEBUG: First few rows ===")
+    print(grouped_single[['decile', 'mean_reduction', 'pooled_sd', 'sd_lower', 'sd_upper']].head())
+    print("\n=== DEBUG: Any non-numeric? ===")
+    for col in ['decile', 'mean_reduction', 'pooled_sd', 'sd_lower', 'sd_upper']:
+        non_numeric = grouped_single[col].apply(lambda x: not isinstance(x, (int, float, np.number)))
+        if non_numeric.any():
+            print(f"{col} has non-numeric values:")
+            print(grouped_single[non_numeric][col])
+
+
     # Calculate bounds for epistemic (RIGHT)
     grouped_epistemic['epistemic_lower'] = grouped_epistemic['mean_reduction'] - 2 * grouped_epistemic['epistemic_se']
     grouped_epistemic['epistemic_upper'] = grouped_epistemic['mean_reduction'] + 2 * grouped_epistemic['epistemic_se']
@@ -482,15 +562,23 @@ def plot_col_reduction_by_decile_epistemic(res_df,
     # ===== CREATE PLOTS =====
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
     
+    
     # LEFT: Individual building variability within one epistemic run
-    ax1.plot(grouped_single['decile'], grouped_single['mean_reduction'],
+    ax1.plot(grouped_single['decile_numeric'], grouped_single['mean_reduction'],
              'o-', linewidth=2, markersize=8, color='steelblue')
-    ax1.fill_between(grouped_single['decile'], grouped_single['sd_lower'], grouped_single['sd_upper'],
+    ax1.fill_between(grouped_single['decile_numeric'], grouped_single['sd_lower'], grouped_single['sd_upper'],
                      alpha=0.3, label='Mean ± 2σ', color='steelblue')
     ax1.set_xlabel(groupby_label, fontsize=11)
     ax1.set_ylabel(ylabel, fontsize=11)
     ax1.set_title(f'Within-Run Variability\n(Run: {epistemic_run_id})', fontsize=13)
-    ax1.set_xticks(grouped_single['decile'].unique())
+    
+        # Handle x-axis labels
+    if is_categorical:
+        ax1.set_xticks(grouped_single['decile_numeric'])
+        ax1.set_xticklabels(grouped_single['decile_original'], rotation=45, ha='right')
+    else:
+        ax1.set_xticks(grouped_single['decile_numeric'].unique())
+        
     ax1.legend()
     ax1.grid(alpha=0.3)
     if costs:
@@ -500,10 +588,19 @@ def plot_col_reduction_by_decile_epistemic(res_df,
     if rot:
         ax1.tick_params(axis='x', rotation=90)
     
+    # Handle categorical for epistemic plot too
+    if is_categorical:
+        grouped_epistemic['decile_numeric'] = grouped_epistemic['decile'].map(
+            dict(zip(grouped_single['decile_original'], grouped_single['decile_numeric']))
+        )
+    else:
+        grouped_epistemic['decile_numeric'] = pd.to_numeric(grouped_epistemic['decile'], errors='coerce').astype(float)
+
+
     # RIGHT: Epistemic uncertainty across runs
-    ax2.bar(grouped_epistemic['decile'], grouped_epistemic['mean_reduction'],
+    ax2.bar(grouped_epistemic['decile_numeric'], grouped_epistemic['mean_reduction'],
             color='darkgreen', alpha=0.7, width=0.8)
-    ax2.errorbar(grouped_epistemic['decile'], grouped_epistemic['mean_reduction'],
+    ax2.errorbar(grouped_epistemic['decile_numeric'], grouped_epistemic['mean_reduction'],
                  yerr=grouped_epistemic['ci_error'], fmt='none',
                  color='black', capsize=5, capthick=2,
                  label='Mean ± 2 SE (epistemic)')
@@ -512,7 +609,12 @@ def plot_col_reduction_by_decile_epistemic(res_df,
     
     n_runs = int(grouped_epistemic['n_epistemic_runs'].iloc[0])
     ax2.set_title(f'Epistemic Uncertainty\n(Across {n_runs} runs)', fontsize=13)
-    ax2.set_xticks(grouped_epistemic['decile'].unique())
+    if is_categorical:
+        ax2.set_xticks(grouped_epistemic['decile_numeric'])
+        ax2.set_xticklabels(grouped_single['decile_original'], rotation=45, ha='right')
+    else:
+        ax2.set_xticks(grouped_epistemic['decile_numeric'].unique())
+    
     ax2.legend()
     ax2.grid(alpha=0.3, axis='y')
     if percentage:
@@ -534,7 +636,7 @@ def plot_col_reduction_by_decile_epistemic(res_df,
         
     return fig
 
-from src.RetrofitModel2D import RetrofitModel2D
+ 
 
 def plot_col_reduction_by_decile_epistemic_by_wall_type(res_df,
                                                         mean_col,

@@ -83,7 +83,7 @@ def load_data(input_pattern, scenario_list):
    
     res = []
     for f in files:
-        df = pd.read_csv(f, usecols=fin_cols, dtype=dtypes)
+        df = pd.read_csv(f, usecols=fin_cols, dtype=dtypes )
         res.append(df)
 
     res_df = pd.concat(res, ignore_index=True)
@@ -116,10 +116,10 @@ def get_scenario_columns(scenario_list):
     
     # Define dtypes for static columns
     STATIC_DTYPES = {
-        'upn': 'int64',                            # Large integer identifier
+        'upn': 'Int64',                            # Large integer identifier
         'premise_type': 'object',                  # Categorical
-        'epistemic_run_id': 'int8',                # Small integer (<100)
-        'avg_gas_percentile': 'int64',             # Integer percentile
+        'epistemic_run_id': 'Int8',                # Small integer (<100)
+        'avg_gas_percentile': 'Int64',             # Integer percentile
         'conservation_area_bool': 'bool',          # Boolean flag
         'inferred_insulation_type': 'object',      # Categorical
           'total_gas_derived': 'float64',
