@@ -45,7 +45,7 @@ def run_vis_new(res_df, scenario, op_base):
     pl = res_df[res_df['premise_type'] != 'Domestic outbuilding'].copy() 
 
     # costs per type
-    fig = plot_col_reduction_by_decile_epistemic(pl,
+    fig, data= plot_col_reduction_by_decile_epistemic(pl,
                                     mean_col=f'{scenario}_cost_{scenario}_mean', 
                                     std_col=f'{scenario}_cost_{scenario}_std',
                                     ylabel='Avg Installation Costs (£)',
@@ -57,10 +57,19 @@ def run_vis_new(res_df, scenario, op_base):
                                     )
     fig.savefig(os.path.join(op_base, f'{scenario}_costs_by_premise_type.png'), 
                 dpi=300, bbox_inches='tight')
+      # Save data
+    data['single_run'].to_csv(
+        os.path.join(op_base, f'{scenario}_costs_by_premise_type_single_run.csv'), 
+        index=False
+    )
+    data['epistemic_run'].to_csv(
+        os.path.join(op_base, f'{scenario}_costs_by_premise_type_epistemic.csv'), 
+        index=False
+    )
     plt.close(fig)
     
     # cost per decile 
-    fig = plot_col_reduction_by_decile_epistemic(pl,
+    fig, data= plot_col_reduction_by_decile_epistemic(pl,
                                     mean_col=f'{scenario}_cost_{scenario}_mean', 
                                     std_col=f'{scenario}_cost_{scenario}_std',
                                     ylabel='Avg Installation Costs (£)',
@@ -70,10 +79,18 @@ def run_vis_new(res_df, scenario, op_base):
                                     )
     fig.savefig(os.path.join(op_base, f'{scenario}_costs_by_decile.png'), 
                 dpi=300, bbox_inches='tight')
+    data['single_run'].to_csv(
+        os.path.join(op_base, f'{scenario}_costs_by_decile_single_run.csv'), 
+        index=False
+    )
+    data['epistemic_run'].to_csv(
+        os.path.join(op_base, f'{scenario}_costs_by_decile_epistemic.csv'), 
+        index=False
+    )
     plt.close(fig)
 
     if scenario=='wall_installation':
-        fig = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
+        fig, data = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
                                         mean_col=f'{scenario}_cost_{scenario}_mean', 
                                         std_col=f'{scenario}_cost_{scenario}_std',
                                         ylabel='Avg Installation Costs (£)',
@@ -83,9 +100,17 @@ def run_vis_new(res_df, scenario, op_base):
                                         )
         fig.savefig(os.path.join(op_base, f'{scenario}_costs_by_decile_split_wall_types.png'), 
                     dpi=300, bbox_inches='tight')
+        data['single_run'].to_csv(
+            os.path.join(op_base, f'{scenario}_costs_by_decile_split_wall_types_single_run.csv'), 
+            index=False
+        )
+        data['epistemic_run'].to_csv(
+            os.path.join(op_base, f'{scenario}_ccosts_by_decile_split_wall_types_epistemic.csv'), 
+            index=False
+        )
         plt.close(fig)
 
-        fig = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
+        fig, data = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
                                         mean_col=f'{scenario}_cost_{scenario}_mean', 
                                         std_col=f'{scenario}_cost_{scenario}_std',
                                         groupby_col='premise_type',
@@ -97,9 +122,17 @@ def run_vis_new(res_df, scenario, op_base):
                                         )
         fig.savefig(os.path.join(op_base, f'{scenario}_costs_by_premise_type_split_wall_types.png'), 
                     dpi=300, bbox_inches='tight')
+        data['single_run'].to_csv(
+        os.path.join(op_base, f'{scenario}_costs_by_premise_type_split_wall_types_single_run.csv'), 
+            index=False
+        )
+        data['epistemic_run'].to_csv(
+            os.path.join(op_base, f'{scenario}_ccosts_by_premise_type_split_wall_types_epistemic.csv'), 
+            index=False
+        )
         plt.close(fig)
 
-        fig = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
+        fig, data = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
                                          mean_col=f'{scenario}_{scenario}_gas_mean', 
                                     std_col=f'{scenario}_{scenario}_gas_std',
                                         groupby_col='premise_type',
@@ -111,9 +144,17 @@ def run_vis_new(res_df, scenario, op_base):
                                         )
         fig.savefig(os.path.join(op_base, f'{scenario}_energy_by_premise_type_split_wall_types.png'), 
                     dpi=300, bbox_inches='tight')
+        
+        data['single_run'].to_csv(os.path.join(op_base, f'{scenario}_energy_by_premise_type_split_wall_types_single_run.csv'), 
+            index=False
+        )
+        data['epistemic_run'].to_csv(
+            os.path.join(op_base, f'{scenario}_energy_by_premise_type_split_wall_types_epistemic.csv'), 
+            index=False
+        )
         plt.close(fig)
 
-        fig = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
+        fig , data = plot_col_reduction_by_decile_epistemic_by_wall_type(pl,
                                          mean_col=f'{scenario}_{scenario}_gas_mean', 
                                     std_col=f'{scenario}_{scenario}_gas_std',
                                         ylabel='Avg Installation Costs (£)',
@@ -123,12 +164,19 @@ def run_vis_new(res_df, scenario, op_base):
                                         )
         fig.savefig(os.path.join(op_base, f'{scenario}_energy_by_decile_split_wall_types.png'), 
                     dpi=300, bbox_inches='tight')
+        data['single_run'].to_csv(os.path.join(op_base, f'{scenario}_energy_by_decile_split_wall_types_single_run.csv'), 
+            index=False
+        )
+        data['epistemic_run'].to_csv(
+            os.path.join(op_base, f'{scenario}_energy_by_decile_split_wall_types_epistemic.csv'), 
+            index=False
+        )
         plt.close(fig)
 
     
     
     # Gas reduction by decile
-    fig = plot_col_reduction_by_decile_epistemic(pl,
+    fig, data  = plot_col_reduction_by_decile_epistemic(pl,
                                     mean_col=f'{scenario}_{scenario}_gas_mean', 
                                     std_col=f'{scenario}_{scenario}_gas_std',
                                     ylabel='Avg Gas Reduction (%)',
@@ -137,10 +185,18 @@ def run_vis_new(res_df, scenario, op_base):
                                     )
     fig.savefig(os.path.join(op_base, f'{scenario}_gas_reduction_by_decile.png'), 
                 dpi=300, bbox_inches='tight')
+    data['single_run'].to_csv(
+        os.path.join(op_base, f'{scenario}_gas_reduction_by_decile_single_run.csv'), 
+        index=False
+    )
+    data['epistemic_run'].to_csv(
+        os.path.join(op_base, f'{scenario}_gas_reduction_by_decile_epistemic.csv'), 
+        index=False
+    )
     plt.close(fig)
     
     # Gas reduction by premise type
-    fig = plot_col_reduction_by_decile_epistemic(pl,
+    fig, data  = plot_col_reduction_by_decile_epistemic(pl,
                                     mean_col=f'{scenario}_{scenario}_gas_mean', 
                                     std_col=f'{scenario}_{scenario}_gas_std',
                                     ylabel='Avg Gas Reduction (%)',
@@ -152,12 +208,20 @@ def run_vis_new(res_df, scenario, op_base):
                                     )
     fig.savefig(os.path.join(op_base, f'{scenario}_gas_reduction_by_premise_type.png'), 
                 dpi=300, bbox_inches='tight')
+    data['single_run'].to_csv(
+        os.path.join(op_base, f'{scenario}_gas_reduction_by_premise_type_single_run.csv'), 
+        index=False
+    )
+    data['epistemic_run'].to_csv(
+        os.path.join(op_base, f'{scenario}_gas_reduction_by_premise_type_epistemic.csv'), 
+        index=False
+    )
     plt.close(fig)
 
 
     # total tons vs run type ;
     pl[f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean']= pl[f'gas_total_tonne_co2_saved_{scenario}_5yr_mean']
-    fig = plot_total_cost_by_decile_epistemic_stacked (pl,
+    fig, data  = plot_total_cost_by_decile_epistemic_stacked (pl,
                                         cost_col= f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean',
                                         cost_std_col= f'gas_total_tonne_co2_saved_{scenario}_5yr_std',
                                         stack_by_col='inferred_insulation_type',
@@ -166,9 +230,17 @@ def run_vis_new(res_df, scenario, op_base):
                                         costs=False, 
                                     ) 
     fig.savefig(os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile.png'), dpi=300, bbox_inches='tight')
+    data['single_run'].to_csv(  os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_single.csv'), 
+            index=False)
+    data['grouped_epistemic_sub'].to_csv( os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_grouped_epistmeic_sub.csv'), 
+            index=False) 
+    data['grouped_epistemic_total'].to_csv( os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_grouped_epistemic_total.csv'), 
+            index=False) 
+    data['pivot'].to_csv( os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_pivot.csv'), 
+            index=False) 
     plt.close(fig)
     
-    fig = plot_total_cost_by_decile_epistemic_stacked (pl,
+    fig, data  = plot_total_cost_by_decile_epistemic_stacked (pl,
                                         cost_col= f'flip_gas_total_tonne_co2_saved_{scenario}_5yr_mean',
                                         cost_std_col= f'gas_total_tonne_co2_saved_{scenario}_5yr_std',
                                         stack_by_col='conservation_area_bool',
@@ -177,10 +249,18 @@ def run_vis_new(res_df, scenario, op_base):
                                         name = 'Tons Co2 (gas)',
                                     ) 
     fig.savefig(os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_conservation.png'), dpi=300, bbox_inches='tight')
+    data['single_run'].to_csv(  os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_conservation_single.csv'), 
+            index=False)
+    data['grouped_epistemic_sub'].to_csv( os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_conservation_grouped_epistmeic_sub.csv'), 
+            index=False) 
+    data['grouped_epistemic_total'].to_csv( os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_conservation_grouped_epistemic_total.csv'), 
+            index=False) 
+    data['pivot'].to_csv( os.path.join(op_base, f'{scenario}_total_tons_co2_gas_saved_by_decile_conservation_pivot.csv'), 
+            index=False) 
     plt.close(fig)
 
     pl[f'flip_net_total_tonne_co2_saved_{scenario}_5yr_mean']= pl[f'total_tonne_co2_saved_{scenario}_5yr_mean']
-    fig = plot_total_cost_by_decile_epistemic_stacked (pl,
+    fig , data= plot_total_cost_by_decile_epistemic_stacked (pl,
                                         cost_col= f'flip_net_total_tonne_co2_saved_{scenario}_5yr_mean',
                                         cost_std_col= f'total_tonne_co2_saved_{scenario}_5yr_std',
                                         stack_by_col='inferred_insulation_type',
@@ -189,6 +269,14 @@ def run_vis_new(res_df, scenario, op_base):
                                         costs=False, 
                                     ) 
     fig.savefig(os.path.join(op_base, f'{scenario}_net_total_tons_co2_saved_by_decile.png'), dpi=300, bbox_inches='tight')
+    data['single_run'].to_csv(  os.path.join(op_base, f'{scenario}_net_total_tons_co2_saved_by_decile_single.csv'), 
+            index=False)
+    data['grouped_epistemic_sub'].to_csv( os.path.join(op_base, f'{scenario}_net_total_tons_co2_saved_by_decile_grouped_epistmeic_sub.csv'), 
+            index=False) 
+    data['grouped_epistemic_total'].to_csv( os.path.join(op_base, f'{scenario}_net_total_tons_co2_saved_by_decile_grouped_epistemic_total.csv'), 
+            index=False) 
+    data['pivot'].to_csv( os.path.join(op_base, f'{scenario}_net_total_tons_co2_saved_by_decile_pivot.csv'), 
+            index=False) 
     plt.close(fig)
     
 
@@ -199,7 +287,7 @@ def run_vis_new(res_df, scenario, op_base):
     
     # now split out just cavity types to get av costs 
     if scenario == 'wall_installation':
-        fig = plot_total_cost_by_decile_epistemic_stacked(pl,
+        fig, _  = plot_total_cost_by_decile_epistemic_stacked(pl,
                                     cost_col=f'{scenario}_cost_{scenario}_mean', 
                                     cost_std_col=f'{scenario}_cost_{scenario}_std',
                                     
@@ -214,7 +302,7 @@ def run_vis_new(res_df, scenario, op_base):
                 dpi=300, bbox_inches='tight')
         plt.close(fig)
 
-        fig = plot_total_cost_by_decile_epistemic_stacked(pl,
+        fig, _  = plot_total_cost_by_decile_epistemic_stacked(pl,
                                     cost_col=f'{scenario}_cost_{scenario}_mean', 
                                     cost_std_col=f'{scenario}_cost_{scenario}_std',
                                     
@@ -456,7 +544,11 @@ def plot_total_cost_by_decile_epistemic_stacked(res_df,
     print(grouped_epistemic_total[['decile', 'total_mean_cost', 'epistemic_std', 'epistemic_se', 'n_epistemic_runs']].to_string(index=False))
  
         
-    return fig
+    return fig , {'single_run': grouped_single, 
+                  'grouped_epistemic_sub' : grouped_epistemic_sub,
+                'grouped_epistemic_total' : grouped_epistemic_total,
+                'pivot' :pivot_data,
+                    }
 
 
 def plot_col_reduction_by_decile_epistemic(res_df,
@@ -634,7 +726,10 @@ def plot_col_reduction_by_decile_epistemic(res_df,
     print(grouped_epistemic[['decile', 'mean_reduction', 'epistemic_std', 'epistemic_se', 'n_epistemic_runs']].to_string(index=False))
     
         
-    return fig
+    return  fig, {
+        'single_run': grouped_single,
+        'epistemic_run': grouped_epistemic
+    }
 
  
 
@@ -815,7 +910,7 @@ def plot_col_reduction_by_decile_epistemic_by_wall_type(res_df,
         df_wall = grouped_epistemic_by_wall[grouped_epistemic_by_wall['wall_type'] == wall_type]
         print(df_wall[['decile', 'mean_reduction', 'epistemic_std', 'epistemic_se', 'n_epistemic_runs']].to_string(index=False))
     
-    return fig
+    return fig, {'single_run': grouped_single_by_wall , 'epistemic_run': grouped_epistemic_by_wall}
 
 def plot_col_reduction_by_decile_conservation(res_df,
                                               
