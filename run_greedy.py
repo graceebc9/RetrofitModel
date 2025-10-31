@@ -430,7 +430,7 @@ def main():
     )
     
     # Filter data
-    pdf = proc_df[proc_df['premise_use'] != 'Domestic_outbuilding'].copy()
+    pdf = proc_df[proc_df['premise_type'] != 'Domestic_outbuilding'].copy()
     pdf = pdf[~pdf['premise_type'].isna()]
     df = pdf.copy()
     
@@ -474,7 +474,7 @@ def main():
                 baseline_df=baseline_selection,
                 selected_df=combined_results,
                 scenario_name=f'£{budget:,} Budget - All Epistemic Runs',
-                out_put_dir=output_dir
+                output_dir=output_dir
             )
             
             summary_logger.info("Analysis complete!")
