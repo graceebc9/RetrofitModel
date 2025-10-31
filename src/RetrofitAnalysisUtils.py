@@ -38,7 +38,7 @@ def get_scenario_columns(scenario_list):
         'upn',                          # Unique property reference number
         'premise_type',                 # Type of building (excludes 'Domestic outbuilding')
         'epistemic_run_id',             # Run identifier for uncertainty analysis
-        
+        'premise_age',
         # Decile and grouping columns
         'avg_gas_percentile',           # Gas usage decile for grouping
         'total_gas_derived',
@@ -62,6 +62,7 @@ def get_scenario_columns(scenario_list):
           'total_gas_derived': 'float64',
           'total_elec_derived': 'float64',
           'epistemic__cost_scenario': 'object', 
+          'premise_age': 'object', 
 
     }
     
