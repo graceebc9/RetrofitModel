@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
  
 import pandas as pd
 
+
+
+
 def true_greedy_knapsack(df_knapsack, budget, cost_column='cost of interventon_mean', efficiency_column='cost_per_net_ton_co2_kg'):
     """
     Selects the most cost-effective buildings to receive interventions until the budget is exhausted.
@@ -16,13 +19,14 @@ def true_greedy_knapsack(df_knapsack, budget, cost_column='cost of interventon_m
     efficiency_column : str, name of the column containing the cost-effectiveness metric 
                         (lower is better, e.g., cost_per_net_ton_co2_kg).
     
+    
     Returns:
     --------
     selected : DataFrame of selected interventions.
     remaining : float, remaining budget.
     """
     
-    # 1. Sort by the cost-effectiveness metric (ascending: lower cost per CO2 saved is better)
+    # 1. Sort by the cost-effectiveness metric (acending: lower cost per CO2 saved is better)
     # This is the core of the greedy strategy.
     df_sorted = df_knapsack.sort_values(efficiency_column, ascending=True).reset_index(drop=True)
     

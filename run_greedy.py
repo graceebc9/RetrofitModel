@@ -21,6 +21,14 @@ from src.RetrofitPostProcess import process_multiple_scenarios
 from src.GreedyAlgo import true_greedy_knapsack, plot_greedy_distribution_analysis
 from src.RetrofitAnalysisUtils import load_data 
 
+from src.RetrofitEquity import EQUITY_WEIGHTS,  calculate_social_equity_score , calculate_scenario_persona_metrics
+
+def load_personas(path = '/Users/gracecolverd/RetrofitModel/NE_region_personas.csv'):
+
+    personas= pd.read_csv(path)
+    
+    return personas 
+
 def setup_logging(output_dir, budget, prob_loft):
     """
     Set up logging with separate files for detailed logs and summary statistics.
@@ -82,7 +90,9 @@ def assign_random_loft(df, prob_loft):
     return df
 
 
-def run_greedy_algo(scenario_budget, prob_loft, df, scenario_list, summary_logger, detail_logger):
+
+
+def run_greedy_algo(scenario_budget, prob_loft, df, scenario_list, summary_logger, detail_logger, equity_factor, output_dir):
     """
     Run greedy knapsack algorithm across multiple epistemic runs to select optimal retrofit projects.
     
@@ -93,6 +103,7 @@ def run_greedy_algo(scenario_budget, prob_loft, df, scenario_list, summary_logge
         scenario_list: List of retrofit scenarios to consider
         summary_logger: Logger for summary statistics
         detail_logger: Logger for detailed processing information
+        equity_factor: 0 for pure carbon, 1 for pure equity 
     
     Returns:
         tuple: (baseline_selection DataFrame, combined_results DataFrame)
@@ -104,11 +115,13 @@ def run_greedy_algo(scenario_budget, prob_loft, df, scenario_list, summary_logge
     detail_logger.info(f"Starting analysis with {len(epistemic_runs)} epistemic runs and {len(scenario_list)} scenarios")
     detail_logger.info(f"Total buildings in dataset: {len(df)}")
     detail_logger.info(f"Scenarios: {', '.join(scenario_list)}")
+    detail_logger.info(f"Equity factor: {equity_factor}")
     
     # Storage for results
     all_epistemic_results = []
     scenario_exclusion_stats = []
     scenario_performance_log = []
+    equity_tracking = [] 
     
     # Process each epistemic run
     for epi_idx, epi_run in enumerate(epistemic_runs, 1):
@@ -157,27 +170,37 @@ def run_greedy_algo(scenario_budget, prob_loft, df, scenario_list, summary_logge
             
             detail_logger.info(f"    Remaining buildings for {scenario}: {len(scenario_df)}")
             
-            # Flip signs for optimization (we minimize cost per tonne)
-            cols = [f'total_tonne_co2_saved_{scenario}_5yr_mean',
-                    f'cost_per_net_ton_co2_{scenario}_mean']
-            for col in cols:
-                scenario_df[f'flip_sign_{col}'] = -scenario_df[col]
+            # Flip signs for optimization
+            scenario_df[f'flip_sign_total_tonne_co2_saved_{scenario}_5yr_mean'] = -scenario_df[f'total_tonne_co2_saved_{scenario}_5yr_mean']
+            scenario_df[f'flip_sign_cost_per_net_ton_co2_{scenario}_mean'] = -scenario_df[f'cost_per_net_ton_co2_{scenario}_mean']
             
-            # Prepare ranking dataframe
+            # Apply equity weighting
+            scenario_df['equity_weight'] = scenario_df['meta_socio_persona'].map(EQUITY_WEIGHTS)
+            scenario_df[f'flip_sign_weighted_cost_per_ton_{scenario}'] = (
+                scenario_df[f'flip_sign_cost_per_net_ton_co2_{scenario}_mean'] * 
+                (1 + (scenario_df['equity_weight'] - 1) * equity_factor)
+            )
+            
+            # Prepare ranking dataframe WITH PERSONA
             df_rank = scenario_df[[
                 'upn',
+                'meta_socio_persona',  # NEW: Include persona
                 'avg_gas_percentile',
                 f'{scenario}_cost_{scenario}_mean',
                 f'flip_sign_total_tonne_co2_saved_{scenario}_5yr_mean',
-                f'flip_sign_cost_per_net_ton_co2_{scenario}_mean'
+                f'flip_sign_cost_per_net_ton_co2_{scenario}_mean',
+                f'flip_sign_weighted_cost_per_ton_{scenario}'
             ]].copy()
             
             df_rank['scenario'] = scenario
             df_rank['epistemic_run'] = epi_run
-            df_rank.columns = ['upn', 'avg_gas_percentile', 'cost of interventon_mean',
-                              'total_ton_co2_saved', 'cost_per_net_ton_co2_kg',
-                              'scenario', 'epistemic_run']
-            
+            df_rank.columns = [
+                'upn', 'meta_socio_persona', 'avg_gas_percentile', 
+                'cost of interventon_mean', 'total_ton_co2_saved', 
+                'cost_per_net_ton_co2_kg', 'weighted_cost_per_net_ton',
+                'scenario', 'epistemic_run'
+            ]
+
             # Log scenario statistics
             valid_scenario_data = df_rank[~df_rank['cost_per_net_ton_co2_kg'].isna()]
             if len(valid_scenario_data) > 0:
@@ -211,7 +234,7 @@ def run_greedy_algo(scenario_budget, prob_loft, df, scenario_list, summary_logge
         detail_logger.info(f"\n  Running greedy knapsack with budget: £{scenario_budget:,}")
         
         baseline_selection = (wdf
-                            .sort_values('cost_per_net_ton_co2_kg', ascending=True)
+                            .sort_values('weighted_cost_per_net_ton', ascending=True)
                             .drop_duplicates(subset='upn', keep='first')
                             .reset_index(drop=True))
         
@@ -221,7 +244,7 @@ def run_greedy_algo(scenario_budget, prob_loft, df, scenario_list, summary_logge
             df_knapsack=baseline_selection,
             budget=scenario_budget,
             cost_column='cost of interventon_mean',
-            efficiency_column='cost_per_net_ton_co2_kg'
+            efficiency_column='weighted_cost_per_net_ton'
         )
         
         # Log selection results
@@ -269,6 +292,51 @@ def run_greedy_algo(scenario_budget, prob_loft, df, scenario_list, summary_logge
                 'total_co2_saved': row['total_ton_co2_saved'],
                 'avg_cost_per_tonne': row['avg_cost_per_tonne']
             })
+
+        # ============================================================
+        # NEW: EQUITY ANALYSIS FOR THIS EPISTEMIC RUN
+        # ============================================================
+        
+        # Overall equity metrics
+        overall_equity = calculate_social_equity_score(selected_projects_df)
+        
+        detail_logger.info(f"\n  EQUITY ANALYSIS for epistemic run {epi_run}:")
+        detail_logger.info(f"    Vulnerable groups investment: {overall_equity['vulnerable_investment_pct']:.1f}%")
+        detail_logger.info(f"    Equity concentration index: {overall_equity['equity_concentration']:.3f}")
+        detail_logger.info(f"\n    Persona breakdown:")
+        
+        for persona, stats in overall_equity['persona_breakdown'].items():
+            detail_logger.info(f"      {persona}: {stats['count']} projects ({stats['pct']:.1f}%)")
+        
+        # Scenario-specific equity analysis
+        detail_logger.info(f"\n  Equity breakdown by scenario:")
+        for scenario in scenario_list:
+            scenario_equity = calculate_scenario_persona_metrics(selected_projects_df, scenario)
+            if scenario_equity:
+                metrics = scenario_equity['equity_metrics']
+                detail_logger.info(f"\n    {scenario}:")
+                detail_logger.info(f"      Vulnerable: {metrics['vulnerable_investment_pct']:.1f}%")
+                
+                for persona, stats in metrics['persona_breakdown'].items():
+                    if stats['count'] > 0:
+                        persona_stats = scenario_equity['persona_stats'].loc[persona]
+                        detail_logger.info(f"        {persona}: {stats['count']} projects ({stats['pct']:.1f}%), "
+                                         f"£{persona_stats['cost of interventon_mean']:,.0f}, "
+                                         f"{persona_stats['total_ton_co2_saved']:,.0f} tonnes CO2")
+                
+                # Store for cross-run analysis
+                equity_tracking.append({
+                    'epistemic_run': epi_run,
+                    'scenario': scenario,
+                    'vulnerable_pct': metrics['vulnerable_investment_pct'],
+                    'equity_concentration': metrics['equity_concentration'],
+                    **{f'{persona}_count': metrics['persona_breakdown'][persona]['count'] 
+                       for persona in EQUITY_WEIGHTS.keys()},
+                    **{f'{persona}_pct': metrics['persona_breakdown'][persona]['pct'] 
+                       for persona in EQUITY_WEIGHTS.keys()}
+                })
+        
+        
         
         all_epistemic_results.append(selected_projects_df)
     
@@ -393,6 +461,122 @@ def run_greedy_algo(scenario_budget, prob_loft, df, scenario_list, summary_logge
             summary_logger.info(f"    Avg UPNs excluded: {stats[('n_upns_excluded', 'mean')]:.1f} ± {stats[('n_upns_excluded', 'std')]:.1f}")
             summary_logger.info(f"    Avg % records excluded: {stats[('pct_records_excluded', 'mean')]:.1f}% ± {stats[('pct_records_excluded', 'std')]:.1f}%")
     
+     
+         
+    # ============================================================================
+    # COMPREHENSIVE EQUITY ANALYSIS ACROSS ALL EPISTEMIC RUNS
+    # ============================================================================
+    
+ 
+    
+    summary_logger.info(f"\n{'='*80}")
+    summary_logger.info("SOCIAL EQUITY ANALYSIS ACROSS ALL EPISTEMIC RUNS")
+    summary_logger.info(f"Budget: £{scenario_budget:,} | Loft Probability: {prob_loft} | Equity Factor: {equity_factor}")
+    summary_logger.info(f"{'='*80}\n")
+    
+    # 1. Overall equity metrics
+    summary_logger.info("1. OVERALL EQUITY METRICS")
+    summary_logger.info("-" * 80)
+    
+    overall_equity_all = calculate_social_equity_score(combined_results)
+    summary_logger.info(f"  Total projects across all runs: {overall_equity_all['total_count']}")
+    summary_logger.info(f"  Vulnerable groups (deprived + struggling): {overall_equity_all['vulnerable_count']} "
+                       f"({overall_equity_all['vulnerable_investment_pct']:.1f}%)")
+    summary_logger.info(f"  Equity concentration index: {overall_equity_all['equity_concentration']:.3f}\n")
+    
+    summary_logger.info("  Persona distribution across all selections:")
+    for persona, stats in overall_equity_all['persona_breakdown'].items():
+        summary_logger.info(f"    {persona.ljust(15)}: {stats['count']:5d} projects ({stats['pct']:5.1f}%)")
+    
+    # 2. Equity metrics by epistemic run
+    summary_logger.info("\n\n2. EQUITY METRICS BY EPISTEMIC RUN")
+    summary_logger.info("-" * 80)
+    
+    equity_by_run = combined_results.groupby('epistemic_run').apply(
+        lambda x: pd.Series({
+            'vulnerable_pct': calculate_social_equity_score(x)['vulnerable_investment_pct'],
+            'concentration': calculate_social_equity_score(x)['equity_concentration'],
+            'n_projects': len(x)
+        })
+    )
+    
+    summary_logger.info(f"  Mean vulnerable investment: {equity_by_run['vulnerable_pct'].mean():.1f}% "
+                       f"± {equity_by_run['vulnerable_pct'].std():.1f}%")
+    summary_logger.info(f"  Range: {equity_by_run['vulnerable_pct'].min():.1f}% - "
+                       f"{equity_by_run['vulnerable_pct'].max():.1f}%")
+    summary_logger.info(f"  Mean concentration index: {equity_by_run['concentration'].mean():.3f} "
+                       f"± {equity_by_run['concentration'].std():.3f}")
+    
+    # 3. Equity metrics by scenario
+    summary_logger.info("\n\n3. EQUITY METRICS BY SCENARIO")
+    summary_logger.info("-" * 80)
+    
+    equity_tracking_df = pd.DataFrame(equity_tracking)
+    
+    for scenario in scenario_list:
+        scenario_equity_data = equity_tracking_df[equity_tracking_df['scenario'] == scenario]
+        
+        if len(scenario_equity_data) > 0:
+            summary_logger.info(f"\n  {scenario.upper()}:")
+            summary_logger.info(f"    Vulnerable investment: {scenario_equity_data['vulnerable_pct'].mean():.1f}% "
+                              f"± {scenario_equity_data['vulnerable_pct'].std():.1f}%")
+            summary_logger.info(f"    Concentration: {scenario_equity_data['equity_concentration'].mean():.3f} "
+                              f"± {scenario_equity_data['equity_concentration'].std():.3f}")
+            
+            summary_logger.info(f"\n    Persona distribution:")
+            for persona in EQUITY_WEIGHTS.keys():
+                count_col = f'{persona}_count'
+                pct_col = f'{persona}_pct'
+                if count_col in scenario_equity_data.columns:
+                    mean_count = scenario_equity_data[count_col].mean()
+                    mean_pct = scenario_equity_data[pct_col].mean()
+                    std_pct = scenario_equity_data[pct_col].std()
+                    summary_logger.info(f"      {persona.ljust(15)}: {mean_count:5.1f} projects "
+                                      f"({mean_pct:5.1f}% ± {std_pct:4.1f}%)")
+    
+    # 4. Compare equity factor impact (if equity_factor != 0)
+    if equity_factor > 0:
+        summary_logger.info("\n\n4. EQUITY FACTOR IMPACT")
+        summary_logger.info("-" * 80)
+        summary_logger.info(f"  Equity factor applied: {equity_factor}")
+        summary_logger.info(f"  This prioritizes investment in:")
+        for persona, weight in sorted(EQUITY_WEIGHTS.items(), key=lambda x: x[1], reverse=True):
+            if weight > 1.0:
+                summary_logger.info(f"    {persona}: {weight}x weighting")
+    
+    # 5. Cost and CO2 efficiency by persona
+    summary_logger.info("\n\n5. COST & CO2 EFFICIENCY BY PERSONA")
+    summary_logger.info("-" * 80)
+    
+    persona_efficiency = combined_results.groupby('meta_socio_persona').agg({
+        'cost of interventon_mean': ['sum', 'mean'],
+        'total_ton_co2_saved': ['sum', 'mean'],
+        'cost_per_net_ton_co2_kg': 'mean',
+        'upn': 'count'
+    }).rename(columns={'upn': 'n_projects'})
+    
+    for persona in EQUITY_WEIGHTS.keys():
+        if persona in persona_efficiency.index:
+            stats = persona_efficiency.loc[persona]
+            total_cost = stats[('cost of interventon_mean', 'sum')]
+            total_co2 = stats[('total_ton_co2_saved', 'sum')]
+            n_proj = stats[('n_projects', 'count')]
+            avg_cost_per_tonne = stats[('cost_per_net_ton_co2_kg', 'mean')]
+            
+            summary_logger.info(f"\n  {persona}:")
+            summary_logger.info(f"    Projects: {n_proj:.0f}")
+            summary_logger.info(f"    Total cost: £{total_cost:,.0f}")
+            summary_logger.info(f"    Total CO2 saved: {total_co2:,.0f} tonnes")
+            summary_logger.info(f"    Avg cost per tonne CO2: £{avg_cost_per_tonne:.2f}")
+    
+    summary_logger.info(f"\n{'='*80}\n")
+    
+    # Save equity tracking data
+    equity_tracking_df.to_csv(
+        os.path.join(output_dir, 'equity_tracking.csv'), 
+        index=False
+    )
+    
     summary_logger.info(f"\n{'='*80}\n")
     
     return baseline_selection, combined_results
@@ -410,6 +594,7 @@ def main():
     N_SIMULATIONS = 5000
     ELEC_CARBON_FACTOR = 0.2
     GAS_CARBON_FACTOR = 0.2
+    equity_factor = 1 
     
     scenarios_config = [
         ("wall_installation", "wall_installation"),
@@ -422,6 +607,9 @@ def main():
     
     # Load and concatenate input data
     res_df =load_data(INPUT_FILES_PATH, scenario_list )
+    personas = load_personas(path = '/Users/gracecolverd/RetrofitModel/NE_region_personas.csv') 
+    res_df = res_df.merge(personas, on='postcode', how='inner')
+
     
     print("Processing scenarios...")
     proc_df = process_multiple_scenarios(
@@ -435,54 +623,61 @@ def main():
     df = pdf.copy()
     
     # Run analysis for different budget and loft probability combinations
-    budgets = [10_000_000, 100_000_000, 1_000_000_000]
-    loft_probs = [0.65, 0.95]
+    local= True 
+
+    if local:
+        budgets = [10_000_000, 100_000_000]
+        loft_probs = [0.65, 0.95]
+    else:
+        budgets = [10_000_000, 100_000_000, 1_000_000_000]
+        loft_probs = [0.65, 0.95]
     
     for budget in budgets:
         for prob_loft in loft_probs:
-            print(f"\n{'='*80}")
-            print(f"Starting analysis: Budget £{budget:,}, Loft Probability {prob_loft}")
-            print(f"{'='*80}")
-            
-            # Create output directory
-            output_dir = os.path.join(BASE_DIR, f'budget_{budget}_loft_{prob_loft}')
-            os.makedirs(output_dir, exist_ok=True)
-            
-            # Set up logging
-            summary_logger, detail_logger = setup_logging(output_dir, budget, prob_loft)
-            
-            summary_logger.info(f'Starting analysis: Budget £{budget:,}, Loft Probability {prob_loft}')
-            
-            # Run greedy algorithm
-            baseline_selection, combined_results = run_greedy_algo(
-                budget, prob_loft, df, scenario_list, summary_logger, detail_logger
+            for equity_factor in [0.5]: 
+                print(f"\n{'='*80}")
+                print(f"Starting analysis: Budget £{budget:,}, Loft Probability {prob_loft} and equity: {equity_factor}")
+                print(f"{'='*80}")
+                
+                # Create output directory
+                output_dir = os.path.join(BASE_DIR, f'budget_{budget}_loft_{prob_loft}_equity: {equity_factor}')
+                os.makedirs(output_dir, exist_ok=True)
+                
+                # Set up logging
+                summary_logger, detail_logger = setup_logging(output_dir, budget, prob_loft)
+                
+                summary_logger.info(f'Starting analysis: Budget £{budget:,}, Loft Probability {prob_loft}')
+                
+                # Run greedy algorithm
+                baseline_selection, combined_results = run_greedy_algo(
+                    budget, prob_loft, df, scenario_list, summary_logger, detail_logger, equity_factor, output_dir, 
             )
             
-            # Save results to CSV
-            baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
-            combined_path = os.path.join(output_dir, f'combined_results.csv')
-            
-            baseline_selection.to_csv(baseline_path, index=False)
-            combined_results.to_csv(combined_path, index=False)
-            
-            summary_logger.info(f"Baseline selection saved to: {baseline_path}")
-            summary_logger.info(f"Combined results saved to: {combined_path}")
-            
-            # Generate visualization
-            summary_logger.info("\nGenerating visualization...")
-            plot_greedy_distribution_analysis(
-                baseline_df=baseline_selection,
-                selected_df=combined_results,
-                scenario_name=f'£{budget:,} Budget - All Epistemic Runs',
-                output_dir=output_dir
-            )
-            
-            summary_logger.info("Analysis complete!")
-            print(f"Results saved to: {output_dir}")
-            
-            # Clear handlers to avoid duplicate logging in next iteration
-            summary_logger.handlers.clear()
-            detail_logger.handlers.clear()
+                # Save results to CSV
+                baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
+                combined_path = os.path.join(output_dir, f'combined_results.csv')
+                
+                baseline_selection.to_csv(baseline_path, index=False)
+                combined_results.to_csv(combined_path, index=False)
+                
+                summary_logger.info(f"Baseline selection saved to: {baseline_path}")
+                summary_logger.info(f"Combined results saved to: {combined_path}")
+                
+                # Generate visualization
+                summary_logger.info("\nGenerating visualization...")
+                plot_greedy_distribution_analysis(
+                    baseline_df=baseline_selection,
+                    selected_df=combined_results,
+                    scenario_name=f'£{budget:,} Budget - All Epistemic Runs',
+                    output_dir=output_dir
+                )
+                
+                summary_logger.info("Analysis complete!")
+                print(f"Results saved to: {output_dir}")
+                
+                # Clear handlers to avoid duplicate logging in next iteration
+                summary_logger.handlers.clear()
+                detail_logger.handlers.clear()
 
 
 if __name__ == "__main__":
