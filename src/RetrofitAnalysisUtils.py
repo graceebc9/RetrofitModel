@@ -35,6 +35,7 @@ def get_scenario_columns(scenario_list):
     
     STATIC_COLUMNS = [
         # Building identifiers
+        'postcode', 
         'upn',                          # Unique property reference number
         'premise_type',                 # Type of building (excludes 'Domestic outbuilding')
         'epistemic_run_id',             # Run identifier for uncertainty analysis
@@ -53,6 +54,7 @@ def get_scenario_columns(scenario_list):
     
     # Define dtypes for static columns
     STATIC_DTYPES = {
+        'postcode': 'str',
         'upn': 'Int64',                            # Large integer identifier
         'premise_type': 'object',                  # Categorical
         'epistemic_run_id': 'Int8',                # Small integer (<100)
