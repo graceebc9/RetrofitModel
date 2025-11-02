@@ -79,7 +79,7 @@ def main():
     """
     # Configuration
     BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
-    INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
+    INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/all/*.csv'
     
     YEARS = 5
     N_SIMULATIONS = 5000
@@ -125,13 +125,14 @@ def main():
     
     for budget in budgets:
         for prob_loft in loft_probs:
+       
             for equity_factor in [ 0,  0.2,   0.4,   0.6,   0.8 , 1 ]: 
                 print(f"\n{'='*80}")
-                print(f"Starting analysis: Budget £{budget:,}, Loft Probability {prob_loft} and equity: {equity_factor}")
+                print(f"Starting analysis: Budget £{budget:,}, Loft Probability {prob_loft} and equity: {equity_factor} ")
                 print(f"{'='*80}")
                 
                 # Create output directory
-                output_dir = os.path.join(BASE_DIR, f'budget_{budget}_loft_{prob_loft}_equity: {equity_factor}')
+                output_dir = os.path.join(BASE_DIR, f'budget_{budget}__loft_{prob_loft}__equity_{equity_factor}')
                 os.makedirs(output_dir, exist_ok=True)
                 
                 # Set up logging
@@ -141,7 +142,7 @@ def main():
                 
                 # Run greedy algorithm
                 baseline_selection, combined_results = run_greedy_algo(
-                    budget, prob_loft, df, scenario_list, summary_logger, detail_logger, equity_factor, output_dir, 
+                    budget, prob_loft, df, scenario_list, summary_logger, detail_logger, equity_factor, output_dir,  
             )
             
                 # Save results to CSV

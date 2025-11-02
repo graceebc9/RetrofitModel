@@ -188,7 +188,7 @@ def plot_greedy_distribution_analysis(baseline_df, selected_df,
     print("=" * 60)
     print(f"ANALYSIS: {scenario_name}")
     print("=" * 60)
-    
+
     if 'epistemic_run' not in selected_df.columns:
         print("ERROR: 'epistemic_run' column not found in selected_df.")
         print("Cannot perform average-per-run analysis.")
@@ -252,7 +252,10 @@ def plot_greedy_distribution_analysis(baseline_df, selected_df,
     print("\nAverage Intervention Mix per Decile (per Run):")
     print(intervention_decile_avg.round(1))
 
-    
+    print("\nDEBUG - comparison_df dtypes:")
+    print(comparison_df.dtypes)
+    print("\nDEBUG - comparison_df values:")
+    print(comparison_df)
     # ----------------------------------------
     # 2. Setup Plot Saving or Showing
     # ----------------------------------------
