@@ -24,7 +24,7 @@ else:
 log_config_filepath = f"{base_path}/logs/config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 log_path = f"{base_path}/logs/log_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-setup_logging(log_level='INFO', log_path=log_path)
+setup_logging(log_level='DEBUG', log_path=log_path)
 logger = get_logger(__name__)
 
 
@@ -83,9 +83,10 @@ OUTPUT_DIR = 'final_dataset'
 batch_size = 500
 log_size = 10
 n_monte_carlo = 5000
-N_EPISTEMIC_RUNS = 35
+N_EPISTEMIC_RUNS = 5
 RANDOM_SEED_OUTER = 42
-scenarios = ['wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
+# scenarios = ['wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
+scenarios = ['wall_installation']
 # scenarios=['join_heat_ins_add' ]
 job_name='all'
 region_list = ['NE'] if running_locally else [os.getenv('REGION_LIST')]
@@ -284,6 +285,7 @@ def main():
     else:
         # Local mode: process all batches
         batch_paths = all_batch_paths
+        batch_paths=['batches/NE/batch_6.txt']
         logger.info(f"Local mode: Processing all {len(batch_paths)} batches")
 
     print(f"Batch paths to process: {batch_paths}")
