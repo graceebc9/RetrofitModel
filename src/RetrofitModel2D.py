@@ -1365,7 +1365,7 @@ class RetrofitModel2D:
             if c_df[col].isna().all():
                 
                 # [!!! NEW VALIDATION LOGIC !!!]
-                if "cost_per_" in col:
+                if "cost_per_" in col or 'elec' in col:
                     logger.warning(
                         f'Final cost-per-unit column "{col}" is all NaN. This is likely '
                         f'because the denominator (energy savings) is 0 for all rows. '
