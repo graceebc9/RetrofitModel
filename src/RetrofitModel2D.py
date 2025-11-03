@@ -1174,7 +1174,7 @@ class RetrofitModel2D:
     #     return cost_cols, energy_cols
 
     def _get_cols_scenario_intervention(self, scenario_str, stats=['mean', 'std', 'p5', 'p50', 'p95'], 
-                                     metric_types=['gas_saving_abs_kwh', 'elec_saving_abs_kwh', 'gas_saving_perc', 'elec_saving_perc_']):
+                                     metric_types=['gas_saving_abs_kwh', 'elec_saving_abs_kwh', 'gas_saving_perc', 'elec_saving_perc']):
         """
         Get column names for scenario interventions.
         
