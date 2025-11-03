@@ -1,13 +1,17 @@
 """
-Greedy Algorithm Analysis for Retrofit Scenarios
+Greedy Algorithm Analysis for Retrofit Scenarios (Updated for new column format)
 Processes multiple epistemic runs and selects optimal retrofit projects within budget constraints.
+
+Key Changes:
+- Works with new column format (gas_saving_abs_kwh, etc.)
+- No longer uses process_multiple_scenarios() - data already processed
+- Adds CO2 conversion from kWh savings
 """
 
 import os
 import sys
 import glob
-import logging
-from datetime import datetime
+
 
 import numpy as np
 import pandas as pd
@@ -17,61 +21,28 @@ import matplotlib.pyplot as plt
 sys.path.append('/Users/gracecolverd/RetrofitModel')
 
 from src.validate import validate
-from src.RetrofitPostProcess import process_multiple_scenarios
+# from src.RetrofitPostProcess import process_multiple_scenarios  # NO LONGER NEEDED
 from src.GreedyAlgo import true_greedy_knapsack, plot_greedy_distribution_analysis
-from src.RetrofitAnalysisUtils import load_data 
 from src.RetrofitGreedy import run_greedy_algo 
+# from src.RetrofitEquity import EQUITY_WEIGHTS, calculate_social_equity_score, calculate_scenario_persona_metrics
+from src.RetrofitGreedyUtils import setup_logging
+from src.RetrofitAnalysisUtils import load_data , prepare_data_for_postanalysis
+# ============================================================================
+# DATA LOADING (UPDATED FOR NEW FORMAT)
+# ============================================================================
+ 
 
-from src.RetrofitEquity import EQUITY_WEIGHTS,  calculate_social_equity_score , calculate_scenario_persona_metrics
-
-def load_personas(path = '/Users/gracecolverd/RetrofitModel/NE_region_personas.csv'):
-
-    personas= pd.read_csv(path)
-    
-    return personas 
-
-def setup_logging(output_dir, budget, prob_loft):
-    """
-    Set up logging with separate files for detailed logs and summary statistics.
-    
-    Args:
-        output_dir: Directory to save log files
-        budget: Budget amount for naming
-        prob_loft: Probability of existing loft insulation for naming
-    
-    Returns:
-        tuple: (summary_logger, detail_logger)
-    """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Create detailed log
-    detail_log_path = os.path.join(output_dir, f'detailed_log_{budget}_loft{prob_loft}_{timestamp}.log')
-    detail_logger = logging.getLogger(f'detail_{budget}_{prob_loft}')
-    detail_logger.setLevel(logging.DEBUG)
-    detail_handler = logging.FileHandler(detail_log_path)
-    detail_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    detail_logger.addHandler(detail_handler)
-    
-    # Create summary log
-    summary_log_path = os.path.join(output_dir, f'SUMMARY_{budget}_loft{prob_loft}_{timestamp}.txt')
-    summary_logger = logging.getLogger(f'summary_{budget}_{prob_loft}')
-    summary_logger.setLevel(logging.INFO)
-    summary_handler = logging.FileHandler(summary_log_path)
-    summary_handler.setFormatter(logging.Formatter('%(message)s'))
-    summary_logger.addHandler(summary_handler)
-    
-    # Also log to console
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter('%(levelname)s - %(message)s'))
-    summary_logger.addHandler(console_handler)
-    
-    return summary_logger, detail_logger
+def load_personas(path='/Users/gracecolverd/RetrofitModel/NE_region_personas.csv'):
+    """Load persona/demographic data."""
+    personas = pd.read_csv(path)
+    return personas
 
 
+ 
 
-
-
-
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
 
 def main():
     """
@@ -79,97 +50,141 @@ def main():
     """
     # Configuration
     BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
-    INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/all/*.csv'
+    INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
     
     YEARS = 5
     N_SIMULATIONS = 5000
     ELEC_CARBON_FACTOR = 0.2
     GAS_CARBON_FACTOR = 0.2
-
-    
-    scenarios_config = [
-        ("wall_installation", "wall_installation"),
-        ("loft_installation", "loft_installation"),
-        ("join_heat_ins_decay", "join_heat_ins_decay"),
-        ("heat_pump_only", "heat_pump_only")
-    ]
     
     scenario_list = ['wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
     
-    # Load and concatenate input data
-    res_df =load_data(INPUT_FILES_PATH, scenario_list )
-    personas = load_personas(path = '/Users/gracecolverd/RetrofitModel/NE_region_personas.csv') 
-    res_df = res_df.merge(personas, on='postcode', how='inner')
-
+    print("\n" + "="*80)
+    print("GREEDY ALGORITHM ANALYSIS - UPDATED FOR NEW COLUMN FORMAT")
+    print("="*80)
     
-    print("Processing scenarios...")
-    proc_df = process_multiple_scenarios(
-        res_df, scenarios_config, YEARS, N_SIMULATIONS,
-        GAS_CARBON_FACTOR, ELEC_CARBON_FACTOR, gas_col='deriv'
+    # Load and concatenate input data
+    print("\nLoading input data...")
+    res_df = load_data(INPUT_FILES_PATH, scenario_list)
+    
+    print("\nLoading personas...")
+    personas = load_personas(path='/Users/gracecolverd/RetrofitModel/NE_region_personas.csv') 
+    res_df = res_df.merge(personas, on='postcode', how='inner')
+    print(f"After persona merge: {len(res_df)} rows")
+    print(res_df.columns.tolist() )
+
+    # UPDATED: Use prepare_data_for_greedy instead of process_multiple_scenarios
+    print("\nPreparing data for greedy algorithm...")
+    proc_df = prepare_data_for_postanalysis(
+        res_df, 
+        scenario_list, 
+        YEARS, 
+        GAS_CARBON_FACTOR, 
+        ELEC_CARBON_FACTOR
     )
+    print(proc_df.columns.tolist())
     
     # Filter data
+    print("\nFiltering data...")
     pdf = proc_df[proc_df['premise_type'] != 'Domestic_outbuilding'].copy()
     pdf = pdf[~pdf['premise_type'].isna()]
     df = pdf.copy()
+    print(f"After filtering: {len(df)} rows")
     
     # Run analysis for different budget and loft probability combinations
-    local= True 
-
+    local = True 
+    
     if local:
         budgets = [10_000_000, 100_000_000]
-        loft_probs = [0.65 ]
+        loft_probs = [0.65]
+        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
     else:
         budgets = [10_000_000, 100_000_000, 1_000_000_000]
         loft_probs = [0.65, 0.95]
+        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
     
     for budget in budgets:
         for prob_loft in loft_probs:
-       
-            for equity_factor in [ 0,  0.2,   0.4,   0.6,   0.8 , 1 ]: 
+            for equity_factor in equity_factors: 
                 print(f"\n{'='*80}")
-                print(f"Starting analysis: Budget £{budget:,}, Loft Probability {prob_loft} and equity: {equity_factor} ")
+                print(f"Starting analysis:")
+                print(f"  Budget: £{budget:,}")
+                print(f"  Loft Probability: {prob_loft}")
+                print(f"  Equity Factor: {equity_factor}")
                 print(f"{'='*80}")
                 
                 # Create output directory
-                output_dir = os.path.join(BASE_DIR, f'budget_{budget}__loft_{prob_loft}__equity_{equity_factor}')
+                output_dir = os.path.join(
+                    BASE_DIR, 
+                    f'budget_{budget}__loft_{prob_loft}__equity_{equity_factor}'
+                )
                 os.makedirs(output_dir, exist_ok=True)
                 
                 # Set up logging
-                summary_logger, detail_logger = setup_logging(output_dir, budget, prob_loft)
-                
-                summary_logger.info(f'Starting analysis: Budget £{budget:,}, Loft Probability {prob_loft}')
-                
-                # Run greedy algorithm
-                baseline_selection, combined_results = run_greedy_algo(
-                    budget, prob_loft, df, scenario_list, summary_logger, detail_logger, equity_factor, output_dir,  
-            )
-            
-                # Save results to CSV
-                baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
-                combined_path = os.path.join(output_dir, f'combined_results.csv')
-                
-                baseline_selection.to_csv(baseline_path, index=False)
-                combined_results.to_csv(combined_path, index=False)
-                
-                summary_logger.info(f"Baseline selection saved to: {baseline_path}")
-                summary_logger.info(f"Combined results saved to: {combined_path}")
-                
-                # Generate visualization
-                summary_logger.info("\nGenerating visualization...")
-                plot_greedy_distribution_analysis(
-                    baseline_df=baseline_selection,
-                    selected_df=combined_results,
-                    scenario_name=f'£{budget:,} Budget - All Epistemic Runs',
-                    output_dir=output_dir
+                summary_logger, detail_logger = setup_logging(
+                    output_dir, budget, prob_loft, equity_factor
                 )
                 
-                summary_logger.info("Analysis complete!")
-                print(f"Results saved to: {output_dir}")
+                summary_logger.info(
+                    f'Starting analysis: Budget £{budget:,}, '
+                    f'Loft Probability {prob_loft}, '
+                    f'Equity Factor {equity_factor}'
+                )
                 
-                # Clear handlers to avoid duplicate logging in next iteration
-                summary_logger.handlers.clear()
-                detail_logger.handlers.clear()
+                # Run greedy algorithm
+                try:
+                    baseline_selection, combined_results = run_greedy_algo(
+                        budget, 
+                        prob_loft, 
+                        df, 
+                        scenario_list, 
+                        summary_logger, 
+                        detail_logger, 
+                        equity_factor, 
+                        output_dir,  
+                    )
+                    # check if empty 
+                    if baseline_selection.empty:
+                        raise Exception('Baselin results empty ')
+                    if combined_results.empty: 
+                        raise Exception('Baselin results empty ')
+                    
+                    # Save results to CSV
+                    baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
+                    combined_path = os.path.join(output_dir, f'combined_results.csv')
+                    
+                    baseline_selection.to_csv(baseline_path, index=False)
+                    combined_results.to_csv(combined_path, index=False)
+                    
+                    summary_logger.info(f"Baseline selection saved to: {baseline_path}")
+                    summary_logger.info(f"Combined results saved to: {combined_path}")
+                    
+                    # Generate visualization
+                    summary_logger.info("\nGenerating visualization...")
+                    plot_greedy_distribution_analysis(
+                        baseline_df=baseline_selection,
+                        selected_df=combined_results,
+                        scenario_name=f'£{budget:,} Budget - All Epistemic Runs',
+                        output_dir=output_dir
+                    )
+                    
+                    summary_logger.info("Analysis complete!")
+                    print(f"✓ Results saved to: {output_dir}")
+                    
+                except Exception as e:
+                    summary_logger.error(f"Error in analysis: {e}")
+                    print(f"✗ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                finally:
+                    # Clear handlers to avoid duplicate logging in next iteration
+                    summary_logger.handlers.clear()
+                    detail_logger.handlers.clear()
+    
+    print("\n" + "="*80)
+    print("ALL ANALYSES COMPLETE!")
+    print("="*80)
 
 
 if __name__ == "__main__":
