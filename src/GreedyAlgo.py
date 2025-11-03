@@ -299,20 +299,31 @@ def plot_greedy_distribution_analysis(baseline_df, selected_df,
         if 'fig_a' in locals(): plt.close(fig_a)
 
     # --- B. Heatmap of Decile Distribution (Aggregate) ---
+    # --- DEBUG: CHECK DATA BEFORE CONVERSION ---
+    print("--- DEBUG PLOT B: BEFORE CONVERSION ---")
+    print(comparison_df.info())
+    print(comparison_df.head())
+    print("------------------------------------------")
     try:
         fig_b, ax_b = plt.subplots(figsize=(8, 5))
-        cmap = plt.cm.RdYlGn
-        im = ax_b.imshow(comparison_df.T.values, cmap=cmap, aspect='auto', vmin=0, vmax=comparison_df.T.values.max() + 5)
+        comparison_df_numeric = comparison_df.astype('float64')
 
-        ax_b.set_xticks(np.arange(len(comparison_df.index)))
-        ax_b.set_yticks(np.arange(len(comparison_df.columns)))
-        ax_b.set_xticklabels(comparison_df.index)
-        ax_b.set_yticklabels(comparison_df.columns)
+         # --- DEBUG: CHECK DATA AFTER CONVERSION ---
+        print("--- DEBUG PLOT B: AFTER .astype('float64') ---")
+        print(comparison_df_numeric.info()) # This should now show 'float64'
+        print("-----------------------------------------------")
+        cmap = plt.cm.RdYlGn
+        im = ax_b.imshow(comparison_df_numeric.T.values, cmap=cmap, aspect='auto', vmin=0, vmax=comparison_df_numeric.T.values.max() + 5)
+
+        ax_b.set_xticks(np.arange(len(comparison_df_numeric.index)))
+        ax_b.set_yticks(np.arange(len(comparison_df_numeric.columns)))
+        ax_b.set_xticklabels(comparison_df_numeric.index)
+        ax_b.set_yticklabels(comparison_df_numeric.columns)
         ax_b.tick_params(axis='x', rotation=45)
 
-        for i in range(len(comparison_df.columns)):
-            for j in range(len(comparison_df.index)):
-                value = comparison_df.T.values[i, j]
+        for i in range(len(comparison_df_numeric.columns)):
+            for j in range(len(comparison_df_numeric.index)):
+                value = comparison_df_numeric.T.values[i, j]
                 ax_b.text(j, i, f'{value:.1f}', ha="center", va="center", 
                           color="black", fontsize=9)
 
