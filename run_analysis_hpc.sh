@@ -12,8 +12,8 @@ ON_HPC=true  # Set to true if running on HPC, false for local
 
 if [ "$ON_HPC" = true ]; then
     # HPC paths
-    INPUT_PATTERN="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/mega_all_scenarios/NE/*.csv"
-    OUTPUT_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/mega_all_scenarios/NE/retrofit_analysis"
+    INPUT_PATTERN="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*.csv"
+    OUTPUT_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/retrofit_analysis"
     SCRIPT_PATH="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/energy_analysis_script.py"
     LOG_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/post_analysis_logs_slurm"
 else
@@ -34,12 +34,12 @@ RUN_NAME="NE_all_scenarios_5yr_$(date +%Y%m%d)"
 # Each scenario will be submitted as a separate job (when running on HPC)
 
 # Option 1: Single scenario  
-SCENARIOS=("wall_installation")
-MEASURE_TYPES=("wall_installation")
+#SCENARIOS=("wall_installation")
+#MEASURE_TYPES=("wall_installation")
 
 # Option 2: Multiple scenarios (use arrays for pairing)
-# SCENARIOS=("wall_installation" "loft_installation" "join_heat_ins_decay" "heat_pump_only")
-# MEASURE_TYPES=("wall_installation" "loft_installation" "join_heat_ins_decay" "heat_pump_only")
+SCENARIOS=("wall_installation" "loft_installation" "join_heat_ins_decay" "heat_pump_only" "join_heat_ins_add")
+MEASURE_TYPES=("wall_installation" "loft_installation" "join_heat_ins_decay" "heat_pump_only" "join_heat_ins_add")
 
  
 # ==============================================================================
