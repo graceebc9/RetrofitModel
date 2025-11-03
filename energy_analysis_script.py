@@ -29,38 +29,9 @@ import psutil
 import tracemalloc
 from functools import wraps
 
-from src.RetrofitAnalysisUtils import load_data, memory_profiler, log_memory
+from src.RetrofitAnalysisUtils import load_data, memory_profiler, log_memory, prepare_data_for_postanalysis
 
-
-@memory_profiler
-def add_co2_columns(df, scenario_name, years, gas_carbon_factor, elec_carbon_factor):
-    """
-    Convert kWh savings to CO2 savings for analysis.
-    New data has kWh, we need to convert to CO2 for compatibility with existing analysis.
-    """
-    print(f"\nConverting kWh savings to CO2 for {scenario_name}...")
-    
-    # Gas CO2 columns (kWh * years * carbon_factor)
-    gas_cols = ['mean', 'std', 'p5', 'p50', 'p95']
-    for stat in gas_cols:
-        kwh_col = f'{scenario_name}_gas_saving_abs_kwh_{scenario_name}_{stat}'
-        co2_col = f'gas_{years}yr_kg_co2_saved_{scenario_name}_{stat}'
-        
-        if kwh_col in df.columns:
-            df[co2_col] = df[kwh_col] * years * gas_carbon_factor
-            print(f"  Created {co2_col} from {kwh_col}")
-    
-    # Electricity CO2 columns (if heat pump scenario)
-    if 'heat' in scenario_name.lower():
-        for stat in gas_cols:
-            kwh_col = f'{scenario_name}_elec_saving_abs_kwh_{scenario_name}_{stat}'
-            co2_col = f'elec_{years}yr_kg_co2_saved_{scenario_name}_{stat}'
-            
-            if kwh_col in df.columns:
-                df[co2_col] = df[kwh_col] * years * elec_carbon_factor
-                print(f"  Created {co2_col} from {kwh_col}")
-    
-    return df
+ 
 
 
 @memory_profiler
@@ -162,7 +133,7 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
 
     # Convert kWh savings to CO2 savings (data already has kWh, we add CO2)
     print("\nAdding CO2 conversion columns...")
-    df_processed = add_co2_columns(
+    df_processed = prepare_data_for_postanalysis(
         df.copy(), 
         scenario_name, 
         years,
@@ -232,11 +203,10 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
     # Perform analyses
     building_metrics = analyze_uncertainty(df_processed, scenario_name, measure_type, years, scenario_output_dir)
     
-    try:
-        portfolio_metrics = run_meta_portoflio(scenario_output_dir, df_processed, scenario_name, years=years)
-    except Exception as e:
-        print(f"Warning: Portfolio analysis failed: {e}")
-        portfolio_metrics = {}
+ 
+    portfolio_metrics = run_meta_portoflio(scenario_output_dir, df_processed, scenario_name, years=years)
+ 
+ 
 
     # Create visualizations
     try:
