@@ -1376,17 +1376,19 @@ class RetrofitModel2D:
                     logger.error(f'Final cost column "{col}" is all NaN for scenario {scenario}!')
                     raise ValueError(f'Final cost column "{col}" contains all NaN values')
         
-        for col in e_df.columns:
-            if 'elec' in col:
-                logger.error(f'Final energy column "{col}" is all NaN for scenario {scenario}. potentially expeced for electricity')
+            for col in e_df.columns:
+                if e_df[col].isna().all():
+                    if 'elec' in col:
+                        logger.warning(
+                            f'Final energy column "{col}" is all NaN for scenario {scenario}. '
+                            f'This may be expected for electricity columns.'
+                        )
+                    else:
+                        logger.error(f'Final energy column "{col}" is all NaN for scenario {scenario}!')
+                        raise ValueError(f'Final energy column "{col}" contains all NaN values')
                 
-            elif e_df[col].isna().all():
-                logger.error(f'Final energy column "{col}" is all NaN for scenario {scenario}!')
-                raise ValueError(f'Final energy column "{col}" contains all NaN values')
-            
-            if (e_df[col] == 0).all():
-                logger.warning(f'Final energy column "{col}" is all zeros for scenario {scenario}.')
-        
+                elif (e_df[col] == 0).all():
+                    logger.warning(f'Final energy column "{col}" is all zeros for scenario {scenario}.')
         c_df = c_df.rename(
             columns=lambda c: f"{scenario}_{c}"
         )    
