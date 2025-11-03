@@ -305,9 +305,6 @@ def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, e
                 df_prep[f'{scenario_name}_net_total_saving_abs_kwh_{scenario_name}_{stat}'] =   df_prep[gas_col]
             # Convert gas kWh to CO2 (in tonnes)
         
-            
-            
-        
             co2_col = f'gas_total_tonne_co2_saved_{scenario_name}_{years}yr_{stat}'
             co2kg_col = f'gas_{years}yr_kg_co2_saved_{scenario_name}_{stat}'
             kwh_col = f'{scenario_name}_gas_saving_abs_kwh_{scenario_name}_{stat}'
