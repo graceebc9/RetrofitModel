@@ -1,37 +1,24 @@
-
 """
-Energy Retrofit Analysis Script - Multi-Scenario Version
-Processes energy and carbon savings data for multiple retrofit scenarios with uncertainty analysis.
+Updated data loading utilities for new column format.
+Works with pre-processed data that includes absolute kWh savings and cost metrics.
 """
 
-import argparse
-import os
-import sys
-from pathlib import Path
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import glob
-from datetime import datetime
-import gc 
-
-# Add RetrofitModel to path
-sys.path.append('/rds/user/gb669/hpc-work/energy_map/RetrofitModel')
-from src.validate import validate_single_scenario_new
-
-from src.RetrofitPostProcess import clean_post_process 
-from src.visualisations import run_vis_new 
-
-from src.RetrofitAnalysis import run_meta_portoflio
 import psutil
-import tracemalloc
 from functools import wraps
 
 
-
-
 def get_scenario_columns(scenario_list):
+    """
+    Generate column names and dtypes for the new data format.
+    
+    New format includes:
+    - Absolute kWh savings (gas and electricity)
+    - Percentage savings
+    - Cost metrics (total cost and cost per kWh)
+    - All with percentiles (p5, p50, p95) and statistics (mean, std)
+    """
     
     STATIC_COLUMNS = [
         # Building identifiers
@@ -40,16 +27,16 @@ def get_scenario_columns(scenario_list):
         'premise_type',                 # Type of building (excludes 'Domestic outbuilding')
         'epistemic_run_id',             # Run identifier for uncertainty analysis
         'premise_age',
+        
         # Decile and grouping columns
         'avg_gas_percentile',           # Gas usage decile for grouping
-        'total_gas_derived',
-        'total_elec_derived',
+        'total_gas_derived',            # Total gas consumption
+        'total_elec_derived',           # Total electricity consumption
+        
         # Building characteristics
         'conservation_area_bool',       # Conservation area flag
         'inferred_insulation_type',     # Type of insulation (for wall scenarios)
-        'epistemic__cost_scenario',
-        
- 
+        'epistemic__cost_scenario',     # Cost scenario identifier
     ]
     
     # Define dtypes for static columns
@@ -61,50 +48,80 @@ def get_scenario_columns(scenario_list):
         'avg_gas_percentile': 'Int64',             # Integer percentile
         'conservation_area_bool': 'bool',          # Boolean flag
         'inferred_insulation_type': 'object',      # Categorical
-          'total_gas_derived': 'float64',
-          'total_elec_derived': 'float64',
-          'epistemic__cost_scenario': 'object', 
-          'premise_age': 'object', 
-
+        'total_gas_derived': 'float64',
+        'total_elec_derived': 'float64',
+        'epistemic__cost_scenario': 'object', 
+        'premise_age': 'object', 
     }
     
     fin_cols = STATIC_COLUMNS.copy()
     dtypes = STATIC_DTYPES.copy()
     
-
-
+    # Define statistics suffixes
+    stats = ['mean', 'std', 'p5', 'p50', 'p95']
+    
     # Add scenario columns and their dtypes
     for scenario_name in scenario_list:
-        columns = [
-            f'{scenario_name}_cost_{scenario_name}_mean',
-            f'{scenario_name}_cost_{scenario_name}_p50',
-            f'{scenario_name}_cost_{scenario_name}_p95',
-            f'{scenario_name}_cost_{scenario_name}_p5',
-            f'{scenario_name}_cost_{scenario_name}_std',
-            f'{scenario_name}_{scenario_name}_gas_mean',
-            f'{scenario_name}_{scenario_name}_gas_p5',
-            f'{scenario_name}_{scenario_name}_gas_p50',
-            f'{scenario_name}_{scenario_name}_gas_p95',
-            f'{scenario_name}_{scenario_name}_gas_std',
-           
-        ]
-        fin_cols += columns
-        for col in columns:
+        
+        # 1. COST COLUMNS (same format as before)
+        cost_cols = [f'{scenario_name}_cost_{scenario_name}_{stat}' for stat in stats]
+        fin_cols.extend(cost_cols)
+        for col in cost_cols:
             dtypes[col] = 'float64'
-        if 'heat' in scenario_name :
-            cols =  [ 
-             f'{scenario_name}_{scenario_name}_electricity_mean',
-            f'{scenario_name}_{scenario_name}_electricity_std',
-            f'{scenario_name}_{scenario_name}_electricity_p5',
-            f'{scenario_name}_{scenario_name}_electricity_p50',
-            f'{scenario_name}_{scenario_name}_electricity_p95',
-                    ]
-            fin_cols += cols
-            for col in cols:
+        
+        # 2. COST EFFICIENCY METRICS (new in updated format)
+        cost_efficiency_cols = [
+            f'{scenario_name}_cost_per_gas_kwh_{scenario_name}_mean',
+            f'{scenario_name}_cost_per_gas_kwh_{scenario_name}_std',
+            f'{scenario_name}_cost_per_gas_kwh_{scenario_name}_p5',
+            f'{scenario_name}_cost_per_gas_kwh_{scenario_name}_p50',
+            f'{scenario_name}_cost_per_gas_kwh_{scenario_name}_p95',
+            f'{scenario_name}_cost_per_total_energy_kwh_{scenario_name}_mean',
+            f'{scenario_name}_cost_per_total_energy_kwh_{scenario_name}_std',
+            f'{scenario_name}_cost_per_total_energy_kwh_{scenario_name}_p5',
+            f'{scenario_name}_cost_per_total_energy_kwh_{scenario_name}_p50',
+            f'{scenario_name}_cost_per_total_energy_kwh_{scenario_name}_p95',
+        ]
+        fin_cols.extend(cost_efficiency_cols)
+        for col in cost_efficiency_cols:
+            dtypes[col] = 'float64'
+        
+        # 3. GAS SAVINGS - ABSOLUTE (kWh)
+        gas_abs_cols = [f'{scenario_name}_gas_saving_abs_kwh_{scenario_name}_{stat}' for stat in stats]
+        fin_cols.extend(gas_abs_cols)
+        for col in gas_abs_cols:
+            dtypes[col] = 'float64'
+        
+        # 4. GAS SAVINGS - PERCENTAGE
+        gas_perc_cols = [f'{scenario_name}_gas_saving_perc_{scenario_name}_{stat}' for stat in stats]
+        fin_cols.extend(gas_perc_cols)
+        for col in gas_perc_cols:
+            dtypes[col] = 'float64'
+        
+        # 5. ELECTRICITY COLUMNS (only for heat pump scenarios)
+        if 'heat' in scenario_name.lower():
+            
+            # Electricity savings - absolute (kWh)
+            elec_abs_cols = [f'{scenario_name}_elec_saving_abs_kwh_{scenario_name}_{stat}' for stat in stats]
+            fin_cols.extend(elec_abs_cols)
+            for col in elec_abs_cols:
                 dtypes[col] = 'float64'
- 
+            
+            # Electricity savings - percentage (note: may have double underscore in some versions)
+            elec_perc_cols = [
+                f'{scenario_name}_elec_saving_perc_{scenario_name}_{stat}' for stat in stats
+            ]
+            # Also try with double underscore variant
+            elec_perc_cols_alt = [
+                f'{scenario_name}_elec_saving_perc__{scenario_name}_{stat}' for stat in stats
+            ]
+            fin_cols.extend(elec_perc_cols)
+            fin_cols.extend(elec_perc_cols_alt)
+            for col in elec_perc_cols + elec_perc_cols_alt:
+                dtypes[col] = 'float64'
     
     return fin_cols, dtypes
+
 
 # Add near the top after other imports
 def get_memory_usage():
@@ -117,6 +134,7 @@ def get_memory_usage():
         'percent': process.memory_percent()
     }
 
+
 def log_memory(stage_name):
     """Log memory usage at a specific stage."""
     mem = get_memory_usage()
@@ -125,6 +143,7 @@ def log_memory(stage_name):
     print(f"  VMS: {mem['vms_mb']:.2f} MB")
     print(f"  Percent: {mem['percent']:.2f}%")
     return mem
+
 
 def memory_profiler(func):
     """Decorator to profile memory usage of a function."""
@@ -147,25 +166,87 @@ def memory_profiler(func):
         return result
     return wrapper
 
+
 @memory_profiler
-def load_data(input_pattern, scenario_list):
-    """Load and concatenate CSV files matching the pattern."""
+def load_data(input_pattern, scenario_list, validate_columns=True):
+    """
+    Load and concatenate CSV files matching the pattern.
+    
+    Parameters:
+    -----------
+    input_pattern : str
+        Glob pattern for input CSV files
+    scenario_list : list
+        List of scenario names to load
+    validate_columns : bool
+        If True, print warning for missing columns instead of failing
+        
+    Returns:
+    --------
+    pd.DataFrame
+        Concatenated dataframe with all scenarios
+    """
     print(f"Loading data from: {input_pattern}")
     files = glob.glob(input_pattern)
     print(f"Found {len(files)} files")
     
-    files =[x for x in files if 'failed' not in x]
+    # Filter out failed files
+    files = [x for x in files if 'failed' not in x]
+    print(f"After filtering: {len(files)} files")
 
     if len(files) == 0:
         raise FileNotFoundError(f"No files found matching pattern: {input_pattern}")
 
+    # Get expected columns
     fin_cols, dtypes = get_scenario_columns(scenario_list)
-   
+    print(f"\nExpecting {len(fin_cols)} columns for {len(scenario_list)} scenarios")
+    
     res = []
-    for f in files:
-        df = pd.read_csv(f, usecols=fin_cols, dtype=dtypes )
-        res.append(df)
+    for i, f in enumerate(files):
+        print(f"Loading file {i+1}/{len(files)}: {f}")
+        
+        if validate_columns and i == 0:
+            # On first file, check which columns exist
+            first_df = pd.read_csv(f, nrows=0)  # Just read header
+            available_cols = first_df.columns.tolist()
+            
+            # Find which expected columns are missing
+            missing_cols = [col for col in fin_cols if col not in available_cols]
+            
+            if missing_cols:
+                print(f"\n⚠️  WARNING: {len(missing_cols)} expected columns not found in data:")
+                print(f"Missing columns: {missing_cols[:10]}...")  # Show first 10
+                
+                # Adjust columns and dtypes to only include available ones
+                fin_cols_available = [col for col in fin_cols if col in available_cols]
+                dtypes_available = {k: v for k, v in dtypes.items() if k in available_cols}
+                
+                print(f"\nProceeding with {len(fin_cols_available)} available columns")
+                fin_cols = fin_cols_available
+                dtypes = dtypes_available
+        
+        try:
+            df = pd.read_csv(f, usecols=fin_cols, dtype=dtypes)
+            res.append(df)
+        except Exception as e:
+            print(f"Error loading {f}: {e}")
+            # Try without dtype specification
+            try:
+                df = pd.read_csv(f, usecols=fin_cols)
+                res.append(df)
+                print(f"  → Loaded without dtype specification")
+            except Exception as e2:
+                print(f"  → Failed to load: {e2}")
+                continue
+
+    if len(res) == 0:
+        raise ValueError("No files successfully loaded!")
 
     res_df = pd.concat(res, ignore_index=True)
-    print(f"Loaded {len(res_df)} rows")
+    print(f"\n✓ Successfully loaded {len(res_df)} rows from {len(res)} files")
+    print(f"Columns in dataframe: {len(res_df.columns)}")
+    
     return res_df
+
+
+ 

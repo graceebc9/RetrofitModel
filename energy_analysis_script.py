@@ -1,7 +1,7 @@
-
 """
-Energy Retrofit Analysis Script - Multi-Scenario Version
+Energy Retrofit Analysis Script - Multi-Scenario Version (Updated for new column names)
 Processes energy and carbon savings data for multiple retrofit scenarios with uncertainty analysis.
+Works with pre-processed data that already includes absolute kWh savings and cost metrics.
 """
 
 import argparse
@@ -20,7 +20,8 @@ import gc
 sys.path.append('/rds/user/gb669/hpc-work/energy_map/RetrofitModel')
 from src.validate import validate_single_scenario_new
 
-from src.RetrofitPostProcess import clean_post_process 
+# Note: clean_post_process is NO LONGER NEEDED - data is already processed
+# from src.RetrofitPostProcess import clean_post_process 
 from src.visualisations import run_vis_new 
 
 from src.RetrofitAnalysis import run_meta_portoflio
@@ -31,96 +32,59 @@ from functools import wraps
 from src.RetrofitAnalysisUtils import load_data, memory_profiler, log_memory
 
 
-
-# def get_scenario_columns(scenario_list):
+@memory_profiler
+def add_co2_columns(df, scenario_name, years, gas_carbon_factor, elec_carbon_factor):
+    """
+    Convert kWh savings to CO2 savings for analysis.
+    New data has kWh, we need to convert to CO2 for compatibility with existing analysis.
+    """
+    print(f"\nConverting kWh savings to CO2 for {scenario_name}...")
     
-#     STATIC_COLUMNS = [
-#         # Building identifiers
-#         'upn',                          # Unique property reference number
-#         'premise_type',                 # Type of building (excludes 'Domestic outbuilding')
-#         'epistemic_run_id',             # Run identifier for uncertainty analysis
+    # Gas CO2 columns (kWh * years * carbon_factor)
+    gas_cols = ['mean', 'std', 'p5', 'p50', 'p95']
+    for stat in gas_cols:
+        kwh_col = f'{scenario_name}_gas_saving_abs_kwh_{scenario_name}_{stat}'
+        co2_col = f'gas_{years}yr_kg_co2_saved_{scenario_name}_{stat}'
         
-#         # Decile and grouping columns
-#         'avg_gas_percentile',           # Gas usage decile for grouping
-#         'total_gas_derived',
-#         'total_elec_derived',
-#         # Building characteristics
-#         'conservation_area_bool',       # Conservation area flag
-#         'inferred_insulation_type',     # Type of insulation (for wall scenarios)
-#         'epistemic__cost_scenario',
-        
- 
-#     ]
+        if kwh_col in df.columns:
+            df[co2_col] = df[kwh_col] * years * gas_carbon_factor
+            print(f"  Created {co2_col} from {kwh_col}")
     
-#     # Define dtypes for static columns
-#     STATIC_DTYPES = {
-#         'upn': 'Int64',                            # Large integer identifier
-#         'premise_type': 'object',                  # Categorical
-#         'epistemic_run_id': 'Int8',                # Small integer (<100)
-#         'avg_gas_percentile': 'Int64',             # Integer percentile
-#         'conservation_area_bool': 'bool',          # Boolean flag
-#         'inferred_insulation_type': 'object',      # Categorical
-#           'total_gas_derived': 'float64',
-#           'total_elec_derived': 'float64',
-#           'epistemic__cost_scenario': 'object', 
-
-#     }
+    # Electricity CO2 columns (if heat pump scenario)
+    if 'heat' in scenario_name.lower():
+        for stat in gas_cols:
+            kwh_col = f'{scenario_name}_elec_saving_abs_kwh_{scenario_name}_{stat}'
+            co2_col = f'elec_{years}yr_kg_co2_saved_{scenario_name}_{stat}'
+            
+            if kwh_col in df.columns:
+                df[co2_col] = df[kwh_col] * years * elec_carbon_factor
+                print(f"  Created {co2_col} from {kwh_col}")
     
-#     fin_cols = STATIC_COLUMNS.copy()
-#     dtypes = STATIC_DTYPES.copy()
-    
-
-
-#     # Add scenario columns and their dtypes
-#     for scenario_name in scenario_list:
-#         columns = [
-#             f'{scenario_name}_cost_{scenario_name}_mean',
-#             f'{scenario_name}_cost_{scenario_name}_p50',
-#             f'{scenario_name}_cost_{scenario_name}_p95',
-#             f'{scenario_name}_cost_{scenario_name}_p5',
-#             f'{scenario_name}_cost_{scenario_name}_std',
-#             f'{scenario_name}_{scenario_name}_gas_mean',
-#             f'{scenario_name}_{scenario_name}_gas_p5',
-#             f'{scenario_name}_{scenario_name}_gas_p50',
-#             f'{scenario_name}_{scenario_name}_gas_p95',
-#             f'{scenario_name}_{scenario_name}_gas_std',
-           
-#         ]
-#         fin_cols += columns
-#         for col in columns:
-#             dtypes[col] = 'float64'
-#         if 'heat' in scenario_name :
-#             cols =  [ 
-#              f'{scenario_name}_{scenario_name}_electricity_mean',
-#             f'{scenario_name}_{scenario_name}_electricity_std',
-#             f'{scenario_name}_{scenario_name}_electricity_p5',
-#             f'{scenario_name}_{scenario_name}_electricity_p50',
-#             f'{scenario_name}_{scenario_name}_electricity_p95',
-#                     ]
-#             fin_cols += cols
-#             for col in cols:
-#                 dtypes[col] = 'float64'
- 
-    
-#     return fin_cols, dtypes
-
-
-
+    return df
 
 
 @memory_profiler
 def analyze_uncertainty(df, scenario_name, measure_type, years, output_dir):
-    """Perform epistemic vs aleatoric uncertainty analysis."""
+    """Perform epistemic vs aleatoric uncertainty analysis using CO2 columns."""
     print("\n" + "="*60)
     print(f"UNCERTAINTY ANALYSIS - {scenario_name}")
     print("="*60)
 
-    # Updated column names with measure_type indexing
-    GAS_MEAN_COL = f'gas_{years}yr_kg_co2_saved_{measure_type}_mean'
-    GAS_P50_COL = f'gas_{years}yr_kg_co2_saved_{measure_type}_p50'
-    GAS_P95_COL = f'gas_{years}yr_kg_co2_saved_{measure_type}_p95'
-    GAS_P5_COL = f'gas_{years}yr_kg_co2_saved_{measure_type}_p5'
-    GAS_STD_COL = f'gas_{years}yr_kg_co2_saved_{measure_type}_std'
+    # Use CO2 columns (created in add_co2_columns function)
+    GAS_MEAN_COL = f'gas_{years}yr_kg_co2_saved_{scenario_name}_mean'
+    GAS_P50_COL = f'gas_{years}yr_kg_co2_saved_{scenario_name}_p50'
+    GAS_P95_COL = f'gas_{years}yr_kg_co2_saved_{scenario_name}_p95'
+    GAS_P5_COL = f'gas_{years}yr_kg_co2_saved_{scenario_name}_p5'
+    GAS_STD_COL = f'gas_{years}yr_kg_co2_saved_{scenario_name}_std'
+
+    # Check if columns exist
+    required_cols = [GAS_P50_COL, GAS_P95_COL, GAS_STD_COL]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    
+    if missing_cols:
+        print(f"WARNING: Missing columns for uncertainty analysis: {missing_cols}")
+        print("Skipping uncertainty analysis for this scenario.")
+        return None
 
     # Building-level metrics
     building_metrics = df.groupby('upn').agg(
@@ -185,7 +149,7 @@ def analyze_uncertainty(df, scenario_name, measure_type, years, output_dir):
 
 @memory_profiler
 def process_single_scenario(df, scenario_name, measure_type, years, n_simulations,
-                            gas_carbon_factor, elec_carbon_factor, output_dir , save_proccessed_data=False):
+                            gas_carbon_factor, elec_carbon_factor, output_dir, save_processed_data=False):
     """Process a single scenario and generate all outputs."""
     print("\n" + "="*80)
     print(f"PROCESSING SCENARIO: {scenario_name} (measure type: {measure_type})")
@@ -196,17 +160,14 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
     os.makedirs(scenario_output_dir, exist_ok=True)
     print(f"Output directory: {scenario_output_dir}")
 
-    # Process data
-    print("\nProcessing energy and carbon metrics...")
-    df_processed = clean_post_process(
-        df, 
-        measure_type, 
+    # Convert kWh savings to CO2 savings (data already has kWh, we add CO2)
+    print("\nAdding CO2 conversion columns...")
+    df_processed = add_co2_columns(
+        df.copy(), 
         scenario_name, 
-        years=years,
-        GAS_CARBON_FACTOR_2022=gas_carbon_factor,
-        elec_carbon_factor=elec_carbon_factor,
-        n_simulations=n_simulations,
-        gas_col='derived',
+        years,
+        gas_carbon_factor,
+        elec_carbon_factor
     )
 
     # Calculate and print summary statistics
@@ -214,18 +175,20 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
     print(f"SUMMARY STATISTICS - {scenario_name}")
     print("="*60)
 
+    # Updated column names for new format
     scenario_cols = [
         f'{scenario_name}_cost_{scenario_name}_mean',
         f'{scenario_name}_cost_{scenario_name}_std',
-        f'{scenario_name}_{scenario_name}_gas_mean',
-        f'{scenario_name}_{scenario_name}_gas_std',
+        f'{scenario_name}_gas_saving_abs_kwh_{scenario_name}_mean',
+        f'{scenario_name}_gas_saving_abs_kwh_{scenario_name}_std',
+        f'{scenario_name}_gas_saving_perc_{scenario_name}_mean',
+        f'{scenario_name}_gas_saving_perc_{scenario_name}_std',
     ]
 
-    # Add electricity columns if they exist
+    # Add electricity columns if they exist (for heat pump scenarios)
     elec_cols = [
-        f'{scenario_name}_{scenario_name}_electricity_mean',
-        f'{scenario_name}_{scenario_name}_electricity_std',
-        
+        f'{scenario_name}_elec_saving_abs_kwh_{scenario_name}_mean',
+        f'{scenario_name}_elec_saving_abs_kwh_{scenario_name}_std',
     ]
 
     available_cols = [col for col in scenario_cols + elec_cols if col in df_processed.columns]
@@ -235,6 +198,9 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
         print(desc_stats)
         desc_stats.to_csv(os.path.join(scenario_output_dir, 'descriptive_statistics.csv'))
         print(f"\nSaved: {scenario_output_dir}/descriptive_statistics.csv")
+    else:
+        print(f"WARNING: No expected columns found for {scenario_name}")
+        print(f"Available columns: {df_processed.columns.tolist()}")
 
     # Total costs
     cost_col = f'{scenario_name}_cost_{scenario_name}_mean'
@@ -246,6 +212,7 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
         print(f"\nMean Total Costs for {scenario_name}: £{mean_total_costs/mill:.2f}M")
         print(f"Std Total Costs for {scenario_name}: £{std_total_costs/mill:.2f}M")
     else:
+        print(f"WARNING: Cost column not found: {cost_col}")
         mean_total_costs = 0
         std_total_costs = 0
 
@@ -258,17 +225,24 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
         print(f"Validation warning: {e}")
 
     # Save processed data
-    if save_proccessed_data:
+    if save_processed_data:
         df_processed.to_csv(os.path.join(scenario_output_dir, 'processed_data.csv'), index=False)
         print(f"Saved processed data to: {scenario_output_dir}/processed_data.csv")
 
     # Perform analyses
     building_metrics = analyze_uncertainty(df_processed, scenario_name, measure_type, years, scenario_output_dir)
-    portfolio_metrics = run_meta_portoflio(scenario_output_dir, df_processed, scenario_name,  years=5 )
+    
+    try:
+        portfolio_metrics = run_meta_portoflio(scenario_output_dir, df_processed, scenario_name, years=years)
+    except Exception as e:
+        print(f"Warning: Portfolio analysis failed: {e}")
+        portfolio_metrics = {}
 
     # Create visualizations
-    # create_visualizations(df_processed, scenario_name, measure_type, years, scenario_output_dir)
-    run_vis_new(df_processed, scenario_name, scenario_output_dir)
+    try:
+        run_vis_new(df_processed, scenario_name, scenario_output_dir)
+    except Exception as e:
+        print(f"Warning: Visualization failed: {e}")
 
     # Save summary report
     print("\n" + "="*60)
@@ -289,11 +263,6 @@ def process_single_scenario(df, scenario_name, measure_type, years, n_simulation
         f.write(f"Mean: £{mean_total_costs/1000000:.2f}M\n")
         f.write(f"Std:  £{std_total_costs/1000000:.2f}M\n\n")
 
-        # f.write("PORTFOLIO METRICS\n")
-        # f.write("-"*60 + "\n")
-        # for k, v in portfolio_metrics.items():
-        #     f.write(f"{k:<35}: {v:,.0f} KG CO2/year\n")
-
         f.write("\n\nOUTPUT FILES\n")
         f.write("-"*60 + "\n")
         for file in sorted(os.listdir(scenario_output_dir)):
@@ -310,7 +279,7 @@ def main():
     tracemalloc.start()
     log_memory("Script start")
     parser = argparse.ArgumentParser(
-        description='Energy Retrofit Analysis Script - Multi-Scenario',
+        description='Energy Retrofit Analysis Script - Multi-Scenario (Updated for new column format)',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
@@ -375,6 +344,11 @@ def main():
         default=0.19338,
         help='Electricity carbon factor (kg CO2/kWh)'
     )
+    parser.add_argument(
+        '--save-processed-data',
+        action='store_true',
+        help='Save processed data to CSV (can be large)'
+    )
 
     args = parser.parse_args()
 
@@ -390,7 +364,7 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     print("\n" + "="*80)
-    print("ENERGY RETROFIT ANALYSIS - MULTI-SCENARIO")
+    print("ENERGY RETROFIT ANALYSIS - MULTI-SCENARIO (UPDATED)")
     print("="*80)
     print(f"Run name: {args.run_name}")
     print(f"Output directory: {output_dir}")
@@ -405,7 +379,7 @@ def main():
         for arg, value in vars(args).items():
             f.write(f"{arg}: {value}\n")
 
-   # Load data once
+    # Load data once
     log_memory("Before loading data")
     res_df = load_data(args.input_pattern, args.scenarios)
     log_memory("After loading data")
@@ -413,17 +387,19 @@ def main():
     # Filter out domestic outbuildings
     pl = res_df[res_df['premise_type'] != 'Domestic outbuilding'].copy()
     print(f"After filtering: {len(pl)} rows")
+    print(f"Available columns: {pl.columns.tolist()[:20]}...")  # Print first 20 columns
     log_memory("After filtering")
     
     del res_df
     gc.collect()
     log_memory("After freeing original dataframe")
-    # # Process each scenario
-    # all_results = {}
-    for i, ( scenario_name, measure_type )in enumerate(zip(args.scenarios, args.measure_types)):
+    
+    # Process each scenario
+    for i, (scenario_name, measure_type) in enumerate(zip(args.scenarios, args.measure_types)):
         print(f"\n{'#'*80}")
-        print(f"# SCENARIO {i}/{len(args.scenarios)}: {scenario_name}")
+        print(f"# SCENARIO {i+1}/{len(args.scenarios)}: {scenario_name}")
         print(f"{'#'*80}")
+        
         process_single_scenario(
             df=pl,
             scenario_name=scenario_name,
@@ -432,12 +408,13 @@ def main():
             n_simulations=args.n_simulations,
             gas_carbon_factor=args.gas_carbon_factor,
             elec_carbon_factor=args.elec_carbon_factor,
-            output_dir=output_dir
+            output_dir=output_dir,
+            save_processed_data=args.save_processed_data
         )
+        
         gc.collect() 
-        log_memory(f"After scenario {i}/{len(args.scenarios)} + GC")
+        log_memory(f"After scenario {i+1}/{len(args.scenarios)} + GC")
 
-        # all_results[scenario_name] = df_result
     log_memory("Script end")
 
     # Get peak memory
@@ -452,8 +429,9 @@ def main():
     print("\nScenario folders:")
     for scenario in args.scenarios:
         scenario_dir = os.path.join(output_dir, scenario)
-        print(f"  - {scenario}/")
-        print(f"    Files: {len(os.listdir(scenario_dir))}")
+        if os.path.exists(scenario_dir):
+            print(f"  - {scenario}/")
+            print(f"    Files: {len(os.listdir(scenario_dir))}")
 
 
 if __name__ == "__main__":
