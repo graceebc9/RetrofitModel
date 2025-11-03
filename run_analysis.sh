@@ -11,13 +11,15 @@ ON_HPC=false  # Set to true if running on HPC, false for local
 
 if [ "$ON_HPC" = true ]; then
     # HPC paths
-    INPUT_PATTERN="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/testing/NE/*.csv"
-    OUTPUT_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/testing/retrofit_analysis"
+    INPUT_PATTERN="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*.csv"
+    OUTPUT_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/retrofit_analysis"
     SCRIPT_PATH="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/energy_retrofit_analysis_script.py"
 else
     # Local paths
-    INPUT_PATTERN='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all_scenarios/NE/*.csv'
-    OUTPUT_DIR='/Volumes/T9/2024_Data_downloads/2025_10_RetrofitModel/1_data_runs/m2d/NE_all_scenarios'
+    INPUT_PATTERN='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*.csv'
+    # INPUT_PATTERN="/Users/gracecolverd/Downloads/all/*.csv"
+    # OUTPUT_DIR='/Volumes/T9/2024_Data_downloads/2025_10_RetrofitModel/retrofit_analysis/all/NE_all_scenarios'
+    OUTPUT_DIR='/Users/gracecolverd/RetrofitModel/test/retrofit_scenario/all/NE/*.csv'
     SCRIPT_PATH='energy_analysis_script.py'
 fi
 
