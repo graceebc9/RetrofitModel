@@ -4,6 +4,7 @@ Analyzes cost-effectiveness vs total impact strategies for building retrofits
 Split by cost scenarios with optimized memory usage
 """
 
+
 # ============================================================================
 # IMPORTS
 # ============================================================================
