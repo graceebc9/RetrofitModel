@@ -32,7 +32,7 @@ from src.RetrofitAnalysisUtils import load_data , prepare_data_for_postanalysis
 # ============================================================================
  
 
-def load_personas(path='/Users/gracecolverd/RetrofitModel/NE_region_personas.csv'):
+def load_personas(path):
     """Load persona/demographic data."""
     personas = pd.read_csv(path)
     return personas
@@ -49,8 +49,16 @@ def main():
     Main execution function for greedy algorithm analysis.
     """
     # Configuration
-    BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
-    INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
+    local=False 
+    if local:
+        personas_path='/Users/gracecolverd/RetrofitModel/NE_region_personas.csv'
+        BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
+        INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
+    else:
+        BASE_DIR = os.getenv('BASE_DIR')
+        INPUT_FILES_PATH = os.getenv('INPUT_FILES_PATH') 
+        personas_path='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/personas/NE_region_personas.csv'
+    
     
     YEARS = 5
     N_SIMULATIONS = 5000
@@ -68,7 +76,7 @@ def main():
     res_df = load_data(INPUT_FILES_PATH, scenario_list)
     
     print("\nLoading personas...")
-    personas = load_personas(path='/Users/gracecolverd/RetrofitModel/NE_region_personas.csv') 
+    personas = load_personas(path=personas_path) 
     res_df = res_df.merge(personas, on='postcode', how='inner')
     print(f"After persona merge: {len(res_df)} rows")
     print(res_df.columns.tolist() )
