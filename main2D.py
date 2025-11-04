@@ -74,7 +74,7 @@ if running_locally:
     # ========================================
     
     
-    scenarios = ['wall_installation']
+    scenarios = ['wall_installation','loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
     job_name = 'all'
     batch_size = 500
     log_size = 10
