@@ -22,7 +22,10 @@ else:
     os.makedirs(f'{base_path}/logs', exist_ok=True )
 
 log_config_filepath = f"{base_path}/logs/config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-log_path = f"{base_path}/logs/log_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+job_id = os.getenv('SLURM_ARRAY_TASK_ID', 'local')
+timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+log_path = f"{base_path}/logs/log_{timestamp}_{job_id}"
 
 setup_logging(log_level='DEBUG', log_path=log_path)
 logger = get_logger(__name__)
@@ -63,6 +66,23 @@ if running_locally:
     GAS_PATH = os.path.join(location_input_data_folder, 'energy_data/Postcode_level_gas_2022.csv')
     ELEC_PATH = os.path.join(location_input_data_folder, 'energy_data/Postcode_level_all_meters_electricity_2022.csv')
     TEMP_1KM_PATH = os.path.join(location_input_data_folder, 'climate_data/tas_hadukgrid_uk_1km_mon_202201-202212.nc')
+    
+    
+            
+    # ========================================
+    # CONFIGURATION
+    # ========================================
+    
+    
+    scenarios = ['wall_installation']
+    job_name = 'all'
+    batch_size = 500
+    log_size = 10
+    n_monte_carlo = 5000
+    N_EPISTEMIC_RUNS = 5
+    RANDOM_SEED_OUTER = 42
+    OUTPUT_DIR = 'final_dataset'
+
 else: 
     PC_SHP_PATH = '/rds/user/gb669/hpc-work/energy_map/data/postcode_polygons/codepoint-poly_5267291'
     BUILDING_PATH = '/rds/user/gb669/hpc-work/energy_map/data/building_files/UKBuildings_Edition_15_new_format_upn.gpkg'
@@ -71,24 +91,25 @@ else:
 
     GAS_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_gas_2022.csv'
     ELEC_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_all_meters_electricity_2022.csv'
+    
+        
+    # ========================================
+    # CONFIGURATION
+    # ========================================
 
+    scenarios = ['wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
+    job_name='all_v3'
+    batch_size = 500
+    log_size = 100
+    n_monte_carlo = 5000
+    N_EPISTEMIC_RUNS = 35
+    RANDOM_SEED_OUTER = 42
+    OUTPUT_DIR = 'final_dataset'
 
-# Output directory - do not update if you want to save in the repo
-OUTPUT_DIR = 'final_dataset'
+ 
 
-# ========================================
-# CONFIGURATION
-# ========================================
+ 
 
-batch_size = 500
-log_size = 10
-n_monte_carlo = 5000
-N_EPISTEMIC_RUNS = 5
-RANDOM_SEED_OUTER = 42
-# scenarios = ['wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
-scenarios = ['wall_installation']
-# scenarios=['join_heat_ins_add' ]
-job_name='all'
 region_list = ['NE'] if running_locally else [os.getenv('REGION_LIST')]
 
 STAGE0_split_onsud = False
