@@ -1,12 +1,4 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-"""
-Script to load, process, and analyze results from the RetrofitModel
-greedy algorithm, comparing outcomes across different budgets and
-equity weighting.
-"""
-
+ 
 # ==============================================================================
 # 0. IMPORTS
 # ==============================================================================
@@ -14,7 +6,7 @@ equity weighting.
 # Standard library imports
 import sys
 from pathlib import Path
-
+import os 
  
 import numpy as np
 import pandas as pd
@@ -25,38 +17,9 @@ import seaborn as sns
 # Note: Using sys.path.append is brittle. Consider making RetrofitModel
 # an installable package (e.g., with `pip install -e .`)
  
-sys.path.append('/Users/gracecolverd/RetrofitModel')
-from src.RetrofitGreedyAnalysis import plot_greedy_compairosn_main
+from .RetrofitGreedyAnalysis import plot_greedy_compairosn_main
  
-
-# ==============================================================================
-# 1. CONFIGURATION
-# ==============================================================================
-
-# --- Define parameters ---
-# Use underscores for large numbers for readability
-BUDGETS =  [10_000_000, 100_000_000, 1_000_000_000]
  
-EQUITY_WEIGHTS = [0, 0.2, 0.6, 0.8, 1]
-LOFT_VALUE = 0.65
-
-# --- Define paths using pathlib for robustness ---
-local=False 
-
-if local:
-    BASE_PATH = Path('/Users/gracecolverd/RetrofitModel/test/greedy')
-    OUTPUT_PATH = Path('/Users/gracecolverd/RetrofitModel/test/greedy_vis')
-else: 
-    BASE_PATH = Path('/home/gb669/rds/hpc-work/energy_map/RetrofitModel/retrofit_scenario_analysis/2_greedy/all_v3') 
-    OUTPUT_PATH = Path('/home/gb669/rds/hpc-work/energy_map/RetrofitModel/retrofit_scenario_analysis/3_greedy_vis')
-
-# Ensure output directory exists
-OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
-
-# --- Set plot style ---
-#plt.style.use("darkgrid")
-sns.set_palette("husl")
-
 
 # ==============================================================================
 # 2. DATA LOADING FUNCTION
@@ -78,11 +41,11 @@ def load_data(budgets, equity_weights, loft_val, base_path):
             # Construct scenario info
             dir_name = f'budget_{budget}__loft_{loft_val}__equity_{equity_weight}'
             scenario_label = f'budget_{budget}_equity_{equity_weight}'
-            dir_path = base_path / dir_name
+            dir_path = os.path.join(base_path , dir_name) 
             
             # Define file paths
-            equity_file = dir_path / 'equity_tracking_with_ranges.csv'
-            results_file = dir_path / 'combined_results.csv'
+            equity_file =os.path.join( dir_path , 'equity_tracking_with_ranges.csv' ) 
+            results_file = os.path.join( dir_path , 'combined_results.csv') 
             print(equity_file)
             print(results_file) 
             try:
@@ -229,7 +192,7 @@ def aggregate_equity(df, group_cols=['scenario']):
 # 4. MAIN EXECUTION
 # ==============================================================================
 
-def main():
+def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH ):
     """
     Main function to run the data loading, aggregation, and plotting.
     """
@@ -310,5 +273,4 @@ def main():
 
 
 
-if __name__ == "__main__":
-    main()
+ 
