@@ -35,19 +35,26 @@ from src.RetrofitGreedyAnalysis import plot_greedy_compairosn_main
 
 # --- Define parameters ---
 # Use underscores for large numbers for readability
-BUDGETS = [10_000_000]
+BUDGETS =  [10_000_000, 100_000_000, 1_000_000_000]
+ 
 EQUITY_WEIGHTS = [0, 0.2, 0.6, 0.8, 1]
 LOFT_VALUE = 0.65
 
 # --- Define paths using pathlib for robustness ---
-BASE_PATH = Path('/Users/gracecolverd/RetrofitModel/test/greedy')
-OUTPUT_PATH = Path('/Users/gracecolverd/RetrofitModel/test/greedy_vis')
+local=False 
+
+if local:
+    BASE_PATH = Path('/Users/gracecolverd/RetrofitModel/test/greedy')
+    OUTPUT_PATH = Path('/Users/gracecolverd/RetrofitModel/test/greedy_vis')
+else: 
+    BASE_PATH = Path('/home/gb669/rds/hpc-work/energy_map/RetrofitModel/retrofit_scenario_analysis/2_greedy/all_v3') 
+    OUTPUT_PATH = Path('/home/gb669/rds/hpc-work/energy_map/RetrofitModel/retrofit_scenario_analysis/3_greedy_vis')
 
 # Ensure output directory exists
 OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
 # --- Set plot style ---
-plt.style.use('seaborn-v0_8-darkgrid')
+#plt.style.use("darkgrid")
 sns.set_palette("husl")
 
 
@@ -76,7 +83,8 @@ def load_data(budgets, equity_weights, loft_val, base_path):
             # Define file paths
             equity_file = dir_path / 'equity_tracking_with_ranges.csv'
             results_file = dir_path / 'combined_results.csv'
-
+            print(equity_file)
+            print(results_file) 
             try:
                 # Load equity tracking data
                 equity_df_temp = pd.read_csv(equity_file)
