@@ -27,7 +27,7 @@ job_id = os.getenv('SLURM_ARRAY_TASK_ID', 'local')
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 log_path = f"{base_path}/logs/log_{timestamp}_{job_id}"
 
-setup_logging(log_level='DEBUG', log_path=log_path)
+setup_logging(log_level='INFO', log_path=log_path)
 logger = get_logger(__name__)
 
 
@@ -74,7 +74,7 @@ if running_locally:
     # ========================================
     
     
-    scenarios = ['wall_installation']
+    scenarios = ['wall_installation','loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
     job_name = 'all'
     batch_size = 500
     log_size = 10
