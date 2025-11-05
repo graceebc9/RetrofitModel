@@ -807,7 +807,14 @@ class RetrofitModel2D:
             
         elif scenario_str == 'join_heat_ins_add':
             interventions = ['join_heat_ins_add']
-             
+
+        elif scenario_str == 'joint_heat_wall_decay':
+            interventions = ['joint_heat_wall_decay']
+            
+        elif scenario_str == 'joint_heat_loft_decay':
+            interventions = ['joint_heat_loft_decay']
+        
+
         else:
             raise Exception(f'Need to define the interventions for scenario ({scenario_str}) in RetrofitModel _get_cols_scenario_intervention')
         

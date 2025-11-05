@@ -74,7 +74,7 @@ if running_locally:
     # ========================================
     
     
-    scenarios = ['wall_installation','loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
+    scenarios = ['joint_heat_loft_decay','joint_heat_wall_decay',  'wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
     job_name = 'all'
     batch_size = 500
     log_size = 10
@@ -97,7 +97,7 @@ else:
     # CONFIGURATION
     # ========================================
 
-    scenarios = ['wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
+    scenarios = ['joint_heat_loft_decay','joint_heat_wall_decay',  'wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
     job_name='all_v3'
     batch_size = 500
     log_size = 100

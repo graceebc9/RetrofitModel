@@ -32,6 +32,8 @@ def get_intervention_list(wall_type, joint_intervention):
         'joint_loft_wall_decay': [wt, 'loft_percentile'], 
         'joint_heat_ins_add': [wt, 'loft_percentile', 'heat_pump_percentile'], 
         'joint_heat_ins_decay': [wt, 'loft_percentile', 'heat_pump_percentile'], 
+        'joint_heat_wall_decay': [wt, 'heat_pump_percentile'], 
+        'joint_heat_loft_decay': ['loft_percentile', 'heat_pump_percentile'], 
     } 
                                      
     # If it's a joint intervention, return the list from the dict
@@ -162,53 +164,25 @@ retrofit_packages = {
         'installation_approach': 'simultaneous'
     },
 
-    'scenario2': {
-        'name': 'Scenario 2: envelope only (evans et al)',
-        'description': 'Focus on insulation with easy wins',
+    'joint_heat_wall_decay': 
+        {
+        'name': 'heat pump and wall insulation',
+        'description': '  ',
         'interventions': [
-            'WALL_INSULATION',
-            'loft_insulation',
-            'double_glazing',
+            'joint_heat_wall_decay',
         ],
         'includes_wall_insulation': True,
         'installation_approach': 'simultaneous'
     },
-
-    'scenario3': {
-        'name': 'envelope and air source heat pump',
-        'description': 'Scenario 3 envelope and air source heat pump',
+    'joint_heat_loft_decay': 
+        {
+        'name': 'heat pump and wall insulation',
+        'description': '  ',
         'interventions': [
-            'WALL_INSULATION',
-            'loft_insulation',
-            'double_glazing',
-            'heat_pump_upgrade',
+            'joint_heat_loft_decay',
         ],
-        'includes_wall_insulation': True,
+        'includes_wall_insulation': False,
         'installation_approach': 'simultaneous'
     },
-
-    'scenario5': {
-        'name': 'envelope and air heat pump, solar',
-        'description': 'scenario 5: envelope, heat pump and solar',
-        'interventions': [
-            'WALL_INSULATION',
-            'loft_insulation',
-            'double_glazing',
-            'heat_pump_upgrade',
-            'solar_pv', 
-        ],
-        'includes_wall_insulation': True,
-        'installation_approach': 'simultaneous'
-    },
-
-    'deep_retrofit_grouped': {
-        'name': 'Deep Retrofit (Net Zero Ready)',
-        'description': 'Maximum intervention package',
-        'interventions': [
-            'deep_retrofit_estimate',
-        ],
-        'includes_wall_insulation': True,
-        'installation_approach': 'simultaneous'
-    }
 }
-    
+ 

@@ -88,6 +88,11 @@ class RetrofitEnergy:
     
     # percentiel ones are from diaz anadaon paper on pecentiles 
     energysaving_uncertainty_parameters: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
+        'joint_heat_loft_decay': {'distribution': 'None',
+                                       },  
+        'joint_heat_wall_decay': {'distribution': 'None',
+                                       },  
+    
         'joint_loft_wall_add': {'distribution': 'None',
                                        },  
         'joint_loft_wall_decay': {'distribution': 'None',
