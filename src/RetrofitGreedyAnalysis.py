@@ -78,6 +78,10 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False):
     plot_pareto_retrofit_carbon_by_budget(results_subset, equity_subset, scenarios, scenario_colors, budget_label,
                                  os.path.join(output_dir, "10_pareto_bcounts.png") ,
                                 y_axis_zero=y_axis_zero)
+    
+    plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenarios, scenario_colors, budget_label,
+                                 os.path.join(output_dir, "11_pareto_cost_eff.png") ,
+                                y_axis_zero=y_axis_zero)
 
     print(f"Done! All 9 plots saved to '{output_dir}'.")
 # ==============================================================================
@@ -595,7 +599,7 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
         plt.savefig(new_filename, dpi=300, bbox_inches='tight')
         plt.close(fig_ind) # Close the individual figure
         print(f"Saved Individual Plot: {new_filename}")
-        
+
 
 def plot_vulnerable_groups_coverage(equity_subset, filename, y_axis_zero=False):
     """Plot 7: Most Vulnerable Groups Coverage"""
@@ -873,6 +877,116 @@ def plot_pareto_retrofit_carbon_by_budget(results_subset, equity_subset, scenari
         # Create the new filename
         budget_suffix = f"_budget_{budget_val/1e6:.0f}M"
         new_filename = f"{base_name}{budget_suffix}{extension}"
+        
+        plt.tight_layout()
+        plt.savefig(new_filename, dpi=300, bbox_inches='tight')
+        plt.close(fig) # Close the figure to free up memory
+        print(f"Saved: {new_filename}")
+
+
+import os
+import matplotlib.pyplot as plt
+import numpy as np
+
+# NOTE: The imports for os, plt, and np are assumed based on the original function's content.
+# You will need to ensure they are imported in your script.
+
+def plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenarios, scenario_colors, budget_label, filename, y_axis_zero=False):
+    """
+    Plot: Pareto Front - Buildings Retrofitted vs Cost-Effectiveness
+    Generates a SEPARATE plot file for each budget.
+    
+    
+    """
+    
+    # Get the base filename and extension to create unique names
+    base_name, extension = os.path.splitext(filename)
+    
+    # Loop over each budget and create a unique plot
+    for budget_val in sorted(results_subset['budget'].unique()):
+        
+        # Create a new figure for each budget
+        fig, ax = plt.figure(figsize=(10, 8)), plt.gca()
+        
+        # --- Data collection for this specific budget ---
+        subset = results_subset[results_subset['budget'] == budget_val]
+        scenarios_subset = subset['scenario'].unique()
+        
+        buildings_means = []
+        buildings_stds = []
+        # CHANGED: Renamed lists for clarity (cost-effectiveness)
+        cost_eff_means = []
+        cost_eff_stds = []
+        weights = []
+        colors = []
+
+        for scenario in scenarios_subset:
+            # Ensure scenario exists in both subsets before trying to access
+            if scenario not in equity_subset['scenario'].values or scenario not in results_subset['scenario'].values:
+                print(f"Warning: Scenario {scenario} not found. Skipping.")
+                continue
+                
+            equity_row = equity_subset[equity_subset['scenario'] == scenario].iloc[0]
+            # CHANGED: Grab the results_row for the *specific budget*
+            results_row = subset[subset['scenario'] == scenario].iloc[0]
+            
+            buildings_means.append(results_row['num_buildings_sum_mean'])
+            buildings_stds.append(results_row['num_buildings_sum_std'])
+            
+            # CHANGED: Use the new cost-effectiveness variables for the Y-axis
+            cost_eff_means.append(results_row['cost_per_net_ton_co2_kg_mean_mean_mean'])
+            cost_eff_stds.append(results_row['cost_per_net_ton_co2_kg_mean_mean_std'])
+            
+            weights.append(equity_row['equity_weight'])
+            colors.append(scenario_colors[scenario])
+        
+        # Specific label for this budget
+        current_budget_label = f'£{budget_val/1e6:.0f}M'
+        
+        # --- Plotting for this specific budget ---
+        
+        # Plot points with error bars
+        for i in range(len(scenarios_subset)):
+            # CHANGED: Use cost_eff_means and cost_eff_stds for Y-axis and y-error
+            ax.errorbar(buildings_means[i], cost_eff_means[i], 
+                       xerr=buildings_stds[i], yerr=cost_eff_stds[i],
+                       fmt='o', markersize=12, capsize=5,
+                       color=colors[i], 
+                       label=f'EW={weights[i]}') # Label weights on every plot
+
+        # Draw connecting line
+        sorted_indices = np.argsort(weights)
+        buildings_means_sorted = [buildings_means[i] for i in sorted_indices]
+        # CHANGED: Use cost_eff_means for the sorted Y-axis data
+        cost_eff_means_sorted = [cost_eff_means[i] for i in sorted_indices]
+        # CHANGED: Plot the new Y-axis data
+        ax.plot(buildings_means_sorted, cost_eff_means_sorted, '--', alpha=0.5, linewidth=2, label='Tradeoff Curve')
+    
+        # --- Formatting for this specific plot ---
+        ax.set_xlabel('Number of Buildings Retrofitted', fontsize=14, fontweight='bold')
+        # CHANGED: Updated Y-axis label
+        ax.set_ylabel('Cost Effectiveness (£ / net ton CO2)', fontsize=14, fontweight='bold')
+        
+        # CHANGED: Updated title to reflect new Y-axis
+        ax.set_title(f'Retrofit-Cost-Effectiveness Tradeoff ({current_budget_label})\n{budget_label}', fontsize=16, fontweight='bold')
+        
+        # Consolidate legends
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys(), fontsize=11, 
+                  ncol=1 if len(by_label) <= 6 else 2)
+        
+        ax.grid(True, alpha=0.3)
+        
+        if y_axis_zero:
+            ax.set_ylim(bottom=0)
+        
+        # --- Save and close this specific plot ---
+        
+        # Create the new filename
+        budget_suffix = f"_budget_{budget_val/1e6:.0f}M"
+        # CHANGED: Added a suffix to the base name to reflect new metric
+        new_filename = f"{base_name}_cost_eff{budget_suffix}{extension}"
         
         plt.tight_layout()
         plt.savefig(new_filename, dpi=300, bbox_inches='tight')
