@@ -75,6 +75,10 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False):
                      os.path.join(output_dir, "9_radar_chart.png"),scenario_colors
                     ) 
 
+    plot_pareto_retrofit_carbon_by_budget(results_subset, equity_subset, scenarios, scenario_colors, budget_label,
+                                 os.path.join(output_dir, "10_pareto_bcounts.png") ,
+                                y_axis_zero=y_axis_zero)
+
     print(f"Done! All 9 plots saved to '{output_dir}'.")
 # ==============================================================================
 # 2. DATA PREPROCESSING
@@ -673,3 +677,99 @@ def plot_radar_chart(results_subset, equity_subset,  filename, scenario_colors):
 
     for bugdet in equity_subset['budget'].unique():
         plot_one_budget(results_subset, bugdet,  equity_subset, filename , scenario_colors)
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+import matplotlib.pyplot as plt
+import numpy as np
+import os # Added for splitting filename
+
+def plot_pareto_retrofit_carbon_by_budget(results_subset, equity_subset, scenarios, scenario_colors, budget_label, filename, y_axis_zero=False):
+    """
+    Plot: Pareto Front - Buildings Retrofitted vs Carbon
+    Generates a SEPARATE plot file for each budget.
+    """
+    
+    # Get the base filename and extension to create unique names
+    base_name, extension = os.path.splitext(filename)
+    
+    # Loop over each budget and create a unique plot
+    for budget_val in sorted(results_subset['budget'].unique()):
+        
+        # Create a new figure for each budget
+        fig, ax = plt.figure(figsize=(10, 8)), plt.gca()
+        
+        # --- Data collection for this specific budget ---
+        subset = results_subset[results_subset['budget'] == budget_val]
+        scenarios_subset = subset['scenario'].unique()
+        
+        buildings_means = []
+        buildings_stds = []
+        co2_means = []
+        co2_stds = []
+        weights = []
+        colors = []
+
+        for scenario in scenarios_subset:
+            # Ensure scenario exists in both subsets before trying to access
+            if scenario not in equity_subset['scenario'].values or scenario not in results_subset['scenario'].values:
+                print(f"Warning: Scenario {scenario} not found. Skipping.")
+                continue
+                
+            equity_row = equity_subset[equity_subset['scenario'] == scenario].iloc[0]
+            results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
+            
+            buildings_means.append(results_row['num_buildings_sum_mean'])
+            buildings_stds.append(results_row['num_buildings_sum_std'])
+            co2_means.append(results_row['total_ton_co2_saved_mean_sum_mean'] / 1e3)
+            co2_stds.append(results_row['total_ton_co2_saved_mean_sum_std'] / 1e3)
+            weights.append(equity_row['equity_weight'])
+            colors.append(scenario_colors[scenario])
+        
+        # Specific label for this budget
+        current_budget_label = f'£{budget_val/1e6:.0f}M'
+        
+        # --- Plotting for this specific budget ---
+        
+        # Plot points with error bars
+        for i in range(len(scenarios_subset)):
+            ax.errorbar(buildings_means[i], co2_means[i], xerr=buildings_stds[i], yerr=co2_stds[i],
+                       fmt='o', markersize=12, capsize=5,
+                       color=colors[i], 
+                       label=f'EW={weights[i]}') # Label weights on every plot
+
+        # Draw connecting line
+        sorted_indices = np.argsort(weights)
+        buildings_means_sorted = [buildings_means[i] for i in sorted_indices]
+        co2_means_sorted = [co2_means[i] for i in sorted_indices]
+        ax.plot(buildings_means_sorted, co2_means_sorted, '--', alpha=0.5, linewidth=2, label='Tradeoff Curve')
+    
+        # --- Formatting for this specific plot ---
+        ax.set_xlabel('Number of Buildings Retrofitted', fontsize=14, fontweight='bold')
+        ax.set_ylabel('CO2 Saved (kton)', fontsize=14, fontweight='bold')
+        
+        # Updated title to include the specific budget
+        ax.set_title(f'Retrofit-Carbon Tradeoff Curve ({current_budget_label})\n{budget_label}', fontsize=16, fontweight='bold')
+        
+        # Consolidate legends
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys(), fontsize=11, 
+                  ncol=1 if len(by_label) <= 6 else 2)
+        
+        ax.grid(True, alpha=0.3)
+        
+        if y_axis_zero:
+            ax.set_ylim(bottom=0)
+        
+        # --- Save and close this specific plot ---
+        
+        # Create the new filename
+        budget_suffix = f"_budget_{budget_val/1e6:.0f}M"
+        new_filename = f"{base_name}{budget_suffix}{extension}"
+        
+        plt.tight_layout()
+        plt.savefig(new_filename, dpi=300, bbox_inches='tight')
+        plt.close(fig) # Close the figure to free up memory
+        print(f"Saved: {new_filename}")

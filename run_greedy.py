@@ -58,12 +58,12 @@ def main():
         INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*.csv'
         scenario_list = ['wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
-
+        run_greedy_runs=False 
         budgets = [1_000_000, 10_000_000, 100_000_000]
         loft_probs = [0.65]
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
 
-        run_greedy_runs=True  
+ 
     else:
         BASE_DIR = os.getenv('BASE_DIR')
         INPUT_FILES_PATH = os.getenv('INPUT_FILES_PATH') 
