@@ -55,7 +55,7 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False):
                                         os.path.join(output_dir, "4_equity_concentration_vs_weight.png"),
                                         y_axis_zero=y_axis_zero)
     
-    plot_socioeconomic_distribution(equity_subset, scenarios, scenario_colors, budget_label, 
+    plot_socioeconomic_distribution(equity_subset, scenario_colors, 
                                     os.path.join(output_dir, "5_socioeconomic_distribution.png"),
                                     y_axis_zero=y_axis_zero)
     
@@ -63,7 +63,7 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False):
                       os.path.join(output_dir, "6_pareto_front.png"),
                       y_axis_zero=y_axis_zero)
     
-    plot_vulnerable_groups_coverage(equity_subset, scenarios, equity_weights, budget_label, 
+    plot_vulnerable_groups_coverage(equity_subset,
                                     os.path.join(output_dir, "7_vulnerable_groups_coverage.png"),
                                     y_axis_zero=y_axis_zero)
     
@@ -71,9 +71,9 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False):
                              os.path.join(output_dir, "8_tradeoff_efficiency.png"),
                              y_axis_zero=y_axis_zero)
     
-    plot_radar_chart(results_subset, equity_subset, scenarios, scenario_colors, budget_label, 
-                     os.path.join(output_dir, "9_radar_chart.png"),
-                     y_axis_zero=y_axis_zero) # Note: y_axis_zero has no effect on radar
+    plot_radar_chart(results_subset, equity_subset, 
+                     os.path.join(output_dir, "9_radar_chart.png"),scenario_colors
+                    ) 
 
     print(f"Done! All 9 plots saved to '{output_dir}'.")
 # ==============================================================================
@@ -363,60 +363,66 @@ def plot_equity_concentration_vs_weight(equity_subset, equity_weights, budget_la
     plt.close()
     print(f"Saved: {filename}")
 
-def plot_socioeconomic_distribution(equity_subset, scenarios, scenario_colors, budget_label, filename, y_axis_zero=False):
+def plot_socioeconomic_distribution(equity_subset, scenario_colors, filename, y_axis_zero=False):
     """Plot 5: Socio-economic Distribution by Equity Weight"""
     
     # This plot is complex with budgets, so we'll just plot for the *first* budget found
     # Or you could adapt this to create one plot per budget
     
+  
+    def plot_one_budget(equity_subset, budget_to_plot, filename, scenario_colors, y_axis_zero):
+        # budget_to_plot = budgets[0]
+        rl_filename =f'{filename.split(".png")[0]}_budget{budget_to_plot}.png'
+        equity_subset = equity_subset[equity_subset['budget'] == budget_to_plot]
+        budget_label = f'Budget £{budget_to_plot/1e6:.0f}M'
+        scenarios = equity_subset['scenario'].unique()
+        
+        fig, ax = plt.figure(figsize=(12, 7)), plt.gca()
+        
+        # *** These columns were simple strings, so NO change needed ***
+        socio_groups = ['deprived_pct', 'struggling_pct', 'lower middle_pct', 
+                        'upper middle_pct', 'affluent_pct', 'student_pct']
+        socio_labels = ['Deprived', 'Struggling', 'Lower\nMiddle', 
+                        'Upper\nMiddle', 'Affluent', 'Student']
+        
+        x = np.arange(len(socio_labels))
+        n_scenarios = len(scenarios)
+        width = 0.8 / n_scenarios
+        
+        for i, scenario in enumerate(scenarios):
+            equity_row = equity_subset[equity_subset['scenario'] == scenario].iloc[0]
+            means = [equity_row[f'{group}_mean'] for group in socio_groups]
+            offset = (i - n_scenarios/2 + 0.5) * width
+            
+            weight = equity_row['equity_weight']
+            label = f'EW={weight}'
+            ax.bar(x + offset, means, width, label=label, 
+                color=scenario_colors[scenario], alpha=0.7)
+        
+        ax.set_xlabel('Socio-economic Group', fontsize=14, fontweight='bold')
+        ax.set_ylabel('Coverage (%)', fontsize=14, fontweight='bold')
+        ax.set_title(f'Socio-economic Distribution by Equity Weight\n{budget_label}', 
+                    fontsize=16, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(socio_labels, fontsize=11)
+        ax.legend(fontsize=11, ncol=min(2, (n_scenarios + 1) // 2))
+        ax.grid(True, alpha=0.3, axis='y')
+        
+        # *** ADDED: Set y-axis to 0 if toggled ***
+        if y_axis_zero:
+            ax.set_ylim(bottom=0)
+        
+        plt.tight_layout()
+        plt.savefig(rl_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Saved: {rl_filename}")
     budgets = equity_subset['budget'].unique()
     if len(budgets) > 1:
         print(f"Warning: Plot 5 (Socio-economic) only plotting for first budget: £{budgets[0]/1e6:.0f}M")
+    for budget_plot in budgets:
+        plot_one_budget(equity_subset, budget_plot, filename, scenario_colors, y_axis_zero)
     
-    budget_to_plot = budgets[0]
-    equity_subset = equity_subset[equity_subset['budget'] == budget_to_plot]
-    budget_label = f'Budget £{budget_to_plot/1e6:.0f}M'
-    scenarios = equity_subset['scenario'].unique()
-    
-    fig, ax = plt.figure(figsize=(12, 7)), plt.gca()
-    
-    # *** These columns were simple strings, so NO change needed ***
-    socio_groups = ['deprived_pct', 'struggling_pct', 'lower middle_pct', 
-                    'upper middle_pct', 'affluent_pct', 'student_pct']
-    socio_labels = ['Deprived', 'Struggling', 'Lower\nMiddle', 
-                    'Upper\nMiddle', 'Affluent', 'Student']
-    
-    x = np.arange(len(socio_labels))
-    n_scenarios = len(scenarios)
-    width = 0.8 / n_scenarios
-    
-    for i, scenario in enumerate(scenarios):
-        equity_row = equity_subset[equity_subset['scenario'] == scenario].iloc[0]
-        means = [equity_row[f'{group}_mean'] * 100 for group in socio_groups]
-        offset = (i - n_scenarios/2 + 0.5) * width
-        
-        weight = equity_row['equity_weight']
-        label = f'EW={weight}'
-        ax.bar(x + offset, means, width, label=label, 
-               color=scenario_colors[scenario], alpha=0.7)
-    
-    ax.set_xlabel('Socio-economic Group', fontsize=14, fontweight='bold')
-    ax.set_ylabel('Coverage (%)', fontsize=14, fontweight='bold')
-    ax.set_title(f'Socio-economic Distribution by Equity Weight\n{budget_label}', 
-                 fontsize=16, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels(socio_labels, fontsize=11)
-    ax.legend(fontsize=11, ncol=min(2, (n_scenarios + 1) // 2))
-    ax.grid(True, alpha=0.3, axis='y')
-    
-    # *** ADDED: Set y-axis to 0 if toggled ***
-    if y_axis_zero:
-        ax.set_ylim(bottom=0)
-    
-    plt.tight_layout()
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"Saved: {filename}")
+
 
 def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors, budget_label, filename, y_axis_zero=False):
     """Plot 6: Pareto Front - Equity vs Carbon"""
@@ -439,8 +445,8 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
             results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
             
             # *** UPDATED COLUMN NAMES ***
-            vuln_means.append(equity_row['vulnerable_pct_mean'] * 100)
-            vuln_stds.append(equity_row['vulnerable_pct_std'] * 100)
+            vuln_means.append(equity_row['vulnerable_pct_mean'] )
+            vuln_stds.append(equity_row['vulnerable_pct_std'] )
             co2_means.append(results_row['total_ton_co2_saved_mean_sum_mean'] / 1e3)
             co2_stds.append(results_row['total_ton_co2_saved_mean_sum_std'] / 1e3)
             weights.append(equity_row['equity_weight'])
@@ -482,51 +488,53 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
     plt.close()
     print(f"Saved: {filename}")
 
-def plot_vulnerable_groups_coverage(equity_subset, scenarios, equity_weights, budget_label, filename, y_axis_zero=False):
+def plot_vulnerable_groups_coverage(equity_subset, filename, y_axis_zero=False):
     """Plot 7: Most Vulnerable Groups Coverage"""
     
-    # This plot is complex with budgets, so we'll just plot for the *first* budget found
-    budget_to_plot = equity_subset['budget'].unique()[0]
-    if len(equity_subset['budget'].unique()) > 1:
-        print(f"Warning: Plot 7 (Vulnerable Groups) only plotting for first budget: £{budget_to_plot/1e6:.0f}M")
+
+    def plot_one_budget(budget_to_plot,  equity_subset, filename, y_axis_zero):
+        rl_filename = f'{filename.split(".png")[0]}_budget{budget_to_plot}.png'
+        equity_subset = equity_subset[equity_subset['budget'] == budget_to_plot]
+        budget_label = f'Budget £{budget_to_plot/1e6:.0f}M'
+        scenarios = equity_subset['scenario'].unique()
+        equity_weights = sorted(equity_subset['equity_weight'].unique())
         
-    equity_subset = equity_subset[equity_subset['budget'] == budget_to_plot]
-    budget_label = f'Budget £{budget_to_plot/1e6:.0f}M'
-    scenarios = equity_subset['scenario'].unique()
-    equity_weights = sorted(equity_subset['equity_weight'].unique())
-    
-    fig, ax = plt.figure(figsize=(10, 6)), plt.gca()
-    
-    x_pos = np.arange(len(scenarios))
-    width = 0.35
-    
-    # *** These columns were simple strings, so NO change needed ***
-    deprived_means = [equity_subset[equity_subset['scenario'] == s]['deprived_pct_mean'].iloc[0] * 100 
-                      for s in scenarios]
-    struggling_means = [equity_subset[equity_subset['scenario'] == s]['struggling_pct_mean'].iloc[0] * 100 
+        fig, ax = plt.figure(figsize=(10, 6)), plt.gca()
+        
+        x_pos = np.arange(len(scenarios))
+        width = 0.35
+        
+        # *** These columns were simple strings, so NO change needed ***
+        deprived_means = [equity_subset[equity_subset['scenario'] == s]['deprived_pct_mean'].iloc[0] * 100 
                         for s in scenarios]
+        struggling_means = [equity_subset[equity_subset['scenario'] == s]['struggling_pct_mean'].iloc[0] * 100 
+                            for s in scenarios]
+        
+        bars1 = ax.bar(x_pos - width/2, deprived_means, width, label='Deprived', 
+                    color='#c0392b', alpha=0.8)
+        bars2 = ax.bar(x_pos + width/2, struggling_means, width, label='Struggling', 
+                    color='#e67e22', alpha=0.8)
+        
+        ax.set_xlabel('Equity Weight', fontsize=14, fontweight='bold')
+        ax.set_ylabel('Coverage (%)', fontsize=14, fontweight='bold')
+        ax.set_title(f'Most Vulnerable Groups Coverage\n{budget_label}', fontsize=16, fontweight='bold')
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels([f'{w}' for w in equity_weights])
+        ax.legend(fontsize=12)
+        ax.grid(True, alpha=0.3, axis='y')
+        
+        # *** ADDED: Set y-axis to 0 if toggled ***
+        if y_axis_zero:
+            ax.set_ylim(bottom=0)
+        
+        plt.tight_layout()
+        plt.savefig(rl_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Saved: {rl_filename}")
     
-    bars1 = ax.bar(x_pos - width/2, deprived_means, width, label='Deprived', 
-                   color='#c0392b', alpha=0.8)
-    bars2 = ax.bar(x_pos + width/2, struggling_means, width, label='Struggling', 
-                   color='#e67e22', alpha=0.8)
-    
-    ax.set_xlabel('Equity Weight', fontsize=14, fontweight='bold')
-    ax.set_ylabel('Coverage (%)', fontsize=14, fontweight='bold')
-    ax.set_title(f'Most Vulnerable Groups Coverage\n{budget_label}', fontsize=16, fontweight='bold')
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels([f'{w}' for w in equity_weights])
-    ax.legend(fontsize=12)
-    ax.grid(True, alpha=0.3, axis='y')
-    
-    # *** ADDED: Set y-axis to 0 if toggled ***
-    if y_axis_zero:
-        ax.set_ylim(bottom=0)
-    
-    plt.tight_layout()
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"Saved: {filename}")
+
+    for budget_to_plot in equity_subset['budget'].unique():
+        plot_one_budget(budget_to_plot, equity_subset, filename, y_axis_zero)
 
 def plot_tradeoff_efficiency(results_subset, equity_subset, scenarios, scenario_colors, budget_label, filename, y_axis_zero=False):
     """Plot 8: Tradeoff Efficiency"""
@@ -545,7 +553,7 @@ def plot_tradeoff_efficiency(results_subset, equity_subset, scenarios, scenario_
             base_scenario = sorted_scenarios[0]
             
             # *** UPDATED COLUMN NAMES ***
-            base_vuln = equity_subset[equity_subset['scenario'] == base_scenario]['vulnerable_pct_mean'].iloc[0] * 100
+            base_vuln = equity_subset[equity_subset['scenario'] == base_scenario]['vulnerable_pct_mean'].iloc[0] 
             base_co2 = results_subset[results_subset['scenario'] == base_scenario]['total_ton_co2_saved_mean_sum_mean'].iloc[0] / 1e3
             
             tradeoff_scenarios = []
@@ -598,70 +606,70 @@ def plot_tradeoff_efficiency(results_subset, equity_subset, scenarios, scenario_
     plt.close()
     print(f"Saved: {filename}")
 
-def plot_radar_chart(results_subset, equity_subset, scenarios, scenario_colors, budget_label, filename, y_axis_zero=False):
+def plot_radar_chart(results_subset, equity_subset,  filename, scenario_colors):
     """
     Plot 9: Multi-Metric Radar Chart
     Note: y_axis_zero has no effect here as the axis is normalized 0-1.
     """
     
-    # This plot is complex with budgets, so we'll just plot for the *first* budget found
-    budget_to_plot = equity_subset['budget'].unique()[0]
-    if len(equity_subset['budget'].unique()) > 1:
-        print(f"Warning: Plot 9 (Radar) only plotting for first budget: £{budget_to_plot/1e6:.0f}M")
-        
-    equity_subset = equity_subset[equity_subset['budget'] == budget_to_plot]
-    results_subset = results_subset[results_subset['budget'] == budget_to_plot]
-    budget_label = f'Budget £{budget_to_plot/1e6:.0f}M'
-    scenarios = equity_subset['scenario'].unique()
+    def plot_one_budget(results_subset, budget_to_plot,  equity_subset, filename,  scenario_colors):
+        rl_filename = f'{filename.split(".png")[0]}_budget{budget_to_plot}.png'
+        equity_subset = equity_subset[equity_subset['budget'] == budget_to_plot]
+        results_subset = results_subset[results_subset['budget'] == budget_to_plot]
+        budget_label = f'Budget £{budget_to_plot/1e6:.0f}M'
+        scenarios = equity_subset['scenario'].unique()
 
-    fig = plt.figure(figsize=(10, 10))
-    ax = fig.add_subplot(111, projection='polar')
-    
-    metrics = ['Carbon\nSavings', 'Cost\nEfficiency', 'Vulnerable\nCoverage', 
-               'Equity\nBalance', '# Buildings']
-    num_vars = len(metrics)
-    angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
-    angles += angles[:1]
-    
-    # *** UPDATED COLUMN NAMES for normalization ***
-    norm_co2 = results_subset['total_ton_co2_saved_mean_sum_mean'].max()
-    norm_cost_eff = (1 / results_subset['cost_per_net_ton_co2_kg_mean_mean_mean']).max()
-    norm_vuln = equity_subset['vulnerable_pct_mean'].max()
-    norm_equity = equity_subset['equity_concentration_mean'].max()
-    norm_buildings = results_subset['num_buildings_sum_mean'].max()
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111, projection='polar')
+        
+        metrics = ['Carbon\nSavings', 'Cost\nEfficiency', 'Vulnerable\nCoverage', 
+                'Equity\nBalance', '# Buildings']
+        num_vars = len(metrics)
+        angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+        angles += angles[:1]
+        
+        # *** UPDATED COLUMN NAMES for normalization ***
+        norm_co2 = results_subset['total_ton_co2_saved_mean_sum_mean'].max()
+        norm_cost_eff = (1 / results_subset['cost_per_net_ton_co2_kg_mean_mean_mean']).max()
+        norm_vuln = equity_subset['vulnerable_pct_mean'].max()
+        norm_equity = equity_subset['equity_concentration_mean'].max()
+        norm_buildings = results_subset['num_buildings_sum_mean'].max()
 
-    for scenario in scenarios:
-        results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
-        equity_row = equity_subset[equity_subset['scenario'] == scenario].iloc[0]
+        for scenario in scenarios:
+            results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
+            equity_row = equity_subset[equity_subset['scenario'] == scenario].iloc[0]
+            
+            # Normalize metrics (0-1, higher is better)
+            # *** UPDATED COLUMN NAMES ***
+            carbon_norm = results_row['total_ton_co2_saved_mean_sum_mean'] / norm_co2
+            cost_eff_norm = (1 / results_row['cost_per_net_ton_co2_kg_mean_mean_mean']) / norm_cost_eff
+            vuln_norm = equity_row['vulnerable_pct_mean'] / norm_vuln
+            equity_norm = 1 - (equity_row['equity_concentration_mean'] / norm_equity)
+            buildings_norm = results_row['num_buildings_sum_mean'] / norm_buildings
+            
+            values = [carbon_norm, cost_eff_norm, vuln_norm, equity_norm, buildings_norm]
+            values += values[:1]
+            
+            weight = equity_row['equity_weight']
+            label = f'EW={weight}'
+            
+            ax.plot(angles, values, 'o-', linewidth=2.5, label=label, 
+                    color=scenario_colors[scenario], markersize=8)
+            ax.fill(angles, values, alpha=0.2, color=scenario_colors[scenario])
         
-        # Normalize metrics (0-1, higher is better)
-        # *** UPDATED COLUMN NAMES ***
-        carbon_norm = results_row['total_ton_co2_saved_mean_sum_mean'] / norm_co2
-        cost_eff_norm = (1 / results_row['cost_per_net_ton_co2_kg_mean_mean_mean']) / norm_cost_eff
-        vuln_norm = equity_row['vulnerable_pct_mean'] / norm_vuln
-        equity_norm = 1 - (equity_row['equity_concentration_mean'] / norm_equity)
-        buildings_norm = results_row['num_buildings_sum_mean'] / norm_buildings
+        ax.set_xticks(angles[:-1])
+        ax.set_xticklabels(metrics, fontsize=12)
+        ax.set_ylim(0, 1) # Radar chart y-axis (radius) is hard-coded 0-1
+        ax.set_title(f'Normalized Performance Comparison\n{budget_label}', fontsize=16, 
+                    fontweight='bold', pad=20)
+        ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0), fontsize=11,
+                ncol=1 if len(scenarios) <= 5 else 2)
+        ax.grid(True)
         
-        values = [carbon_norm, cost_eff_norm, vuln_norm, equity_norm, buildings_norm]
-        values += values[:1]
-        
-        weight = equity_row['equity_weight']
-        label = f'EW={weight}'
-        
-        ax.plot(angles, values, 'o-', linewidth=2.5, label=label, 
-                color=scenario_colors[scenario], markersize=8)
-        ax.fill(angles, values, alpha=0.2, color=scenario_colors[scenario])
-    
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(metrics, fontsize=12)
-    ax.set_ylim(0, 1) # Radar chart y-axis (radius) is hard-coded 0-1
-    ax.set_title(f'Normalized Performance Comparison\n{budget_label}', fontsize=16, 
-                 fontweight='bold', pad=20)
-    ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0), fontsize=11,
-              ncol=1 if len(scenarios) <= 5 else 2)
-    ax.grid(True)
-    
-    plt.tight_layout()
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"Saved: {filename}")
+        plt.tight_layout()
+        plt.savefig(rl_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Saved: {rl_filename}")
+
+    for bugdet in equity_subset['budget'].unique():
+        plot_one_budget(results_subset, bugdet,  equity_subset, filename , scenario_colors)
