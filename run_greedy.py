@@ -38,9 +38,6 @@ def load_personas(path):
     personas = pd.read_csv(path)
     return personas
 
-
-
-
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
@@ -87,7 +84,13 @@ def main():
         
         else:
             budgets = [10_000_000, 100_000_000, 1_000_000_000]
-        loft_probs = [0.65 ]
+        loft_setting = os.getenv('loft_setting') 
+        if loft_setting=='1':
+            loft_probs = [0.65 ]
+        elif loft_setting=='2':
+            loft_probs = [0.95 ] 
+        else: 
+            loft_probs = [0.65, 0.95] 
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
     
 
@@ -234,7 +237,7 @@ def main():
     print("="*80)
 
     for LOFT_VALUE in loft_probs:
-        OUTPUT_PATH=os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}')
+        OUTPUT_PATH=os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{BUDGET_SETTING}')
         # Ensure output directory exists
         os.makedirs(OUTPUT_PATH, exist_ok = True )
         post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH )
