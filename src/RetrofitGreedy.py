@@ -8,7 +8,7 @@ import os
 import logging
 from typing import List, Dict, Tuple, Any
 
- 
+
 import os 
 
 from src.RetrofitEquity import EQUITY_WEIGHTS,  calculate_social_equity_score 
@@ -38,9 +38,9 @@ def assign_random_loft(df, prob_loft):
     )
     return df
 
- 
 
- # =============================================================================
+
+# =============================================================================
 # CONSTANTS
 # =============================================================================
 # --- Input Columns ---
@@ -114,9 +114,9 @@ FINAL_RANK_COLS = [
 # =============================================================================
 
 def _process_scenario(epi_df: pd.DataFrame, 
-                      scenario: str, 
-                      equity_factor: float,
-                      detail_logger: logging.Logger) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+                    scenario: str, 
+                    equity_factor: float,
+                    detail_logger: logging.Logger) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
     Filters, weights, and formats data for a single scenario within an epistemic run.
     Always optimizes on MEAN values but captures P95 and P5 for range analysis.
@@ -241,7 +241,7 @@ def _process_scenario(epi_df: pd.DataFrame,
         flip_co2_col_mean,
         flip_co2_col_p95, 
         flip_co2_col_p5, 
- 
+
         flip_cost_per_ton_col_mean, 
         flip_cost_per_ton_col_p95,
         flip_cost_per_ton_col_p5,
@@ -260,14 +260,14 @@ def _process_scenario(epi_df: pd.DataFrame,
     if len(valid_scenario_data) > 0:
         detail_logger.info(f"    Valid buildings for optimization: {len(valid_scenario_data)}")
         detail_logger.info(f"    Cost/tonne CO2 (mean) - Min: £{valid_scenario_data[RANK_COL_COST_PER_TON].min():.2f}, "
-                         f"Median: £{valid_scenario_data[RANK_COL_COST_PER_TON].median():.2f}, "
-                         f"Max: £{valid_scenario_data[RANK_COL_COST_PER_TON].max():.2f}")
+                        f"Median: £{valid_scenario_data[RANK_COL_COST_PER_TON].median():.2f}, "
+                        f"Max: £{valid_scenario_data[RANK_COL_COST_PER_TON].max():.2f}")
         detail_logger.info(f"    Cost/tonne CO2 (p95)  - Min: £{valid_scenario_data[RANK_COL_COST_PER_TON_P95].min():.2f}, "
-                         f"Median: £{valid_scenario_data[RANK_COL_COST_PER_TON_P95].median():.2f}, "
-                         f"Max: £{valid_scenario_data[RANK_COL_COST_PER_TON_P95].max():.2f}")
+                        f"Median: £{valid_scenario_data[RANK_COL_COST_PER_TON_P95].median():.2f}, "
+                        f"Max: £{valid_scenario_data[RANK_COL_COST_PER_TON_P95].max():.2f}")
         detail_logger.info(f"    Cost/tonne CO2 (p5)   - Min: £{valid_scenario_data[RANK_COL_COST_PER_TON_P5].min():.2f}, "
-                         f"Median: £{valid_scenario_data[RANK_COL_COST_PER_TON_P5].median():.2f}, "
-                         f"Max: £{valid_scenario_data[RANK_COL_COST_PER_TON_P5].max():.2f}")
+                        f"Median: £{valid_scenario_data[RANK_COL_COST_PER_TON_P5].median():.2f}, "
+                        f"Max: £{valid_scenario_data[RANK_COL_COST_PER_TON_P5].max():.2f}")
     else:
         detail_logger.warning(f"    No valid data for scenario {scenario}!")
     
@@ -279,8 +279,8 @@ def _process_scenario(epi_df: pd.DataFrame,
 # =============================================================================
 
 def _log_epistemic_run_equity_analysis(selected_projects_df: pd.DataFrame,
-                                      epi_run: str,
-                                      detail_logger: logging.Logger) -> Dict[str, Any]:
+                                    epi_run: str,
+                                    detail_logger: logging.Logger) -> Dict[str, Any]:
     """
     Performs and logs the equity analysis for a single, completed epistemic run.
     The epistemic run contains different selected options (retrofit interventions),
@@ -308,9 +308,9 @@ def _log_epistemic_run_equity_analysis(selected_projects_df: pd.DataFrame,
         'vulnerable_pct': equity_metrics['vulnerable_investment_pct'],
         'equity_concentration': equity_metrics['equity_concentration'],
         **{f'{persona}_count': equity_metrics['persona_breakdown'].get(persona, {}).get('count', 0) 
-           for persona in EQUITY_WEIGHTS.keys()},
+        for persona in EQUITY_WEIGHTS.keys()},
         **{f'{persona}_pct': equity_metrics['persona_breakdown'].get(persona, {}).get('pct', 0) 
-           for persona in EQUITY_WEIGHTS.keys()},
+        for persona in EQUITY_WEIGHTS.keys()},
     }
             
     return equity_tracking
@@ -321,8 +321,8 @@ def _log_epistemic_run_equity_analysis(selected_projects_df: pd.DataFrame,
 # =============================================================================
 
 def _create_range_visualizations(summary_by_run: pd.DataFrame,
-                                 output_dir: str,
-                                 summary_logger: logging.Logger):
+                                output_dir: str,
+                                summary_logger: logging.Logger):
     """
     Generates and saves error bar plots for Cost and CO2, showing the
     mean, p5, and p95 ranges for each epistemic run.
@@ -405,12 +405,12 @@ def _create_range_visualizations(summary_by_run: pd.DataFrame,
 # =============================================================================
 
 def _process_epistemic_run(epi_run: str,
-                          epi_df_full: pd.DataFrame,
-                          scenario_list: List[str],
-                          prob_loft: float,
-                          equity_factor: float,
-                          scenario_budget: float,
-                          detail_logger: logging.Logger) -> Tuple[pd.DataFrame, List[Dict], List[Dict], List[Dict], pd.DataFrame]:
+                        epi_df_full: pd.DataFrame,
+                        scenario_list: List[str],
+                        prob_loft: float,
+                        equity_factor: float,
+                        scenario_budget: float,
+                        detail_logger: logging.Logger) -> Tuple[pd.DataFrame, List[Dict], List[Dict], List[Dict], pd.DataFrame]:
     """
     Runs the full analysis for a single epistemic run, from scenario processing
     to knapsack selection and equity analysis.
@@ -530,9 +530,9 @@ def _process_epistemic_run(epi_run: str,
             row = scenario_breakdown.loc[sc]
             detail_logger.info(f"    {sc}: {row['n_projects']:.0f} projects")
             detail_logger.info(f"      Cost (mean): £{row[RANK_COL_COST]:,.0f}, "
-                             f"Range: £{row[RANK_COL_COST_P5]:,.0f} to £{row[RANK_COL_COST_P95]:,.0f}")
+                            f"Range: £{row[RANK_COL_COST_P5]:,.0f} to £{row[RANK_COL_COST_P95]:,.0f}")
             detail_logger.info(f"      CO2 (mean): {row[RANK_COL_CO2_SAVED]:,.0f} tonnes, "
-                             f"Range: {row[RANK_COL_CO2_SAVED_P5]:,.0f} to {row[RANK_COL_CO2_SAVED_P95]:,.0f} tonnes")
+                            f"Range: {row[RANK_COL_CO2_SAVED_P5]:,.0f} to {row[RANK_COL_CO2_SAVED_P95]:,.0f} tonnes")
             
             # Store performance metrics with ranges
             scenario_performance_log.append({
@@ -563,16 +563,16 @@ def _process_epistemic_run(epi_run: str,
 # =============================================================================
 
 def log_comprehensive_summary(combined_results: pd.DataFrame,
-                              all_exclusion_stats: List[Dict],
-                              all_scenario_performance: List[Dict],
-                              all_equity_tracking: List[Dict],
-                              scenario_budget: float,
-                              prob_loft: float,
-                              equity_factor: float,
-                              scenario_list: List[str],
-                              epistemic_runs: List[str],
-                              summary_logger: logging.Logger,
-                              output_dir: str):
+                            all_exclusion_stats: List[Dict],
+                            all_scenario_performance: List[Dict],
+                            all_equity_tracking: List[Dict],
+                            scenario_budget: float,
+                            prob_loft: float,
+                            equity_factor: float,
+                            scenario_list: List[str],
+                            epistemic_runs: List[str],
+                            summary_logger: logging.Logger,
+                            output_dir: str):
     """
     Takes all collated results and logs the final comprehensive analysis.
     Now includes range analysis with P95 and P5 values.
@@ -713,7 +713,7 @@ def log_comprehensive_summary(combined_results: pd.DataFrame,
     overall_equity_all = calculate_social_equity_score(combined_results)
     summary_logger.info(f"  Total projects across all runs: {overall_equity_all['total_count']}")
     summary_logger.info(f"  Vulnerable groups (deprived + struggling): {overall_equity_all['vulnerable_count']} "
-                       f"({overall_equity_all['vulnerable_investment_pct']:.1f}%)")
+                    f"({overall_equity_all['vulnerable_investment_pct']:.1f}%)")
     summary_logger.info(f"  Equity concentration index: {overall_equity_all['equity_concentration']:.3f}\n")
     
     summary_logger.info("  Persona distribution across all selections:")
@@ -727,9 +727,9 @@ def log_comprehensive_summary(combined_results: pd.DataFrame,
     if not equity_tracking_df.empty and 'epistemic_run' in equity_tracking_df.columns:
         # Now each row is one epistemic run
         summary_logger.info(f"  Mean vulnerable investment: {equity_tracking_df['vulnerable_pct'].mean():.1f}% "
-                           f"± {equity_tracking_df['vulnerable_pct'].std():.1f}%")
+                        f"± {equity_tracking_df['vulnerable_pct'].std():.1f}%")
         summary_logger.info(f"  Mean concentration index: {equity_tracking_df['equity_concentration'].mean():.3f} "
-                           f"± {equity_tracking_df['equity_concentration'].std():.3f}")
+                        f"± {equity_tracking_df['equity_concentration'].std():.3f}")
         
         # Show persona variability across runs
         summary_logger.info(f"\n  Persona distribution variability across runs:")
@@ -823,7 +823,7 @@ def run_greedy_algo(scenario_budget: float,
     
     Returns:
         tuple: (baseline_selection DataFrame from last run, combined_results DataFrame from all runs)
-               Both DataFrames include mean, p95, and p5 values for costs and CO2 savings
+            Both DataFrames include mean, p95, and p5 values for costs and CO2 savings
         
     Example:
         >>> baseline, results = run_greedy_algo(
@@ -914,4 +914,4 @@ def run_greedy_algo(scenario_budget: float,
     
     # Preserve the original's return signature
     return baseline_selection, combined_results
- 
+

@@ -59,11 +59,11 @@ def main():
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*.csv'
         scenario_list = ['wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
 
-        budgets = [10_000_000, 100_000_000]
+        budgets = [1_000_000, 10_000_000, 100_000_000]
         loft_probs = [0.65]
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
 
-        run_greedy_runs=False 
+        run_greedy_runs=True  
     else:
         BASE_DIR = os.getenv('BASE_DIR')
         INPUT_FILES_PATH = os.getenv('INPUT_FILES_PATH') 
@@ -123,13 +123,7 @@ def main():
         for budget in budgets:
             for prob_loft in loft_probs:
                 for equity_factor in equity_factors: 
-                    print(f"\n{'='*80}")
-                    print(f"Starting analysis:")
-                    print(f"  Budget: £{budget:,}")
-                    print(f"  Loft Probability: {prob_loft}")
-                    print(f"  Equity Factor: {equity_factor}")
-                    print(f"{'='*80}")
-                    
+                  
                     # Create output directory
                     output_dir = os.path.join(
                         greedy_runs_folder, 
@@ -147,7 +141,23 @@ def main():
                         f'Loft Probability {prob_loft}, '
                         f'Equity Factor {equity_factor}'
                     )
+                       
+                    baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
+                    combined_path = os.path.join(output_dir, f'combined_results.csv')
+                    combined_path = os.path.join(output_dir, f'equity_tracking_with_ranges.csv')
+
+                    if os.path.exists(baseline_path) and os.path.exists(combined_path):
+                        print(f"✓ Results already exist for this configuration, skipping...")
+                        print(f"  Existing files found in: {output_dir}")
+                        continue
                     
+                    print(f"\n{'='*80}")
+                    print(f"Starting analysis:")
+                    print(f"  Budget: £{budget:,}")
+                    print(f"  Loft Probability: {prob_loft}")
+                    print(f"  Equity Factor: {equity_factor}")
+                    print(f"{'='*80}")
+                
                     # Run greedy algorithm
                     try:
                         baseline_selection, combined_results = run_greedy_algo(

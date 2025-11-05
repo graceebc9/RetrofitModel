@@ -265,6 +265,8 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     else:
         print("Could not find key columns to display in summary.")
     print("\n")
+    # save compariosn df 
+    comparison_df.to_csv(f'{OUTPUT_PATH}/comparison_df.csv', index=False)
 
     # --- 5. Plot Results ---
     print(f"--- Generating plots in: {OUTPUT_PATH} ---")
