@@ -70,9 +70,24 @@ def main():
         personas_path='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/personas/NE_region_personas.csv'
         scenario_list = ['wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
         
-        run_greedy_runs=True 
-        budgets = [10_000_000, 100_000_000, 1_000_000_000]
-        loft_probs = [0.65, 0.95]
+        run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
+        
+        if run_g_yn=='N':
+            run_greedy_runs=False
+        else:
+            run_greedy_runs=True 
+        BUDGET_SETTING = os.getenv('BUDGET_SETTING')
+        
+        if BUDGET_SETTING=='1':
+            budgets=[1_000_000_000]
+        elif BUDGET_SETTING=='2':
+            budgets=[100_000_000]
+        elif BUDGET_SETTING=='3':
+            budgets=[10_000_000]
+        
+        else:
+            budgets = [10_000_000, 100_000_000, 1_000_000_000]
+        loft_probs = [0.65 ]
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
     
 
