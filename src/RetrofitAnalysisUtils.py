@@ -278,9 +278,6 @@ def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, e
     if isinstance(scenario_list, str):
          scenario_list=[scenario_list]
   
-       
-
-
     df_prep = df.copy()
 
     df_prep.rename(columns={ 'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_mean': 'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_mean',
