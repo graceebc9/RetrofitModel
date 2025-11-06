@@ -17,7 +17,7 @@ if running_locally:
     epc_pattern = '/Volumes/T9/2024_Data_downloads/2025_epc_database/all-domestic-certificates'
 else:
     LOG_FILE_PATTERN = "/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all_v4/NE/*.csv"
-    new_log_epc_dir=''
+    new_log_epc_dir='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/2_logs_with_epc'
 
     epc_pattern = '/home/gb669/rds/hpc-work/energy_map/data/epc_database/all-domestic-certificates'
     lk = pd.read_csv('/home/gb669/rds/hpc-work/energy_map/RetrofitModel/lookup_data_ew/Local_Authority_District_to_Region_(December_2022)_Lookup_in_England.csv')
