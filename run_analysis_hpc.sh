@@ -12,8 +12,8 @@ ON_HPC=true  # Set to true if running on HPC, false for local
 
 if [ "$ON_HPC" = true ]; then
     # HPC paths
-    INPUT_PATTERN="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all_v3/NE/*.csv"
-    OUTPUT_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all_v3/NE/retrofit_analysis"
+    INPUT_PATTERN="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all_loft/NE/*.csv"
+    OUTPUT_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all_loft/NE/retrofit_analysis"
     SCRIPT_PATH="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/energy_analysis_script.py"
     LOG_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/post_analysis_logs_slurm"
 else
