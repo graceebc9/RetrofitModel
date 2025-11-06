@@ -89,7 +89,10 @@ def load_all_epc_data(epc_files_list, columns_to_load, uprn_col_name):
     # If a UPRN appears in multiple EPC files, we keep the *first* one.
     # You might want to sort by date and keep 'last' if you have a date column.
     initial_rows = len(df_all_epcs)
-    df_all_epcs.drop_duplicates(subset=['uprn'], keep='first', inplace=True)
+    # Sort by date (oldest to newest) so the most recent is last
+    df_all_epcs.sort_values('INSPECTION_DATE', ascending=True, inplace=True)
+    # Keep the last (most recent) occurrence for each uprn
+    df_all_epcs.drop_duplicates(subset=['uprn'], keep='last', inplace=True)
     final_rows = len(df_all_epcs)
     
     if initial_rows > final_rows:
