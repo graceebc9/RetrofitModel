@@ -124,6 +124,9 @@ def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col):
         print(f"Processing log file: {log_file}...")
         filename =  log_file.split('/')[-1]
         new_log_path= os.path.join(new_log_epc_dir, filename)
+        if os.path.exists(new_log_path):
+            print('skipping')
+            continue 
         # Load just this one log file
         df_log = pd.read_csv(log_file)    
         df_log=df_log.drop_duplicates() 
