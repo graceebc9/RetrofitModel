@@ -10,7 +10,7 @@ import psutil
 from functools import wraps
 
 
-def get_scenario_columns(scenario_list):
+def get_scenario_columns(scenario_list, epc=False):
     """
     Generate column names and dtypes for the new data format.
     
@@ -117,7 +117,16 @@ def get_scenario_columns(scenario_list):
   
             for col in elec_perc_cols  :
                 dtypes[col] = 'float64'
-    
+        if epc: 
+            epc_cols = ['CURRENT_ENERGY_RATING',
+                                'POTENTIAL_ENERGY_RATING',
+                                'CURRENT_ENERGY_EFFICIENCY',
+                                'POTENTIAL_ENERGY_EFFICIENCY',
+                                'INSPECTION_DATE']
+            fin_cols.extend(epc_cols)
+            for x in epc_cols:
+                dtypes[x] = 'object'
+
     return fin_cols, dtypes
 
 
@@ -166,7 +175,7 @@ def memory_profiler(func):
 
 
 @memory_profiler
-def load_data(input_pattern, scenario_list, validate_columns=True):
+def load_data(input_pattern, scenario_list, validate_columns=True, epc=False ):
     """
     Load and concatenate CSV files matching the pattern.
     
@@ -196,7 +205,7 @@ def load_data(input_pattern, scenario_list, validate_columns=True):
         raise FileNotFoundError(f"No files found matching pattern: {input_pattern}")
 
     # Get expected columns
-    fin_cols, dtypes = get_scenario_columns(scenario_list)
+    fin_cols, dtypes = get_scenario_columns(scenario_list, epc)
     print(f"\nExpecting {len(fin_cols)} columns for {len(scenario_list)} scenarios")
     
     res = []
