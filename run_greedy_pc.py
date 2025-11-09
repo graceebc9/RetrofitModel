@@ -57,7 +57,7 @@ def main():
         # INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/test/new_log_epc/*.csv'
         scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
-        run_greedy_runs=False  
+        run_greedy_runs=True   
         budgets = [1_000_000, 10_000_000, 100_000_000]
         loft_probs = [0.65, 0.95]
         equity_factor =  0.8 
@@ -93,15 +93,19 @@ def main():
             loft_probs = [0.95 ] 
         else: 
             loft_probs = [0.65, 0.95] 
+ 
         equity_factor = 0.8 
+ 
     
 
     YEARS = 5
     N_SIMULATIONS = 5000
+ 
     # Carbon factors (kg CO2/kWh)
     GAS_CARBON_FACTOR=0.18      
     ELEC_CARBON_FACTOR=0.19338  
     targeted_or_epc='targeted'
+ 
     greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_combo_ef{equity_factor}', 'runs')
        
     epc=True 
@@ -195,32 +199,7 @@ def main():
                         output_dir,  
                         
                     )
-            
-                    #     # raise Exception('Baselin results empty ')
-                    # if combined_results.empty: 
-                    #     raise Exception('Combined results empty ')
-                    
-                    # # Save results to CSV
-                    # baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
-                    # combined_path = os.path.join(output_dir, f'combined_results.csv')
-                    
-                    # baseline_selection.to_csv(baseline_path, index=False)
-                    # combined_results.to_csv(combined_path, index=False)
-                    
-                    # summary_logger.info(f"Baseline selection saved to: {baseline_path}")
-                    # summary_logger.info(f"Combined results saved to: {combined_path}")
-                    
-                    # # Generate visualization
-                    # summary_logger.info("\nGenerating visualization...")
-                    # plot_greedy_distribution_analysis(
-                    #     baseline_df=baseline_selection,
-                    #     selected_df=combined_results,
-                    #     scenario_name=f'£{budget:,} Budget - All Epistemic Runs',
-                    #     output_dir=output_dir
-                    # )
-                    
-                    # summary_logger.info("Analysis complete!")
-                    # print(f"✓ Results saved to: {output_dir}")
+             
                     
                 except Exception as e:
                     summary_logger.error(f"Error in analysis: {e}")
