@@ -16,8 +16,8 @@ if running_locally:
     lk = pd.read_csv('/Volumes/T9/2024_Data_downloads/Eng_wales_boundary_shapefiles/Local_Authority_District_to_Region_(December_2022)_Lookup_in_England.csv')
     epc_pattern = '/Volumes/T9/2024_Data_downloads/2025_epc_database/all-domestic-certificates'
 else:
-    LOG_FILE_PATTERN = "/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all_v4/NE/*.csv"
-    new_log_epc_dir='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/2_logs_with_epc'
+    LOG_FILE_PATTERN = "/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v5/NE/*file.csv"
+    new_log_epc_dir='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/v5_logs_with_epc'
 
     epc_pattern = '/home/gb669/rds/hpc-work/energy_map/data/epc_database/all-domestic-certificates'
     lk = pd.read_csv('/home/gb669/rds/hpc-work/energy_map/RetrofitModel/lookup_data_ew/Local_Authority_District_to_Region_(December_2022)_Lookup_in_England.csv')
@@ -32,7 +32,7 @@ for ne in nelads:
 
  
 EPC_COLS_TO_KEEP = [ 'UPRN',
-                    'INSPECTION_DATE',
+'INSPECTION_DATE',
 'CURRENT_ENERGY_RATING',
  'POTENTIAL_ENERGY_RATING',
  'CURRENT_ENERGY_EFFICIENCY',
@@ -90,10 +90,7 @@ def load_all_epc_data(epc_files_list, columns_to_load, uprn_col_name):
     # If a UPRN appears in multiple EPC files, we keep the *first* one.
     # You might want to sort by date and keep 'last' if you have a date column.
     initial_rows = len(df_all_epcs)
-    # Sort by date (oldest to newest) so the most recent is last
-    df_all_epcs.sort_values('INSPECTION_DATE', ascending=True, inplace=True)
-    # Keep the last (most recent) occurrence for each uprn
-    df_all_epcs.drop_duplicates(subset=['uprn'], keep='last', inplace=True)
+    df_all_epcs.drop_duplicates(subset=['uprn'], keep='first', inplace=True)
     final_rows = len(df_all_epcs)
     
     if initial_rows > final_rows:
@@ -124,9 +121,6 @@ def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col):
         print(f"Processing log file: {log_file}...")
         filename =  log_file.split('/')[-1]
         new_log_path= os.path.join(new_log_epc_dir, filename)
-        if os.path.exists(new_log_path):
-            print('skipping')
-            continue 
         # Load just this one log file
         df_log = pd.read_csv(log_file)    
         df_log=df_log.drop_duplicates() 
