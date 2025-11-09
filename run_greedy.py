@@ -55,12 +55,16 @@ def main():
         # INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*.csv'
         scenario_list = ['wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
+ 
+
+ 
         run_greedy_runs=True 
+ 
         budgets = [1_000_000, 10_000_000, 100_000_000]
         loft_probs = [0.65]
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
 
- 
+        run_greedy_runs=True  
     else:
         BASE_DIR = os.getenv('BASE_DIR')
         INPUT_FILES_PATH = os.getenv('INPUT_FILES_PATH') 
@@ -81,9 +85,15 @@ def main():
             budgets=[100_000_000]
         elif BUDGET_SETTING=='3':
             budgets=[10_000_000]
-        
-        else:
+        elif BUDGET_SETTING=='4': 
+            budgets=[200_000_000]
+        elif BUDGET_SETTING=='5': 
+            budgets=[800_000_000]
+            
+        elif BUDGET_SETTING=='6':
             budgets = [10_000_000, 100_000_000, 1_000_000_000]
+        else:
+            budgets = [10_000_000, 100_000_000, 200_000_000,  800_000_000, 1_000_000_000]
         loft_setting = os.getenv('loft_setting') 
         if loft_setting=='1':
             loft_probs = [0.65 ]
@@ -96,8 +106,8 @@ def main():
 
     YEARS = 5
     N_SIMULATIONS = 5000
-    ELEC_CARBON_FACTOR = 0.2
-    GAS_CARBON_FACTOR = 0.2
+    GAS_CARBON_FACTOR=0.18      
+    ELEC_CARBON_FACTOR=0.19338  
     
     greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs')
        
@@ -235,9 +245,11 @@ def main():
     print("\n" + "="*80)
     print("Start post proces ") 
     print("="*80)
-
+    
     for LOFT_VALUE in loft_probs:
+ 
         OUTPUT_PATH=os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}')
+ 
         # Ensure output directory exists
         os.makedirs(OUTPUT_PATH, exist_ok = True )
         post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH )

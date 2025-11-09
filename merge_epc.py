@@ -98,8 +98,8 @@ def load_all_epc_data(epc_files_list, columns_to_load, uprn_col_name):
 
     print(f"Loaded {len(df_all_epcs)} unique EPC records into memory.")
     return df_all_epcs
-
-
+    
+    
 def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col):
     """
     Iterates through log files one-by-one and merges them against 
@@ -110,38 +110,44 @@ def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col):
     if not log_files:
         print(f"Warning: No log files found at {log_file_pattern}")
         return pd.DataFrame()
-
     if df_all_epcs.empty:
         print("Warning: EPC data is empty. Cannot perform merge.")
         return pd.DataFrame()
  
-
     print("\n--- Starting Log File Processing (One by One) ---")
     for log_file in log_files:
+        filename = log_file.split('/')[-1]
+        new_log_path = os.path.join(new_log_epc_dir, filename)
+        
+        # Check if output file already exists
+        if os.path.exists(new_log_path):
+            print(f"Skipping {log_file} - already processed (output exists at {new_log_path})")
+            continue
+        
         print(f"Processing log file: {log_file}...")
-        filename =  log_file.split('/')[-1]
-        new_log_path= os.path.join(new_log_epc_dir, filename)
+        
         # Load just this one log file
         df_log = pd.read_csv(log_file)    
-        df_log=df_log.drop_duplicates() 
+        df_log = df_log.drop_duplicates() 
+        
         # Prepare for merge
         df_log[log_uprn_col] = df_log[log_uprn_col].astype(str)
         if log_uprn_col != 'uprn':
             df_log = df_log.rename(columns={log_uprn_col: 'uprn'})
-
+        
         # --- The Merge ---
-      
         merged_chunk = pd.merge(
-                df_log,       # The small log DataFrame
-                df_all_epcs,  # The big, in-memory EPC DataFrame
-                on='uprn',    # The common column
-                how='inner'   # Only keep matches
-            )
+            df_log,       # The small log DataFrame
+            df_all_epcs,  # The big, in-memory EPC DataFrame
+            on='uprn',    # The common column
+            how='inner'   # Only keep matches
+        )
+        
         if not merged_chunk.empty:
-            merged_chunk.to_csv(new_log_path, index=False  )
-            print('chunk saved')
-
- 
+            merged_chunk.to_csv(new_log_path, index=False)
+            print(f'Chunk saved to {new_log_path}')
+        else:
+            print(f'No matches found for {log_file}, skipping save.')
 
 # --- Main script execution ---
 if __name__ == "__main__":
