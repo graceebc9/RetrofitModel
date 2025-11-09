@@ -83,9 +83,9 @@ def main():
             budgets=[100_000_000]
         elif BUDGET_SETTING=='3':
             budgets=[10_000_000]
-        
         else:
-            budgets = [10_000_000, 100_000_000, 1_000_000_000]
+            budgets = [1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
+            
         loft_setting = os.getenv('loft_setting') 
         if loft_setting=='1':
             loft_probs = [0.65 ]
@@ -93,13 +93,14 @@ def main():
             loft_probs = [0.95 ] 
         else: 
             loft_probs = [0.65, 0.95] 
-        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
+        equity_factor = 0.8 
     
 
     YEARS = 5
     N_SIMULATIONS = 5000
-    ELEC_CARBON_FACTOR = 0.2
-    GAS_CARBON_FACTOR = 0.2
+    # Carbon factors (kg CO2/kWh)
+    GAS_CARBON_FACTOR=0.18      
+    ELEC_CARBON_FACTOR=0.19338  
     targeted_or_epc='targeted'
     greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_combo_ef{equity_factor}', 'runs')
        
