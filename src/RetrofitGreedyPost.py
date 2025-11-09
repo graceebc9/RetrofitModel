@@ -17,9 +17,9 @@ import seaborn as sns
 # Note: Using sys.path.append is brittle. Consider making RetrofitModel
 # an installable package (e.g., with `pip install -e .`)
  
-from .RetrofitGreedyAnalysis import plot_greedy_compairosn_main
+from .RetrofitGreedyAnalysis import plot_greedy_compairosn_main, plot_carbon_by_persona, plot_count_by_group,  plot_metric_by_group_mean
  
- 
+
 
 # ==============================================================================
 # 2. DATA LOADING FUNCTION
@@ -270,7 +270,39 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
 
     # --- 5. Plot Results ---
     print(f"--- Generating plots in: {OUTPUT_PATH} ---")
-    plot_greedy_compairosn_main(comparison_df, output_dir=OUTPUT_PATH, y_axis_zero=True )
+    scenario_colors = plot_greedy_compairosn_main(comparison_df, output_dir=OUTPUT_PATH, y_axis_zero=True )
+
+         
+    plot_carbon_by_persona(results_df, scenario_colors, 
+                           os.path.join(OUTPUT_PATH, "12_carbon_per_persona.png") 
+                           , y_axis_zero=True)
+    
+    plot_metric_by_group_mean(results_df, scenario_colors, 
+                         filename=os.path.join(OUTPUT_PATH, "13_cost_per_Ton_per_persona.png")  , 
+                         value_col='cost_per_net_ton_co2_kg_mean',
+                         group_col='meta_socio_persona',
+                         xlabel='Socio-economic Persona',
+                         ylabel='Total Cost per Ton Saved (£)',
+                         title='Distribution of Total Cost per Ton by Persona',
+                         y_axis_zero=True)
+    
+    plot_metric_by_group_mean(results_df, scenario_colors, 
+                         filename=os.path.join(OUTPUT_PATH, "14_cost_per_intervention_prr_persona.png")  , 
+                         value_col='cost_of_intervention_mean',
+                         group_col='meta_socio_persona',
+                         xlabel='Socio-economic Persona',
+                         ylabel='Total Cost per Intervention (£)',
+                         title='Distribution of Total Cost per Intervention by Persona',
+                         y_axis_zero=True)
+    
+    plot_count_by_group(results_df, scenario_colors, 
+                        filename=os.path.join(OUTPUT_PATH, "15_counts_persona.png"), 
+                       group_col='meta_socio_persona',
+                       xlabel='Socio-economic Persona',
+                       ylabel='Number of Projects',
+                       title='Distribution of Project Count by Persona',
+                       y_axis_zero=True)
+
     print("✓ Plotting complete.")
 
 

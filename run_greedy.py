@@ -52,10 +52,10 @@ def main():
     if running_locally:
         personas_path='/Users/gracecolverd/RetrofitModel/NE_region_personas.csv'
         BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
-        INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
+        # INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*.csv'
         scenario_list = ['wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
-        run_greedy_runs=False 
+        run_greedy_runs=True 
         budgets = [1_000_000, 10_000_000, 100_000_000]
         loft_probs = [0.65]
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
@@ -237,7 +237,7 @@ def main():
     print("="*80)
 
     for LOFT_VALUE in loft_probs:
-        OUTPUT_PATH=os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{BUDGET_SETTING}')
+        OUTPUT_PATH=os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}')
         # Ensure output directory exists
         os.makedirs(OUTPUT_PATH, exist_ok = True )
         post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH )
