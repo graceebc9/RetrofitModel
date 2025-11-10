@@ -8,9 +8,8 @@
 #SBATCH --mem=250G
 #SBATCH --output=logs_greedy/rmodel_%A_%a.out
 #SBATCH --error=logs_greedy/rmodel_%A_%a.err
-#SBATCH --array=1-6
+#SBATCH --array=0-9  # 5 budgets × 2 lofts = 10 combinations
  
-
 # Load required modules
 . /etc/profile.d/modules.sh
 module purge
@@ -27,21 +26,35 @@ conda activate /home/gb669/.conda/envs/nebula
 export SLURM_SUBMIT_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel'
 cd $SLURM_SUBMIT_DIR
 
-export BASE_DIR='/rds/user/gb669/hpc-work/energy_map/RetrofitModel/retrofit_scenario_analysis/2_greedy/all_v4'
-export INPUT_FILES_PATH='/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all_v4/NE/*.csv' 
-export RUN_GREEDY_RUNS_YN='Y'  
-export greedy_equity_weights=2
-export BUDGET_SETTING=${SLURM_ARRAY_TASK_ID}  # Use array task ID as BUDGET_SETTING
-export loft_setting=2
+export BASE_DIR='/rds/user/gb669/hpc-work/energy_map/RetrofitModel/retrofit_scenario_analysis/2_greedy/v5'
+export INPUT_FILES_PATH='/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v5/NE/*.csv' 
+export RUN_GREEDY_RUNS_YN='Y'
 
 # Create logs directory
-mkdir -p logs
+mkdir -p logs_greedy
 
-  
+# Define parameter arrays
+BUDGET_SETTINGS=(1 2 3 4 5)
+LOFT_SETTINGS=(1 2)
+
+# Calculate which combination to use based on SLURM_ARRAY_TASK_ID
+# Formula: task_id = budget_idx * n_loft + loft_idx
+
+n_loft=2
+
+budget_idx=$((SLURM_ARRAY_TASK_ID / n_loft))
+loft_idx=$((SLURM_ARRAY_TASK_ID % n_loft))
+
+# Set the actual parameter values
+export BUDGET_SETTING=${BUDGET_SETTINGS[$budget_idx]}
+export loft_setting=${LOFT_SETTINGS[$loft_idx]}
+
 # Log job info
 echo "Job started at: $(date)"
 echo "Running on node: $HOSTNAME"
-echo "Processing batch path: $batch_path"
+echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
+echo "BUDGET_SETTING: $BUDGET_SETTING"
+echo "loft_setting: $loft_setting"
 
 # Run the processing script
-python run_greedy.py "$batch_path"
+python run_greedy.py
