@@ -67,7 +67,7 @@ def main():
         BASE_DIR = os.getenv('BASE_DIR')
         INPUT_FILES_PATH = os.getenv('INPUT_FILES_PATH') 
         personas_path='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/personas/NE_region_personas.csv'
-        scenario_list = ['wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
+        scenario_list =  ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
         
         run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
         
@@ -78,13 +78,18 @@ def main():
         BUDGET_SETTING = os.getenv('BUDGET_SETTING')
         
         if BUDGET_SETTING=='1':
-            budgets=[1_000_000_000]
+            budgets=[1_000_000]
         elif BUDGET_SETTING=='2':
-            budgets=[100_000_000]
-        elif BUDGET_SETTING=='3':
             budgets=[10_000_000]
+        elif BUDGET_SETTING=='3':
+            budgets=[50_000_000]
+        elif BUDGET_SETTING=='4':
+            budgets=[80_000_000]
+        elif BUDGET_SETTING=='5':
+            budgets=[100_000_000]
+            
         else:
-            budgets = [1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
+            budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
             
         loft_setting = os.getenv('loft_setting') 
         if loft_setting=='1':
@@ -94,7 +99,7 @@ def main():
         else: 
             loft_probs = [0.65, 0.95] 
  
-        equity_factor = 0.8 
+        equity_factor = float( os.getenv('equity_factor') ) 
  
     
 

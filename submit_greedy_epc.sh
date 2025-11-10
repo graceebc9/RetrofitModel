@@ -1,15 +1,15 @@
 #!/bin/bash
 #SBATCH -A CULLEN-SL3-CPU
 #SBATCH -p icelake
-#SBATCH --time=02:40:00
+#SBATCH --time=00:30:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=NONE
-#SBATCH --mem=50G
+#SBATCH --mem=220G
+#SBATCH --array=0-19  # 4 budgets × 2 lofts × 1 equity = 10 combinations
 #SBATCH --output=logs_greedy_epc/rmodel_%A_%a.out
 #SBATCH --error=logs_greedy_epc/rmodel_%A_%a.err
  
-
 # Load required modules
 . /etc/profile.d/modules.sh
 module purge
@@ -28,17 +28,39 @@ cd $SLURM_SUBMIT_DIR
 
 export BASE_DIR='/rds/user/gb669/hpc-work/energy_map/RetrofitModel/retrofit_scenario_analysis/2_greedy/combo_epc'
 export INPUT_FILES_PATH='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/v5_logs_with_epc/*.csv' 
- 
-
+export run_g_yn='Y'
 
 # Create logs directory
-mkdir -p logs
+mkdir -p logs_greedy_epc
 
-  
+# Define parameter arrays
+BUDGET_SETTINGS=(1 2 3 4 5)
+LOFT_SETTINGS=(1 2)
+EQUITY_FACTORS=(0.8 1)
+
+# Calculate which combination to use based on SLURM_ARRAY_TASK_ID
+# Formula: task_id = budget_idx * (n_loft * n_equity) + loft_idx * n_equity + equity_idx
+
+n_loft=2
+n_equity=2
+
+budget_idx=$((SLURM_ARRAY_TASK_ID / (n_loft * n_equity)))
+remainder=$((SLURM_ARRAY_TASK_ID % (n_loft * n_equity)))
+loft_idx=$((remainder / n_equity))
+equity_idx=$((remainder % n_equity))
+
+# Set the actual parameter values
+export BUDGET_SETTING=${BUDGET_SETTINGS[$budget_idx]}
+export loft_setting=${LOFT_SETTINGS[$loft_idx]}
+export equity_factor=${EQUITY_FACTORS[$equity_idx]}
+
 # Log job info
 echo "Job started at: $(date)"
 echo "Running on node: $HOSTNAME"
-echo "Processing batch path: $batch_path"
+echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
+echo "BUDGET_SETTING: $BUDGET_SETTING"
+echo "loft_setting: $loft_setting"
+echo "equity_factor: $equity_factor"
 
 # Run the processing script
-python run_greedy_pc.py "$batch_path"
+python run_greedy_pc.py
