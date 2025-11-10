@@ -69,6 +69,7 @@ def plot_box_distribution(df, y_col, y_label, title, filename):
     
     plt.title(title, fontweight='bold')
     plt.ylabel(y_label)
+    plt.ylim(bottom=0)
     plt.xlabel("")
     plt.tight_layout()
     plt.savefig(filename, dpi=300)
