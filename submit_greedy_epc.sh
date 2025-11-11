@@ -5,8 +5,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=NONE
-#SBATCH --mem=220G
-#SBATCH --array=0-19  # 4 budgets × 2 lofts × 1 equity = 10 combinations
+#SBATCH --mem=250G
+#SBATCH --array=0  # 4 budgets × 2 lofts × 1 equity = 10 combinations
 #SBATCH --output=logs_greedy_epc/rmodel_%A_%a.out
 #SBATCH --error=logs_greedy_epc/rmodel_%A_%a.err
  
