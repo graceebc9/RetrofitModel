@@ -57,7 +57,7 @@ def main():
         scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
  
 
- 
+         setting_name = 'lcoal'
         run_greedy_runs=True 
  
         budgets = [1_000_000, 10_000_000, 100_000_000]
@@ -147,9 +147,12 @@ def main():
         
         # Filter data
         print("\nFiltering data...")
-        pdf = proc_df[proc_df['premise_type'] != 'Domestic_outbuilding'].copy()
-        pdf = pdf[~pdf['premise_type'].isna()]
-        df = pdf.copy()
+        # Option 2: Filter in place (destroys proc_df but saves even more memory)
+        proc_df = proc_df[
+            (proc_df['premise_type'] != 'Domestic_outbuilding') & 
+            (~proc_df['premise_type'].isna())
+        ]
+        df = proc_df  # Just a reference, no copy
         print(f"After filtering: {len(df)} rows")
 
     
@@ -254,8 +257,10 @@ def main():
     print("="*80)
     
     for LOFT_VALUE in loft_probs:
- 
-        OUTPUT_PATH=os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}')
+        if number:
+            OUTPUT_PATH=os.path.join(BASE_DIR, f'greedy_vis_num{number}', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
+        else:
+            OUTPUT_PATH=os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
  
         # Ensure output directory exists
         os.makedirs(OUTPUT_PATH, exist_ok = True )
@@ -266,3 +271,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+ 
