@@ -110,8 +110,14 @@ def main():
     GAS_CARBON_FACTOR=0.18      
     ELEC_CARBON_FACTOR=0.19338  
     targeted_or_epc='targeted'
+    
+    number=4 
+    if number:
+        greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_combo_ef{equity_factor}_{number}' , 'runs') 
+    else:
+        greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_combo_ef{equity_factor}', 'runs')
  
-    greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_combo_ef{equity_factor}', 'runs')
+    
        
     epc=True 
 
@@ -122,7 +128,10 @@ def main():
         
         # Load and concatenate input data
         print("\nLoading input data...")
-        res_df = load_data(INPUT_FILES_PATH, scenario_list, epc=epc)
+        if  number:
+            res_df = load_data(INPUT_FILES_PATH, scenario_list, epc=epc, number=number)
+        else:    
+            res_df = load_data(INPUT_FILES_PATH, scenario_list, epc=epc)
         epc_col = 'CURRENT_ENERGY_RATING'   
         if epc:
             if epc_col not in res_df.columns:
