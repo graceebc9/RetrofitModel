@@ -17,9 +17,9 @@ if [ "$ON_HPC" = true ]; then
 else
     # Local paths
     INPUT_PATTERN='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*.csv'
-    # INPUT_PATTERN="/Users/gracecolverd/Downloads/all/*.csv"
+    INPUT_PATTERN="/Users/gracecolverd/Downloads/new_joint/*.csv"
     # OUTPUT_DIR='/Volumes/T9/2024_Data_downloads/2025_10_RetrofitModel/retrofit_analysis/all/NE_all_scenarios'
-    OUTPUT_DIR='/Users/gracecolverd/RetrofitModel/test/retrofit_scenario/all/NE/*.csv'
+    OUTPUT_DIR='/Users/gracecolverd/RetrofitModel/test/retrofit_scenario/joint_new'
     SCRIPT_PATH='energy_analysis_script.py'
 fi
 
@@ -37,8 +37,12 @@ RUN_NAME="NE_all_scenarios_5yr_$(date +%Y%m%d)"
 # MEASURE_TYPES="joint_heat_ins_decay"
 
 # Option 2: Multiple scenarios 
-SCENARIOS="wall_installation loft_installation join_heat_ins_decay heat_pump_only"
-MEASURE_TYPES="wall_installation loft_installation join_heat_ins_decay heat_pump_only"
+# SCENARIOS="wall_installation loft_installation join_heat_ins_decay heat_pump_only joint_heat_loft_decay joint_heat_wall_decay"
+# MEASURE_TYPES="wall_installation loft_installation join_heat_ins_decay heat_pump_only joint_heat_loft_decay joint_heat_wall_decay"
+
+ 
+SCENARIOS="joint_heat_loft_decay joint_heat_wall_decay"
+MEASURE_TYPES="joint_heat_loft_decay joint_heat_wall_decay"
 
  
 # ==============================================================================

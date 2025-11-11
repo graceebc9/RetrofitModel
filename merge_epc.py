@@ -16,8 +16,8 @@ if running_locally:
     lk = pd.read_csv('/Volumes/T9/2024_Data_downloads/Eng_wales_boundary_shapefiles/Local_Authority_District_to_Region_(December_2022)_Lookup_in_England.csv')
     epc_pattern = '/Volumes/T9/2024_Data_downloads/2025_epc_database/all-domestic-certificates'
 else:
-    LOG_FILE_PATTERN = "/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/all_v4/NE/*.csv"
-    new_log_epc_dir=''
+    LOG_FILE_PATTERN = "/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v5/NE/*file.csv"
+    new_log_epc_dir='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/v5_logs_with_epc'
 
     epc_pattern = '/home/gb669/rds/hpc-work/energy_map/data/epc_database/all-domestic-certificates'
     lk = pd.read_csv('/home/gb669/rds/hpc-work/energy_map/RetrofitModel/lookup_data_ew/Local_Authority_District_to_Region_(December_2022)_Lookup_in_England.csv')
@@ -32,7 +32,7 @@ for ne in nelads:
 
  
 EPC_COLS_TO_KEEP = [ 'UPRN',
-                    'INSPECTION_DATE',
+'INSPECTION_DATE',
 'CURRENT_ENERGY_RATING',
  'POTENTIAL_ENERGY_RATING',
  'CURRENT_ENERGY_EFFICIENCY',
@@ -86,14 +86,14 @@ def load_all_epc_data(epc_files_list, columns_to_load, uprn_col_name):
     if uprn_col_name != 'uprn':
         df_all_epcs = df_all_epcs.rename(columns={uprn_col_name: 'uprn'})
 
-    # --- Handle Duplicates ---
-    # If a UPRN appears in multiple EPC files, we keep the *first* one.
-    # You might want to sort by date and keep 'last' if you have a date column.
+ 
     initial_rows = len(df_all_epcs)
-    # Sort by date (oldest to newest) so the most recent is last
-    df_all_epcs.sort_values('INSPECTION_DATE', ascending=True, inplace=True)
-    # Keep the last (most recent) occurrence for each uprn
-    df_all_epcs.drop_duplicates(subset=['uprn'], keep='last', inplace=True)
+    # Sort by date (newest first) before dropping duplicates
+    df_all_epcs.sort_values('INSPECTION_DATE', ascending=False, inplace=True)
+
+ 
+    df_all_epcs.drop_duplicates(subset=['uprn'], keep='first', inplace=True)
+    
     final_rows = len(df_all_epcs)
     
     if initial_rows > final_rows:
@@ -101,8 +101,8 @@ def load_all_epc_data(epc_files_list, columns_to_load, uprn_col_name):
 
     print(f"Loaded {len(df_all_epcs)} unique EPC records into memory.")
     return df_all_epcs
-
-
+    
+    
 def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col):
     """
     Iterates through log files one-by-one and merges them against 
@@ -113,41 +113,46 @@ def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col):
     if not log_files:
         print(f"Warning: No log files found at {log_file_pattern}")
         return pd.DataFrame()
-
     if df_all_epcs.empty:
         print("Warning: EPC data is empty. Cannot perform merge.")
         return pd.DataFrame()
  
-
     print("\n--- Starting Log File Processing (One by One) ---")
     for log_file in log_files:
-        print(f"Processing log file: {log_file}...")
-        filename =  log_file.split('/')[-1]
-        new_log_path= os.path.join(new_log_epc_dir, filename)
+        filename = log_file.split('/')[-1]
+        new_log_path = os.path.join(new_log_epc_dir, filename)
+        
+        # Check if output file already exists
         if os.path.exists(new_log_path):
-            print('skipping')
-            continue 
+            print(f"Skipping {log_file} - already processed (output exists at {new_log_path})")
+            continue
+        
+        print(f"Processing log file: {log_file}...")
+        
         # Load just this one log file
         df_log = pd.read_csv(log_file)    
-    
+ 
+        df_log = df_log.drop_duplicates() 
+        
+ 
         # Prepare for merge
         df_log[log_uprn_col] = df_log[log_uprn_col].astype(str)
         if log_uprn_col != 'uprn':
             df_log = df_log.rename(columns={log_uprn_col: 'uprn'})
-
+        
         # --- The Merge ---
-      
         merged_chunk = pd.merge(
-                df_log,       # The small log DataFrame
-                df_all_epcs,  # The big, in-memory EPC DataFrame
-                on='uprn',    # The common column
-                how='inner'   # Only keep matches
-            )
+            df_log,       # The small log DataFrame
+            df_all_epcs,  # The big, in-memory EPC DataFrame
+            on='uprn',    # The common column
+            how='inner'   # Only keep matches
+        )
+        
         if not merged_chunk.empty:
-            merged_chunk.to_csv(new_log_path, index=False  )
-            print('chunk saved')
-
- 
+            merged_chunk.to_csv(new_log_path, index=False)
+            print(f'Chunk saved to {new_log_path}')
+        else:
+            print(f'No matches found for {log_file}, skipping save.')
 
 # --- Main script execution ---
 if __name__ == "__main__":
