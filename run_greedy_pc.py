@@ -155,10 +155,13 @@ def main():
   
         
         # Filter data
-        print("\nFiltering data...")
-        pdf = proc_df[proc_df['premise_type'] != 'Domestic_outbuilding'].copy()
-        pdf = pdf[~pdf['premise_type'].isna()]
-        df = pdf.copy()
+        # Option 2: Filter in place (destroys proc_df but saves even more memory)
+        proc_df = proc_df[
+            (proc_df['premise_type'] != 'Domestic_outbuilding') & 
+            (~proc_df['premise_type'].isna())
+        ]
+        df = proc_df 
+        
         print(f"After filtering: {len(df)} rows")
         if epc:
             if epc_col not in df.columns:
