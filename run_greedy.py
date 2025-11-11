@@ -54,19 +54,23 @@ def main():
         BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
         # INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*.csv'
-        scenario_list = ['wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
+        scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
+ 
+
+ 
         run_greedy_runs=True 
+ 
         budgets = [1_000_000, 10_000_000, 100_000_000]
         loft_probs = [0.65]
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
 
- 
+        run_greedy_runs=True  
     else:
         BASE_DIR = os.getenv('BASE_DIR')
         INPUT_FILES_PATH = os.getenv('INPUT_FILES_PATH') 
         personas_path='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/personas/NE_region_personas.csv'
-        scenario_list = ['wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
-        
+        scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
+        setting_name = 'v5'
         run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
         
         if run_g_yn=='N':
@@ -75,15 +79,20 @@ def main():
             run_greedy_runs=True 
         BUDGET_SETTING = os.getenv('BUDGET_SETTING')
         
-        if BUDGET_SETTING=='1':
-            budgets=[1_000_000_000]
-        elif BUDGET_SETTING=='2':
-            budgets=[100_000_000]
-        elif BUDGET_SETTING=='3':
-            budgets=[10_000_000]
         
+        if BUDGET_SETTING=='1':
+            budgets=[1_000_000]
+        elif BUDGET_SETTING=='2':
+            budgets=[10_000_000]
+        elif BUDGET_SETTING=='3':
+            budgets=[50_000_000]
+        elif BUDGET_SETTING=='4':
+            budgets=[80_000_000]
+        elif BUDGET_SETTING=='5':
+            budgets=[100_000_000]
         else:
-            budgets = [10_000_000, 100_000_000, 1_000_000_000]
+            budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
+        
         loft_setting = os.getenv('loft_setting') 
         if loft_setting=='1':
             loft_probs = [0.65 ]
@@ -96,13 +105,15 @@ def main():
 
     YEARS = 5
     N_SIMULATIONS = 5000
-    ELEC_CARBON_FACTOR = 0.2
-    GAS_CARBON_FACTOR = 0.2
+ 
+    GAS_CARBON_FACTOR=0.18      
+    ELEC_CARBON_FACTOR=0.19338  
     number=4 
     if number:
-        greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}' ) 
+        greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}' , setting_name ) 
     else:
-        greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs')
+        greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', setting_name )
+ 
        
 
     if run_greedy_runs: 
@@ -241,9 +252,11 @@ def main():
     print("\n" + "="*80)
     print("Start post proces ") 
     print("="*80)
-
+    
     for LOFT_VALUE in loft_probs:
+ 
         OUTPUT_PATH=os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}')
+ 
         # Ensure output directory exists
         os.makedirs(OUTPUT_PATH, exist_ok = True )
         post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH )
