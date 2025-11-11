@@ -161,7 +161,7 @@ def main():
             (~proc_df['premise_type'].isna())
         ]
         df = proc_df 
-        
+
         print(f"After filtering: {len(df)} rows")
         if epc:
             if epc_col not in df.columns:
@@ -187,9 +187,9 @@ def main():
                     f'Equity Factor {equity_factor}'
                 )
                     
-                baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
-                combined_path = os.path.join(output_dir, f'combined_results.csv')
-                combined_path = os.path.join(output_dir, f'equity_tracking_with_ranges.csv')
+     
+                baseline_path = os.path.join(output_dir, f'all_modes_equity_tracking.csv')
+                combined_path = os.path.join(output_dir, f'all_modes_selected_projects.csv')
 
                 if os.path.exists(baseline_path) and os.path.exists(combined_path):
                     print(f"✓ Results already exist for this configuration, skipping...")
