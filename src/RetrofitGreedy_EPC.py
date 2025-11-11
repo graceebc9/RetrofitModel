@@ -6,6 +6,8 @@ import numpy as np
 import os
 import logging
 from typing import List, Dict, Tuple, Any
+import gc  # For garbage collection
+import glob # For finding result files
 
 # --- Custom Imports ---
 from src.RetrofitEquity import EQUITY_WEIGHTS, calculate_social_equity_score
@@ -138,15 +140,17 @@ def _process_scenario(epi_df: pd.DataFrame,
         'pct_records_excluded': (n_excluded / len(epi_df) * 100) if len(epi_df) > 0 else 0
     }
 
+    # --- OPTIMIZATION: This is the ONLY main copy we will make ---
     scenario_df = epi_df[~epi_df[UPN_COL].isin(bad_upns)].copy()
 
     if scenario == LOFT_SCENARIO:
         scenario_df = scenario_df[~scenario_df[LOFT_EXISTS_COL]]
 
     if scenario_df.empty:
+        del scenario_df
         return pd.DataFrame(columns=FINAL_RANK_COLS), exclusion_stats
 
-    # --- Calculations & Sign Flipping ---
+    # --- Calculations & Sign Flipping (OPERATE IN-PLACE on scenario_df) ---
     flip_co2_mean = FLIP_CO2_TPL.format(scenario=scenario, stat_measure='mean')
     flip_co2_p95 = FLIP_CO2_TPL.format(scenario=scenario, stat_measure='p95')
     flip_co2_p5 = FLIP_CO2_TPL.format(scenario=scenario, stat_measure='p5')
@@ -165,25 +169,9 @@ def _process_scenario(epi_df: pd.DataFrame,
     scenario_df[weighted_cost_col] = (
         scenario_df[flip_cpt_mean] * (1 + (scenario_df[EQUITY_WEIGHT_COL] - 1) * equity_factor)
     )
-
-    # --- Standardize Output Columns ---
     scenario_df[RANK_COL_SCENARIO] = scenario
-    
-    final_selection = [
-        UPN_COL, PERSONA_COL, GAS_PERCENTILE_COL,
-        cost_col_mean, cost_col_p95, cost_col_p5,
-        flip_co2_mean, flip_co2_p95, flip_co2_p5,
-        flip_cpt_mean, flip_cpt_p95, flip_cpt_p5,
-        weighted_cost_col, RANK_COL_SCENARIO,
-        EPC_COL,
-        EPISTEMIC_COL,  # Include epistemic temporarily for mapping, EPC always
-    ]
 
-    # Map to final names ensuring order matches FINAL_RANK_COLS structure approximately
-    # We need to ensure the output dataframe exactly matches FINAL_RANK_COLS columns
-    df_rank = scenario_df[final_selection].copy()
-    
-    # Rename to standard columns
+    # --- OPTIMIZATION: Rename columns IN-PLACE ---
     rename_map = {
         UPN_COL: RANK_COL_UPN,
         PERSONA_COL: RANK_COL_PERSONA,
@@ -201,14 +189,17 @@ def _process_scenario(epi_df: pd.DataFrame,
         RANK_COL_SCENARIO: RANK_COL_SCENARIO,
         EPC_COL: EPC_COL,
         EPISTEMIC_COL: RANK_COL_EPI_RUN,
-       
     }
-    df_rank = df_rank.rename(columns=rename_map)
+    scenario_df.rename(columns=rename_map, inplace=True)
     
-    # Ensure only final columns are kept and in correct order
-    df_rank = df_rank[[col for col in FINAL_RANK_COLS if col in df_rank.columns]]
+    # --- OPTIMIZATION: Select final columns and make ONE small copy ---
+    final_cols_to_keep = [col for col in FINAL_RANK_COLS if col in scenario_df.columns]
+    df_rank_final = scenario_df[final_cols_to_keep].copy()
 
-    return df_rank, exclusion_stats
+    # --- OPTIMIZATION: Delete the large intermediate dataframe ---
+    del scenario_df
+
+    return df_rank_final, exclusion_stats
 
 def _log_epistemic_run_equity_analysis(selected_projects_df: pd.DataFrame,
                                     epi_run: str,
@@ -233,7 +224,7 @@ def _log_epistemic_run_equity_analysis(selected_projects_df: pd.DataFrame,
     }
 
 def _process_epistemic_run(epi_run: str,
-                           epi_df_full: pd.DataFrame,
+                           epi_df_full: pd.DataFrame, # This is already a copy
                            scenario_list: List[str],
                            prob_loft: float,
                            equity_factor: float,
@@ -241,14 +232,10 @@ def _process_epistemic_run(epi_run: str,
                            detail_logger: logging.Logger) -> Tuple[pd.DataFrame, List[Dict], List[Dict], List[Dict]]:
     """Runs all three scenarios (Baseline, Targeted, EPC) for one epistemic run."""
     
- 
-    # --- DEBUG START ---
-    if EPC_COL not in epi_df_full.columns:
-        detail_logger.error(f"Available columns: {epi_df_full.columns.tolist()}")
-    # --- DEBUG END ---
-
     # 1. Prepare the universal pool of interventions for this run
-    epi_df = assign_random_loft(epi_df_full.copy(), prob_loft)
+    # epi_df_full is *already* a copy, just assign_random_loft to it
+    epi_df = assign_random_loft(epi_df_full, prob_loft)
+    
     all_ranks, all_excl = [], []
     for scen in scenario_list:
         df_r, excl = _process_scenario(epi_df, scen, equity_factor, detail_logger)
@@ -257,11 +244,18 @@ def _process_epistemic_run(epi_run: str,
         all_excl.append(excl)
 
     if not all_ranks:
+        del epi_df # Free memory
         return pd.DataFrame(), [], [], []
 
+    # We are done with epi_df, free its memory
+    del epi_df
+    
     wdf = pd.concat(all_ranks)
+    
+    # We are done with the list of DFs, free it
+    del all_ranks
+    
     wdf[RANK_COL_EPI_RUN] = epi_run
-    # Ensure we don't have NaN costs that might break algos
     wdf = wdf.dropna(subset=[RANK_COL_COST, RANK_COL_COST_PER_TON]) 
 
     run_results = []
@@ -269,7 +263,6 @@ def _process_epistemic_run(epi_run: str,
     run_equity = []
 
     # --- MODE 1: BASELINE (Pure Cost Effectiveness) ---
-    # "Every house has one intervention based on cost effectiveness" -> then Knapsack it.
     detail_logger.info(f"  > Running BASELINE (Pure Cost) selection...")
     baseline_pool = (wdf.sort_values(RANK_COL_COST_PER_TON, ascending=True)
                         .drop_duplicates(subset=RANK_COL_UPN, keep='first'))
@@ -286,9 +279,11 @@ def _process_epistemic_run(epi_run: str,
         res_base['remaining_funds'] = rem_base
         run_results.append(res_base)
         run_equity.append(_log_epistemic_run_equity_analysis(res_base, epi_run, 'baseline', detail_logger))
+    
+    del baseline_pool
+    if 'res_base' in locals(): del res_base
 
     # --- MODE 2: TARGETED (Equity Weighted) ---
-    # "Target using current target method" -> Weighted best per house, then Knapsack.
     detail_logger.info(f"  > Running TARGETED (Equity Weighted) selection...")
     targeted_pool = (wdf.sort_values(RANK_COL_WEIGHTED_COST, ascending=True)
                         .drop_duplicates(subset=RANK_COL_UPN, keep='first'))
@@ -306,14 +301,16 @@ def _process_epistemic_run(epi_run: str,
         run_results.append(res_targ)
         run_equity.append(_log_epistemic_run_equity_analysis(res_targ, epi_run, 'targeted', detail_logger))
 
+    del targeted_pool
+    if 'res_targ' in locals(): del res_targ
+
     # --- MODE 3: EPC ---
     detail_logger.info(f"  > Running EPC selection...")
-    # EPC algo handles its own filtering usually, pass full wdf
     res_epc, rem_epc = select_epc_algo(
-        df_knapsack=wdf,
+        df_knapsack=wdf, # Pass the full wdf
         budget=scenario_budget,
         cost_column=RANK_COL_COST,
-        efficiency_column=RANK_COL_COST_PER_TON # fallback efficiency if needed by algo
+        efficiency_column=RANK_COL_COST_PER_TON 
     )
     if not res_epc.empty:
         res_epc = res_epc.copy()
@@ -321,9 +318,15 @@ def _process_epistemic_run(epi_run: str,
         res_epc['remaining_funds'] = rem_epc
         run_results.append(res_epc)
         run_equity.append(_log_epistemic_run_equity_analysis(res_epc, epi_run, 'epc', detail_logger))
+    
+    if 'res_epc' in locals(): del res_epc
+    
+    # We are now done with wdf, free it
+    del wdf
 
-    # Combine results for this epistemic run
     combined_run_df = pd.concat(run_results) if run_results else pd.DataFrame()
+    
+    del run_results
 
     # Generate basic performance logs per mode
     if not combined_run_df.empty:
@@ -338,10 +341,48 @@ def _process_epistemic_run(epi_run: str,
                 'total_co2': row[RANK_COL_CO2_SAVED].sum(),
             })
 
+    gc.collect()
+
     return combined_run_df, all_excl, run_perf, run_equity
 
-def log_comprehensive_summary(combined_results, all_equity, budget, 
-                              equity_factor, output_dir, summary_logger):
+
+def _aggregate_results_from_disk(temp_dir: str, detail_logger: logging.Logger) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Reads all individual Parquet results from the temp_dir and concatenates them.
+    """
+    
+    # 1. Find all 'result' (res) files
+    res_files = glob.glob(os.path.join(temp_dir, "res_*.parquet"))
+    
+    # 2. Find all 'equity' (eq) files
+    eq_files = glob.glob(os.path.join(temp_dir, "eq_*.parquet"))
+
+    if not res_files:
+        detail_logger.warning("No result files found in cache. Returning empty data.")
+        return pd.DataFrame(), pd.DataFrame()
+
+    detail_logger.info(f"Aggregating {len(res_files)} result files from cache...")
+    combined_results = pd.concat(
+        (pd.read_parquet(f) for f in res_files), 
+        ignore_index=True
+    )
+    
+    detail_logger.info(f"Aggregating {len(eq_files)} equity files from cache...")
+    combined_equity = pd.DataFrame()
+    if eq_files:
+        combined_equity = pd.concat(
+            (pd.read_parquet(f) for f in eq_files), 
+            ignore_index=True
+        )
+
+    return combined_results, combined_equity
+
+def log_comprehensive_summary(combined_results: pd.DataFrame, 
+                              combined_equity: pd.DataFrame, 
+                              budget: float, 
+                              equity_factor: float, 
+                              output_dir: str, 
+                              summary_logger: logging.Logger):
     """Logs final comprehensive analysis split by mode."""
     summary_logger.info(f"\n{'='*80}\nCOMPREHENSIVE ANALYSIS (All Modes)\nBudget: £{budget:,} | Equity Factor: {equity_factor}\n{'='*80}")
     
@@ -368,7 +409,9 @@ def log_comprehensive_summary(combined_results, all_equity, budget,
 
     # Save full detailed results
     combined_results.to_csv(os.path.join(output_dir, 'all_modes_selected_projects.csv'), index=False)
-    pd.DataFrame(all_equity).to_csv(os.path.join(output_dir, 'all_modes_equity_tracking.csv'), index=False)
+    
+    if not combined_equity.empty:
+        combined_equity.to_csv(os.path.join(output_dir, 'all_modes_equity_tracking.csv'), index=False)
 
 # =============================================================================
 # MAIN ORCHESTRATOR
@@ -382,31 +425,81 @@ def run_greedy_algo_epc(scenario_budget: float,
                     detail_logger: logging.Logger,
                     equity_factor: float,
                     output_dir: str) -> pd.DataFrame:
-    """Main entry point: runs Baseline, Targeted, and EPC for all epistemic runs."""
+    """
+    Main entry point with checkpointing.
+    Saves results for each run to disk and skips if they already exist.
+    """
     epistemic_runs = df[EPISTEMIC_COL].unique()
     detail_logger.info(f"Starting multi-mode analysis: {len(epistemic_runs)} runs for df with shape {df.shape}")
 
-    all_results, all_excl, all_perf, all_equity = [], [], [], []
+    # --- Define a cache directory for intermediate results ---
+    temp_dir = os.path.join(output_dir, "epistemic_run_cache")
+    os.makedirs(temp_dir, exist_ok=True)
+    detail_logger.info(f"Using cache directory: {temp_dir}")
 
     for i, epi_run in enumerate(epistemic_runs, 1):
-        detail_logger.info(f"\n--- Run {i}/{len(epistemic_runs)}: {epi_run} ---")
+        
+        # --- Define output filenames for this run ---
+        # We use a unique, safe identifier for the run.
+        # If epi_run is a string with weird characters, this might need sanitizing.
+        # For now, let's assume it's a simple string or int.
+        safe_epi_run = str(epi_run).replace(os.path.sep, '_') # Basic sanitization
+        res_file = os.path.join(temp_dir, f"res_{safe_epi_run}.parquet")
+        eq_file = os.path.join(temp_dir, f"eq_{safe_epi_run}.parquet")
+        
+        # --- CHECKPOINT LOGIC ---
+        if os.path.exists(res_file):
+            detail_logger.info(f"--- Run {i}/{len(epistemic_runs)}: {epi_run} (SKIPPING, result file found) ---")
+            continue
+        
+        # --- If not skipped, process as normal ---
+        detail_logger.info(f"\n--- Run {i}/{len(epistemic_runs)}: {epi_run} (Processing) ---")
+        
+        epi_df_subset = df[df[EPISTEMIC_COL] == epi_run].copy()
         
         res, excl, perf, eq = _process_epistemic_run(
-            epi_run, df[df[EPISTEMIC_COL] == epi_run], scenario_list,
+            epi_run, epi_df_subset, scenario_list,
             prob_loft, equity_factor, scenario_budget, detail_logger
         )
         
+        del epi_df_subset  # Free memory from the subset
+        
+        # --- Save results to disk instead of appending ---
         if not res.empty:
-            all_results.append(res)
-            all_excl.extend(excl)
-            all_perf.extend(perf)
-            all_equity.extend(eq)
+            res.to_parquet(res_file)
+            
+            if eq:
+                pd.DataFrame(eq).to_parquet(eq_file)
 
-    combined_results = pd.concat(all_results, ignore_index=True) if all_results else pd.DataFrame()
+        # --- Clean up all in-memory objects from this loop ---
+        del res, excl, perf, eq
+        
+        if i % 10 == 0:
+             gc.collect() # Force garbage collection every 10 runs
 
+    # --- All processing is done. Delete the huge input DF. ---
+    detail_logger.info("All epistemic runs processed. Deleting main dataframe.")
+    del df
+    gc.collect()
+
+    # --- Aggregate all saved files from disk ---
+    detail_logger.info("Aggregating all cached results...")
+    combined_results, combined_equity = _aggregate_results_from_disk(temp_dir, detail_logger)
+    
+    if combined_results.empty:
+        summary_logger.warning("Aggregation resulted in an empty DataFrame. Check cache.")
+        return pd.DataFrame()
+
+    detail_logger.info("Aggregation complete. Logging comprehensive summary.")
     log_comprehensive_summary(
-        combined_results, all_equity, scenario_budget, 
+        combined_results, combined_equity, scenario_budget, 
         equity_factor, output_dir, summary_logger
     )
+
+    detail_logger.info("Analysis complete.")
+    
+    # (Optional) You could clean up the temp_dir here if you want
+    # import shutil
+    # shutil.rmtree(temp_dir)
 
     return combined_results
