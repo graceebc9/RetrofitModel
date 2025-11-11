@@ -384,7 +384,7 @@ def run_greedy_algo_epc(scenario_budget: float,
                     output_dir: str) -> pd.DataFrame:
     """Main entry point: runs Baseline, Targeted, and EPC for all epistemic runs."""
     epistemic_runs = df[EPISTEMIC_COL].unique()
-    detail_logger.info(f"Starting multi-mode analysis: {len(epistemic_runs)} runs")
+    detail_logger.info(f"Starting multi-mode analysis: {len(epistemic_runs)} runs for df with shape {df.shape}")
 
     all_results, all_excl, all_perf, all_equity = [], [], [], []
 

@@ -206,7 +206,7 @@ def load_data(input_pattern, scenario_list, validate_columns=True, epc=False , n
 
     if number:
         files=files[0:number]
-        
+
     # Get expected columns
     fin_cols, dtypes = get_scenario_columns(scenario_list, epc)
     print(f"\nExpecting {len(fin_cols)} columns for {len(scenario_list)} scenarios")
@@ -261,10 +261,10 @@ def load_data(input_pattern, scenario_list, validate_columns=True, epc=False , n
 
 def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, elec_carbon_factor):
     """
-    Prepare data for post work  by adding CO2 conversion columns.
+    Prepare data for post work by adding CO2 conversion columns.
     
-    Replaces the old process_multiple_scenarios() function.
-    New data already has kWh savings, we just need to convert to CO2.
+    Optimized to avoid DataFrame fragmentation by collecting all new columns
+    and adding them at once.
     
     Parameters:
     -----------
@@ -292,36 +292,42 @@ def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, e
   
     df_prep = df.copy()
     
-    df_prep.rename(columns={ 'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_mean': 'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_mean',
-                        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_std':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_std',
-                        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p5':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p5',
-                        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p50':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p50',
-                        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p95':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p95'
-                        ,}, inplace=True )
+    df_prep.rename(columns={
+        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_mean': 'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_mean',
+        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_std':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_std',
+        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p5':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p5',
+        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p50':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p50',
+        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p95':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p95'
+    }, inplace=True)
 
     stats = ['mean', 'std', 'p5', 'p50', 'p95']
+    
+    # Dictionary to collect all new columns
+    new_columns = {}
     
     for scenario_name in scenario_list:
         print(f"\nProcessing scenario: {scenario_name}")
         
         for stat in stats:
-            # add total kwh savings 
-            gas_col =f'{scenario_name}_gas_saving_abs_kwh_{scenario_name}_{stat}'
-            elec_col=f'{scenario_name}_elec_saving_abs_kwh_{scenario_name}_{stat}'
+            # Add total kwh savings 
+            gas_col = f'{scenario_name}_gas_saving_abs_kwh_{scenario_name}_{stat}'
+            elec_col = f'{scenario_name}_elec_saving_abs_kwh_{scenario_name}_{stat}'
+            net_total_col = f'{scenario_name}_net_total_saving_abs_kwh_{scenario_name}_{stat}'
+            
             if 'heat' in scenario_name.lower():
-                df_prep[f'{scenario_name}_net_total_saving_abs_kwh_{scenario_name}_{stat}'] = df_prep[elec_col] + df_prep[gas_col]
+                new_columns[net_total_col] = df_prep[elec_col] + df_prep[gas_col]
             else:
-                df_prep[f'{scenario_name}_net_total_saving_abs_kwh_{scenario_name}_{stat}'] =   df_prep[gas_col]
+                new_columns[net_total_col] = df_prep[gas_col]
+            
             # Convert gas kWh to CO2 (in tonnes)
-        
             co2_col = f'gas_total_tonne_co2_saved_{scenario_name}_{years}yr_{stat}'
             co2kg_col = f'gas_{years}yr_kg_co2_saved_{scenario_name}_{stat}'
             kwh_col = f'{scenario_name}_gas_saving_abs_kwh_{scenario_name}_{stat}'
 
             if kwh_col in df_prep.columns:
                 # Convert kg to tonnes by dividing by 1000
-                df_prep[co2_col] = (df_prep[kwh_col] * years * gas_carbon_factor) / 1000
-                df_prep[co2kg_col] = (df_prep[kwh_col] * years * gas_carbon_factor) 
+                new_columns[co2_col] = (df_prep[kwh_col] * years * gas_carbon_factor) / 1000
+                new_columns[co2kg_col] = (df_prep[kwh_col] * years * gas_carbon_factor)
                 print(f"  Created: {co2_col}")
             else:
                 print(f"  ⚠️  Missing: {kwh_col}")
@@ -330,26 +336,25 @@ def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, e
             co2_col = f'total_tonne_co2_saved_{scenario_name}_{years}yr_{stat}'
             kwh_col = f'{scenario_name}_net_total_saving_abs_kwh_{scenario_name}_{stat}'
 
-            if kwh_col in df_prep.columns:
-                # Convert kg to tonnes by dividing by 1000
-                df_prep[co2_col] = (df_prep[kwh_col] * years * gas_carbon_factor) / 1000
+            # Use the newly created column from new_columns dict
+            if kwh_col in new_columns:
+                new_columns[co2_col] = (new_columns[kwh_col] * years * gas_carbon_factor) / 1000
                 print(f"  Created: {co2_col}")
             else:
                 print(f"  ⚠️  Missing: {kwh_col}")
                 sys.exit() 
 
-
-            # convert cost per ton 
+            # Convert cost per ton 
             for ff in ['gas', 'total_energy']:
                 cost_per_ton_col = f'{scenario_name}_cost_per_{ff}_ton_{scenario_name}_{stat}'
                 cost_per_kwh_col = f'{scenario_name}_cost_per_{ff}_kwh_{scenario_name}_{stat}'
-                df_prep[cost_per_ton_col] = df_prep[cost_per_kwh_col] * 1000 / (years * gas_carbon_factor)
+                new_columns[cost_per_ton_col] = df_prep[cost_per_kwh_col] * 1000 / (years * gas_carbon_factor)
                 print(f"  Created: {cost_per_ton_col}")
             
- 
+            # Cost in millions
             cost_col = f'{scenario_name}_cost_{scenario_name}_mean'
             mill_col = f'{scenario_name}_cost_{scenario_name}_{stat}_mill'
-            df_prep[mill_col] = df_prep[cost_col] / 1_000_000
+            new_columns[mill_col] = df_prep[cost_col] / 1_000_000
             print(f"  Created: {mill_col} (in millions)")
 
         # Convert electricity kWh to CO2 (in tonnes, for heat scenarios)
@@ -360,33 +365,167 @@ def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, e
                 
                 if kwh_col in df_prep.columns:
                     # Convert kg to tonnes by dividing by 1000
-                    df_prep[co2_col] = (df_prep[kwh_col] * years * elec_carbon_factor) / 1000
+                    new_columns[co2_col] = (df_prep[kwh_col] * years * elec_carbon_factor) / 1000
                     print(f"  Created: {co2_col}")
         
         # Add total CO2 savings column (gas + elec) for ranking (in tonnes)
         gas_co2_mean = f'gas_{years}yr_tonne_co2_saved_{scenario_name}_mean'
         total_co2_col = f'{scenario_name}_total_co2_saved_{years}yr_mean'
         
-        if gas_co2_mean in df_prep.columns:
-            df_prep[total_co2_col] = df_prep[gas_co2_mean]
+        # Check if the column exists either in df_prep or new_columns
+        if gas_co2_mean in new_columns:
+            new_columns[total_co2_col] = new_columns[gas_co2_mean].copy()
             
             # Add electricity CO2 if heat scenario
             if 'heat' in scenario_name.lower():
                 elec_co2_mean = f'elec_{years}yr_tonne_co2_saved_{scenario_name}_mean'
-                if elec_co2_mean in df_prep.columns:
-                    df_prep[total_co2_col] += df_prep[elec_co2_mean]
+                if elec_co2_mean in new_columns:
+                    new_columns[total_co2_col] += new_columns[elec_co2_mean]
             
             print(f"  Created: {total_co2_col} (in tonnes)")
         
- 
         # Ensure cost column exists (should already be there)
         cost_col = f'{scenario_name}_cost_{scenario_name}_mean'
         if cost_col not in df_prep.columns:
             print(f"  ⚠️  WARNING: Missing cost column: {cost_col}")
 
-    
+    # Add all new columns at once using concat - this avoids fragmentation
+    print(f"\nAdding {len(new_columns)} new columns to dataframe...")
+    df_prep = pd.concat([df_prep, pd.DataFrame(new_columns, index=df_prep.index)], axis=1)
     
     print("\n✓ Data preparation complete (CO2 values in tonnes)")
     print(f"Total columns: {len(df_prep.columns)}")
     
     return df_prep
+
+# def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, elec_carbon_factor):
+#     """
+#     Prepare data for post work  by adding CO2 conversion columns.
+    
+#     Replaces the old process_multiple_scenarios() function.
+#     New data already has kWh savings, we just need to convert to CO2.
+    
+#     Parameters:
+#     -----------
+#     df : pd.DataFrame
+#         Raw data with new column format
+#     scenario_list : list
+#         List of scenario names
+#     years : int
+#         Number of years for CO2 calculation
+#     gas_carbon_factor : float
+#         Gas carbon factor (kg CO2/kWh)
+#     elec_carbon_factor : float
+#         Electricity carbon factor (kg CO2/kWh)
+        
+#     Returns:
+#     --------
+#     pd.DataFrame
+#         Data with added CO2 columns (in tonnes) needed for greedy algorithm
+#     """
+#     print("\n" + "="*80)
+#     print("PREPARING DATA FOR GREEDY ALGORITHM")
+#     print("="*80)
+#     if isinstance(scenario_list, str):
+#          scenario_list=[scenario_list]
+  
+#     df_prep = df.copy()
+    
+#     df_prep.rename(columns={ 'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_mean': 'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_mean',
+#                         'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_std':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_std',
+#                         'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p5':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p5',
+#                         'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p50':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p50',
+#                         'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p95':'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p95'
+#                         ,}, inplace=True )
+
+#     stats = ['mean', 'std', 'p5', 'p50', 'p95']
+    
+#     for scenario_name in scenario_list:
+#         print(f"\nProcessing scenario: {scenario_name}")
+        
+#         for stat in stats:
+#             # add total kwh savings 
+#             gas_col =f'{scenario_name}_gas_saving_abs_kwh_{scenario_name}_{stat}'
+#             elec_col=f'{scenario_name}_elec_saving_abs_kwh_{scenario_name}_{stat}'
+#             if 'heat' in scenario_name.lower():
+#                 df_prep[f'{scenario_name}_net_total_saving_abs_kwh_{scenario_name}_{stat}'] = df_prep[elec_col] + df_prep[gas_col]
+#             else:
+#                 df_prep[f'{scenario_name}_net_total_saving_abs_kwh_{scenario_name}_{stat}'] =   df_prep[gas_col]
+#             # Convert gas kWh to CO2 (in tonnes)
+        
+#             co2_col = f'gas_total_tonne_co2_saved_{scenario_name}_{years}yr_{stat}'
+#             co2kg_col = f'gas_{years}yr_kg_co2_saved_{scenario_name}_{stat}'
+#             kwh_col = f'{scenario_name}_gas_saving_abs_kwh_{scenario_name}_{stat}'
+
+#             if kwh_col in df_prep.columns:
+#                 # Convert kg to tonnes by dividing by 1000
+#                 df_prep[co2_col] = (df_prep[kwh_col] * years * gas_carbon_factor) / 1000
+#                 df_prep[co2kg_col] = (df_prep[kwh_col] * years * gas_carbon_factor) 
+#                 print(f"  Created: {co2_col}")
+#             else:
+#                 print(f"  ⚠️  Missing: {kwh_col}")
+#                 sys.exit() 
+
+#             co2_col = f'total_tonne_co2_saved_{scenario_name}_{years}yr_{stat}'
+#             kwh_col = f'{scenario_name}_net_total_saving_abs_kwh_{scenario_name}_{stat}'
+
+#             if kwh_col in df_prep.columns:
+#                 # Convert kg to tonnes by dividing by 1000
+#                 df_prep[co2_col] = (df_prep[kwh_col] * years * gas_carbon_factor) / 1000
+#                 print(f"  Created: {co2_col}")
+#             else:
+#                 print(f"  ⚠️  Missing: {kwh_col}")
+#                 sys.exit() 
+
+
+#             # convert cost per ton 
+#             for ff in ['gas', 'total_energy']:
+#                 cost_per_ton_col = f'{scenario_name}_cost_per_{ff}_ton_{scenario_name}_{stat}'
+#                 cost_per_kwh_col = f'{scenario_name}_cost_per_{ff}_kwh_{scenario_name}_{stat}'
+#                 df_prep[cost_per_ton_col] = df_prep[cost_per_kwh_col] * 1000 / (years * gas_carbon_factor)
+#                 print(f"  Created: {cost_per_ton_col}")
+            
+ 
+#             cost_col = f'{scenario_name}_cost_{scenario_name}_mean'
+#             mill_col = f'{scenario_name}_cost_{scenario_name}_{stat}_mill'
+#             df_prep[mill_col] = df_prep[cost_col] / 1_000_000
+#             print(f"  Created: {mill_col} (in millions)")
+
+#         # Convert electricity kWh to CO2 (in tonnes, for heat scenarios)
+#         if 'heat' in scenario_name.lower():
+#             for stat in stats:
+#                 kwh_col = f'{scenario_name}_elec_saving_abs_kwh_{scenario_name}_{stat}'
+#                 co2_col = f'elec_total_tonne_co2_saved_{scenario_name}_{years}yr_{stat}'
+                
+#                 if kwh_col in df_prep.columns:
+#                     # Convert kg to tonnes by dividing by 1000
+#                     df_prep[co2_col] = (df_prep[kwh_col] * years * elec_carbon_factor) / 1000
+#                     print(f"  Created: {co2_col}")
+        
+#         # Add total CO2 savings column (gas + elec) for ranking (in tonnes)
+#         gas_co2_mean = f'gas_{years}yr_tonne_co2_saved_{scenario_name}_mean'
+#         total_co2_col = f'{scenario_name}_total_co2_saved_{years}yr_mean'
+        
+#         if gas_co2_mean in df_prep.columns:
+#             df_prep[total_co2_col] = df_prep[gas_co2_mean]
+            
+#             # Add electricity CO2 if heat scenario
+#             if 'heat' in scenario_name.lower():
+#                 elec_co2_mean = f'elec_{years}yr_tonne_co2_saved_{scenario_name}_mean'
+#                 if elec_co2_mean in df_prep.columns:
+#                     df_prep[total_co2_col] += df_prep[elec_co2_mean]
+            
+#             print(f"  Created: {total_co2_col} (in tonnes)")
+        
+ 
+#         # Ensure cost column exists (should already be there)
+#         cost_col = f'{scenario_name}_cost_{scenario_name}_mean'
+#         if cost_col not in df_prep.columns:
+#             print(f"  ⚠️  WARNING: Missing cost column: {cost_col}")
+
+    
+    
+#     print("\n✓ Data preparation complete (CO2 values in tonnes)")
+#     print(f"Total columns: {len(df_prep.columns)}")
+    
+#     return df_prep
