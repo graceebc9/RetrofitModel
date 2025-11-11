@@ -236,7 +236,10 @@ def main():
     print("="*80)
 
     for LOFT_VALUE in loft_probs:
-        OUTPUT_PATH=os.path.join(BASE_DIR, f'greedy_combo_ef{equity_factor}', 'vis',  f'loft_val{LOFT_VALUE}')
+        if number:
+            OUTPUT_PATH=os.path.join(BASE_DIR, f'greedy_combo_ef{equity_factor}_{number}', 'vis',  f'loft_val{LOFT_VALUE}')
+        else:
+            OUTPUT_PATH=os.path.join(BASE_DIR, f'greedy_combo_ef{equity_factor}', 'vis',  f'loft_val{LOFT_VALUE}')
         # Ensure output directory exists
         os.makedirs(OUTPUT_PATH, exist_ok = True )
         for budget in budgets:
