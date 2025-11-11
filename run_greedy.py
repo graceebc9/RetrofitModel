@@ -57,7 +57,7 @@ def main():
         scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
  
 
- 
+         setting_name = 'lcoal'
         run_greedy_runs=True 
  
         budgets = [1_000_000, 10_000_000, 100_000_000]
@@ -147,9 +147,12 @@ def main():
         
         # Filter data
         print("\nFiltering data...")
-        pdf = proc_df[proc_df['premise_type'] != 'Domestic_outbuilding'].copy()
-        pdf = pdf[~pdf['premise_type'].isna()]
-        df = pdf.copy()
+        # Option 2: Filter in place (destroys proc_df but saves even more memory)
+        proc_df = proc_df[
+            (proc_df['premise_type'] != 'Domestic_outbuilding') & 
+            (~proc_df['premise_type'].isna())
+        ]
+        df = proc_df  # Just a reference, no copy
         print(f"After filtering: {len(df)} rows")
 
     
@@ -268,8 +271,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    #     if number:
-    #     greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}' , setting_name ) 
-    # else:
-    #     greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', setting_name )
+ 
