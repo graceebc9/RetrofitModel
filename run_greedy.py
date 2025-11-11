@@ -254,8 +254,10 @@ def main():
     print("="*80)
     
     for LOFT_VALUE in loft_probs:
- 
-        OUTPUT_PATH=os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}')
+        if number:
+            OUTPUT_PATH=os.path.join(BASE_DIR, f'greedy_vis_num{number}', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
+        else:
+            OUTPUT_PATH=os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
  
         # Ensure output directory exists
         os.makedirs(OUTPUT_PATH, exist_ok = True )
@@ -266,3 +268,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    #     if number:
+    #     greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}' , setting_name ) 
+    # else:
+    #     greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', setting_name )
