@@ -175,7 +175,7 @@ def memory_profiler(func):
 
 
 @memory_profiler
-def load_data(input_pattern, scenario_list, validate_columns=True, epc=False ):
+def load_data(input_pattern, scenario_list, validate_columns=True, epc=False , number=None):
     """
     Load and concatenate CSV files matching the pattern.
     
@@ -204,6 +204,9 @@ def load_data(input_pattern, scenario_list, validate_columns=True, epc=False ):
     if len(files) == 0:
         raise FileNotFoundError(f"No files found matching pattern: {input_pattern}")
 
+    if number:
+        files=files[0:number]
+        
     # Get expected columns
     fin_cols, dtypes = get_scenario_columns(scenario_list, epc)
     print(f"\nExpecting {len(fin_cols)} columns for {len(scenario_list)} scenarios")

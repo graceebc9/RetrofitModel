@@ -105,10 +105,15 @@ def main():
 
     YEARS = 5
     N_SIMULATIONS = 5000
+ 
     GAS_CARBON_FACTOR=0.18      
     ELEC_CARBON_FACTOR=0.19338  
-    
-    greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', setting_name )
+    number=4 
+    if number:
+        greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}' , setting_name ) 
+    else:
+        greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', setting_name )
+ 
        
 
     if run_greedy_runs: 
@@ -118,7 +123,10 @@ def main():
         
         # Load and concatenate input data
         print("\nLoading input data...")
-        res_df = load_data(INPUT_FILES_PATH, scenario_list)
+        if number:
+            res_df = load_data(INPUT_FILES_PATH, scenario_list)
+        else:
+            res_df = load_data(INPUT_FILES_PATH, scenario_list, number)
         
         print("\nLoading personas...")
         personas = load_personas(path=personas_path) 
