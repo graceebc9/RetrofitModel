@@ -124,9 +124,9 @@ def main():
         # Load and concatenate input data
         print("\nLoading input data...")
         if number:
-            res_df = load_data(INPUT_FILES_PATH, scenario_list)
+            res_df = load_data(INPUT_FILES_PATH, scenario_list, number )
         else:
-            res_df = load_data(INPUT_FILES_PATH, scenario_list, number)
+            res_df = load_data(INPUT_FILES_PATH, scenario_list)
         
         print("\nLoading personas...")
         personas = load_personas(path=personas_path) 
