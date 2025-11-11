@@ -86,11 +86,16 @@ def load_all_epc_data(epc_files_list, columns_to_load, uprn_col_name):
     if uprn_col_name != 'uprn':
         df_all_epcs = df_all_epcs.rename(columns={uprn_col_name: 'uprn'})
 
-    # --- Handle Duplicates ---
-    # If a UPRN appears in multiple EPC files, we keep the *first* one.
-    # You might want to sort by date and keep 'last' if you have a date column.
+ 
     initial_rows = len(df_all_epcs)
+ 
+    # Sort by date (newest first) before dropping duplicates
+    df_all_epcs.sort_values('INSPECTION_DATE', ascending=False, inplace=True)
+
+ 
     df_all_epcs.drop_duplicates(subset=['uprn'], keep='first', inplace=True)
+    
+ 
     final_rows = len(df_all_epcs)
     
     if initial_rows > final_rows:
@@ -128,8 +133,9 @@ def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col):
         
         # Load just this one log file
         df_log = pd.read_csv(log_file)    
+ 
         df_log = df_log.drop_duplicates() 
-        
+         
         # Prepare for merge
         df_log[log_uprn_col] = df_log[log_uprn_col].astype(str)
         if log_uprn_col != 'uprn':
@@ -151,15 +157,13 @@ def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col):
 
 # --- Main script execution ---
 if __name__ == "__main__":
-    
- 
-
     # 2. Load ALL EPC data into memory
     df_epc_data = load_all_epc_data(
         epc_files_list=neepcs, 
         columns_to_load=EPC_COLS_TO_KEEP,
         uprn_col_name=EPC_UPRN_COL_NAME
     )
+    print(df_epc_data.shape)
 
     if not df_epc_data.empty:
         # 3. Process Log files one-by-one against the EPC data
