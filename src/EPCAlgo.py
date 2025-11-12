@@ -64,6 +64,7 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
     
     # Get unique UPRNs and shuffle them randomly
     unique_uprns = df_filtered[uprn_col].unique()
+    unique_uprns = unique_uprns.to_numpy() 
     np.random.shuffle(unique_uprns)
     
     selected_rows = []
