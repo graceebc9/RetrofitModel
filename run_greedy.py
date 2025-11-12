@@ -108,7 +108,7 @@ def main():
  
     GAS_CARBON_FACTOR=0.18      
     ELEC_CARBON_FACTOR=0.19338  
-    number=4 
+    number=None
     if number:
         greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}' , setting_name ) 
     else:
