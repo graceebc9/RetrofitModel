@@ -12,7 +12,7 @@ import os
 import sys
 import glob
 
-
+import gc
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -132,8 +132,8 @@ def main():
         personas = load_personas(path=personas_path) 
         res_df = res_df.merge(personas, on='postcode', how='inner')
         print(f"After persona merge: {len(res_df)} rows")
-        print(res_df.columns.tolist() )
-
+        
+        print('res df shape: ', res_df.shape)
         # UPDATED: Use prepare_data_for_greedy instead of process_multiple_scenarios
         print("\nPreparing data for greedy algorithm...")
         proc_df = prepare_data_for_postanalysis(
@@ -143,20 +143,26 @@ def main():
             GAS_CARBON_FACTOR, 
             ELEC_CARBON_FACTOR
         )
-        print(proc_df.columns.tolist())
+        print('proc df shape: ', proc_df.shape )
+        
         
         # Filter data
         print("\nFiltering data...")
         # Option 2: Filter in place (destroys proc_df but saves even more memory)
-        proc_df = proc_df[
-            (proc_df['premise_type'] != 'Domestic_outbuilding') & 
-            (~proc_df['premise_type'].isna())
-        ]
+        print("\nFiltering data...")
+        # Filter in steps to avoid large boolean array
+        mask1 = proc_df['premise_type'] != 'Domestic_outbuilding'
+        proc_df = proc_df[mask1]
+        del mask1
+        gc.collect()
+
+        mask2 = ~proc_df['premise_type'].isna()
+        proc_df = proc_df[mask2]
+        del mask2
+        print(f"After filtering: {len(proc_df)} rows")
         df = proc_df  # Just a reference, no copy
         print(f"After filtering: {len(df)} rows")
 
-    
-   
         
         for budget in budgets:
             for prob_loft in loft_probs:

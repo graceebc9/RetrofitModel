@@ -453,6 +453,10 @@ def _process_epistemic_run(epi_run: str,
         
     # --- 3. Combine scenarios and filter ---
     res_df = pd.concat(all_scenario_ranks)
+    # ADDED: Memory Easy Win
+    detail_logger.info(f"  [Run {epi_run}] Concatenated. Shape: {res_df.shape}. Deleting intermediate list of ranks.")
+    del all_scenario_ranks
+
     res_df[RANK_COL_EPI_RUN] = epi_run
     
     # Filter for valid, optimizable projects (using MEAN)
@@ -470,6 +474,10 @@ def _process_epistemic_run(epi_run: str,
                         .sort_values(RANK_COL_WEIGHTED_COST, ascending=True)
                         .drop_duplicates(subset=RANK_COL_UPN, keep='first')
                         .reset_index(drop=True))
+    # ADDED: Memory Easy Win
+    detail_logger.info(f"  [Run {epi_run}] Baseline selection created. Candidates: {len(baseline_selection)}. Deleting intermediate dataframes.")
+    del wdf
+    del res_df
     
     detail_logger.info(f"    Candidate projects after deduplication: {len(baseline_selection)}")
     
@@ -853,13 +861,28 @@ def run_greedy_algo(scenario_budget: float,
     detail_logger.info(f"Equity factor: {equity_factor}")
     
     # --- Storage for results from all runs ---
-    all_epistemic_results = []
+    
+    # CHANGED: We no longer store DataFrames in this list. We store file paths.
+    # all_epistemic_results = []
+    all_epistemic_results_paths = [] 
+    
+    # These are small lists of dicts, they are fine to keep in memory
     all_exclusion_stats = []
     all_scenario_performance = []
     all_equity_tracking = []
     
     baseline_selection = pd.DataFrame() # To store the last run's baseline
     
+    
+    # ADDED: Create dedicated output directory for the run files
+    runs_output_dir = os.path.join(output_dir, 'epistemic_run_outputs')
+    try:
+        os.makedirs(runs_output_dir, exist_ok=True)
+        detail_logger.info(f"Created output directory for individual epistemic runs: {runs_output_dir}")
+    except Exception as e:
+        detail_logger.error(f"Could not create output directory {runs_output_dir}. Error: {e}")
+        return pd.DataFrame(), pd.DataFrame() # Fail fast
+
     # --- Process each epistemic run ---
     for epi_idx, epi_run in enumerate(epistemic_runs, 1):
         detail_logger.info(f"\n{'='*80}")
@@ -882,20 +905,61 @@ def run_greedy_algo(scenario_budget: float,
         
         # --- Collect results ---
         if not selected_df.empty:
-            all_epistemic_results.append(selected_df)
+            # CHANGED: This is the core memory fix.
+            # We save to Parquet immediately instead of appending to a list.
+            try:
+                output_path = os.path.join(runs_output_dir, f'run_{epi_run}.parquet')
+                selected_df.to_parquet(output_path, index=False)
+                detail_logger.info(f"Run {epi_run} complete. Saved {len(selected_df)} selected projects to {output_path}")
+                
+                # Store the path for later, not the DataFrame
+                all_epistemic_results_paths.append(output_path)
+                
+            except Exception as e:
+                detail_logger.error(f"Failed to save parquet file for run {epi_run}. Error: {e}")
+
+            # These are small summary dicts, fine to append
             all_exclusion_stats.extend(ex_stats)
             all_scenario_performance.extend(perf_stats)
             all_equity_tracking.append(eq_stats)
             baseline_selection = baseline_sel # Store baseline from the last successful run
+        else:
+            detail_logger.warning(f"No projects selected for epistemic run {epi_run}. Nothing to save.")
 
-    if not all_epistemic_results:
+    if not all_epistemic_results_paths:
         detail_logger.error("No results generated from any epistemic run.")
+        summary_logger.error("No results generated from any epistemic run. Aborting summary.")
         return pd.DataFrame(), pd.DataFrame()
 
     # --- Combine all epistemic run results ---
-    combined_results = pd.concat(all_epistemic_results, ignore_index=True)
-    detail_logger.info('all_equity_tracking')
-    detail_logger.info(len(all_equity_tracking))
+    # ADDED: This is the new concatenation step, reading from disk.
+    # This will be the new memory-intensive step, but it happens *once*
+    # at the end, not during the loop.
+    detail_logger.info(f"\n{'='*80}")
+    detail_logger.info(f"All {len(all_epistemic_results_paths)} runs processed and saved.")
+    detail_logger.info("Combining all run results from Parquet files into memory for final summary...")
+    
+    try:
+        # Use a generator expression for slightly better memory efficiency
+        combined_results = pd.concat(
+            (pd.read_parquet(f) for f in all_epistemic_results_paths), 
+            ignore_index=True
+        )
+        detail_logger.info(f"Successfully combined results. Final DataFrame shape: {combined_results.shape}")
+        
+        # ADDED: Memory Easy Win
+        del all_epistemic_results_paths
+        detail_logger.info("Deleted intermediate list of file paths.")
+        
+    except Exception as e:
+        detail_logger.error(f"Failed to combine Parquet files for summary. Error: {e}")
+        summary_logger.error(f"Failed to combine Parquet files. Cannot generate summary. Error: {e}")
+        return baseline_selection, pd.DataFrame() # Return what we have
+
+    # # --- Combine all epistemic run results ---
+    # combined_results = pd.concat(all_epistemic_results, ignore_index=True)
+    # detail_logger.info('all_equity_tracking')
+    # detail_logger.info(len(all_equity_tracking))
     
     # --- Call helper to log the comprehensive summary ---
     log_comprehensive_summary(
