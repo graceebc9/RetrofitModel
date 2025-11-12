@@ -24,7 +24,7 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
     list_personas = allowed_personas  
     
     # --- ROBUST FILTERING ---
-    # Standardize EPC to ensure matching works (uppercase, stripped)
+    # Standardize EPC to ensure matchingr works (uppercase, stripped)
     df_knapsack[epc_col] = df_knapsack[epc_col].astype(str).str.upper().str.strip()
     
     target_epcs = ['D', 'E', 'F', 'G']
@@ -64,6 +64,7 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
     
     # Get unique UPRNs and shuffle them randomly
     unique_uprns = df_filtered[uprn_col].unique()
+    unique_uprns = unique_uprns.to_numpy() 
     np.random.shuffle(unique_uprns)
     
     selected_rows = []
