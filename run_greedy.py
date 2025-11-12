@@ -57,7 +57,7 @@ def main():
         scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
  
 
-         setting_name = 'lcoal'
+        setting_name = 'lcoal'
         run_greedy_runs=True 
  
         budgets = [1_000_000, 10_000_000, 100_000_000]
