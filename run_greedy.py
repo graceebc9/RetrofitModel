@@ -163,7 +163,8 @@ def main():
         df = proc_df  # Just a reference, no copy
         print(f"After filtering: {len(df)} rows")
 
-        
+      
+ 
         for budget in budgets:
             for prob_loft in loft_probs:
                 for equity_factor in equity_factors: 
