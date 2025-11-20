@@ -53,7 +53,7 @@ def main():
     running_locally = not is_running_on_hpc()
     if running_locally:
         personas_path='/Users/gracecolverd/RetrofitModel/NE_region_personas.csv'
-        BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
+        BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy_epc'
         # INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/test/new_log_epc/*.csv'
         scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
@@ -61,6 +61,7 @@ def main():
         budgets = [1_000_000, 10_000_000, 100_000_000]
         loft_probs = [0.65, 0.95]
         equity_factor =  0.8 
+        number = 5 
 
  
     else:
@@ -101,7 +102,7 @@ def main():
  
         equity_factor = float( os.getenv('equity_factor') ) 
  
-    
+        number=None  
 
     YEARS = 5
     N_SIMULATIONS = 5000
@@ -111,7 +112,7 @@ def main():
     ELEC_CARBON_FACTOR=0.19338  
     targeted_or_epc='targeted'
     
-    number=None  
+    
     if number:
         greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_combo_ef{equity_factor}_{number}' , 'runs') 
     else:
