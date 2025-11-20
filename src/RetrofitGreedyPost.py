@@ -19,6 +19,7 @@ import seaborn as sns
  
 from .RetrofitGreedyAnalysis import plot_greedy_compairosn_main, plot_carbon_by_persona, plot_count_by_group,  plot_metric_by_group_mean
  
+from .Sankey import run_sankey_greedy 
 
 
 # ==============================================================================
@@ -215,6 +216,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     if results_agg.empty or equity_agg.empty:
         print("Critical error: Aggregation failed. Exiting.")
         return
+    
 
     # --- 3. Merge & Format ---
     comparison_df = results_agg.merge(equity_agg, on='scenario', how='left')

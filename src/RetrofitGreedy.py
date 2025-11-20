@@ -15,6 +15,7 @@ from src.RetrofitEquity import EQUITY_WEIGHTS,  calculate_social_equity_score
 import pandas as pd
 import numpy as np
 from src.GreedyAlgo import true_greedy_knapsack  
+from .Sankey import run_sankey_greedy 
 
 def assign_random_loft(df, prob_loft):
     """
@@ -902,7 +903,10 @@ def run_greedy_algo(scenario_budget: float,
             scenario_budget=scenario_budget,
             detail_logger=detail_logger
         )
-        
+        if epi_idx ==1: 
+            print(f'running sankey saved in {output_dir} ')
+            run_sankey_greedy(selected_df , output_dir )
+
         # --- Collect results ---
         if not selected_df.empty:
             # CHANGED: This is the core memory fix.

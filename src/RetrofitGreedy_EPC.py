@@ -13,7 +13,7 @@ import glob # For finding result files
 from src.RetrofitEquity import EQUITY_WEIGHTS, calculate_social_equity_score
 from src.GreedyAlgo import true_greedy_knapsack
 from src.EPCAlgo import select_epc_algo
-
+from .Sankey import run_sankey_greedy 
 # =============================================================================
 # CONSTANTS
 # =============================================================================
@@ -461,7 +461,11 @@ def run_greedy_algo_epc(scenario_budget: float,
             epi_run, epi_df_subset, scenario_list,
             prob_loft, equity_factor, scenario_budget, detail_logger
         )
-        
+        if i ==1: 
+            print(f'running sankey saved in {output_dir} ')
+            run_sankey_greedy(res , output_dir )
+
+
         del epi_df_subset  # Free memory from the subset
         
         # --- Save results to disk instead of appending ---
