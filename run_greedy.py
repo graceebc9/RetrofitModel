@@ -64,7 +64,7 @@ def main():
         loft_probs = [0.65]
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
 
-        run_greedy_runs=True  
+        run_greedy_runs=True   
     else:
         BASE_DIR = os.getenv('BASE_DIR')
         INPUT_FILES_PATH = os.getenv('INPUT_FILES_PATH') 
