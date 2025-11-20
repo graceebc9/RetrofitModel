@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+ 
 
 # from .RetrofitPostProcess import clean_post_process 
 
@@ -14,7 +15,9 @@ def run_meta_portoflio(base_op, df_processed, scenraio,  years=5 ):
     Run costs and energy portolfio level epistemic analysis
     """
     metrics={} 
-    
+
+
+
     for i,  dd in df_processed.groupby('epistemic__cost_scenario'):
         suff = f'{scenraio}_{i}'
         op = os.path.join(base_op, scenraio, suff )

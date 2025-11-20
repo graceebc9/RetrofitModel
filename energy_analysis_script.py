@@ -23,8 +23,9 @@ from src.validate import validate_single_scenario_new
 # Note: clean_post_process is NO LONGER NEEDED - data is already processed
 # from src.RetrofitPostProcess import clean_post_process 
 from src.visualisations import run_vis_new 
-
+from src.RetrofitAnalysis_meta import  run_meta
 from src.RetrofitAnalysis import run_meta_portoflio
+
 import psutil
 import tracemalloc
 from functools import wraps
@@ -351,7 +352,7 @@ def main():
 
     # Load data once
     log_memory("Before loading data")
-    res_df = load_data(args.input_pattern, args.scenarios)
+    res_df = load_data(args.input_pattern, args.scenarios, number=6)
     log_memory("After loading data")
 
     # Filter out domestic outbuildings
@@ -363,7 +364,22 @@ def main():
     del res_df
     gc.collect()
     log_memory("After freeing original dataframe")
-    
+
+    proc_df = prepare_data_for_postanalysis(
+        pl, 
+        args.scenarios,
+        args.years, 
+        args.gas_carbon_factor, 
+        args.elec_carbon_factor,
+    )
+    # process meta on all scenarios 
+    print('starting meta comparison plots')
+    run_meta(output_dir, args, proc_df)
+    del proc_df
+
+    log_memory("meta end")
+
+
     # Process each scenario
     for i, (scenario_name, measure_type) in enumerate(zip(args.scenarios, args.measure_types)):
         print(f"\n{'#'*80}")
