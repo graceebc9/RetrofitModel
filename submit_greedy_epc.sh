@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH -A CULLEN-SL3-CPU
 #SBATCH -p icelake
-#SBATCH --time=00:30:00
+#SBATCH --time=00:45:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=NONE
-#SBATCH --mem=250G
-#SBATCH --array=0  # 4 budgets × 2 lofts × 1 equity = 10 combinations
+#SBATCH --mem=180G
+#SBATCH --array=0-16  # 4 budgets × 2 lofts × 1 equity = 10 combinations
 #SBATCH --output=logs_greedy_epc/rmodel_%A_%a.out
 #SBATCH --error=logs_greedy_epc/rmodel_%A_%a.err
  
@@ -34,7 +34,7 @@ export run_g_yn='Y'
 mkdir -p logs_greedy_epc
 
 # Define parameter arrays
-BUDGET_SETTINGS=(1 2 3 4 5)
+BUDGET_SETTINGS=(1 2 3 5)
 LOFT_SETTINGS=(1 2)
 EQUITY_FACTORS=(0.8 1)
 

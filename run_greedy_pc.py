@@ -112,7 +112,7 @@ def main():
     ELEC_CARBON_FACTOR=0.19338  
     targeted_or_epc='targeted'
     
-    
+    number=None
     if number:
         greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_combo_ef{equity_factor}_{number}' , 'runs') 
     else:
