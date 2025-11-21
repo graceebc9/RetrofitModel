@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 from unittest.mock import Mock, patch, MagicMock
 from dataclasses import dataclass
+import pandas as pd 
 
 # Assuming these imports work in your actual codebase
 import sys 
@@ -106,8 +107,10 @@ class TestGetAreaForIntervention:
         with pytest.raises(ValueError, match="Unknown intervention"):
             cost_estimator.get_area_for_intervention('nonexistent_intervention', building_chars)
 
+ 
 
-class TestSampleInterventionCost:
+
+class TestSampleInterventionCost_original:
     """Tests for sample_intervention_cost method"""
     
     def test_basic_cost_sampling(self, cost_estimator, building_chars):
