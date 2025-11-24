@@ -10,11 +10,19 @@ import pandas as pd
 from typing import Dict 
 
 
- 
+# EQUITY_WEIGHTS = {
+# 'deprived': 0.4,
+# 'struggling': 0.6,
+# 'lower middle': 0.8,
+# 'upper middle': 1.0,
+# 'affluent': 1.0,
+# 'student': 1.0
+# }
+
 EQUITY_WEIGHTS = {
-'High Deprivation': 0.4,
-'Medium Deprivation': 0.7,
-'Medium Deprivation': 1,
+'high_deprived' : 0.4,
+'med_deprived': 0.7,
+'low_deprived': 1,
 } 
 
 def calculate_social_equity_score(selected_df: pd.DataFrame) -> Dict:
