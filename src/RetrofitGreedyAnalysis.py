@@ -366,8 +366,8 @@ def plot_vulnerable_coverage_vs_equity(equity_subset, equity_weights, budget_lab
         weights = subset['equity_weight'].values
         
         # *** These columns were simple strings, so NO change needed ***
-        means = subset['vulnerable_pct_mean'].values * 100
-        stds = subset['vulnerable_pct_std'].values * 100
+        means = subset['high_deprived_pct_mean'].values * 100
+        stds = subset['high_deprived_pct_std'].values * 100
         
         label = f'£{budget_val/1e6:.0f}M' if len(equity_subset['budget'].unique()) > 1 else None
         ax.errorbar(weights, means, yerr=stds, fmt='o-', markersize=10, 
@@ -856,8 +856,8 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
             equity_row = equity_subset[equity_subset['scenario'] == scenario].iloc[0]
             results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
             
-            vuln_means.append(equity_row['vulnerable_pct_mean'] )
-            vuln_stds.append(equity_row['vulnerable_pct_std'] )
+            vuln_means.append(equity_row['high_deprived_pct_mean'] )
+            vuln_stds.append(equity_row['high_deprived_pct_std'] )
             co2_means.append(results_row['total_ton_co2_saved_mean_sum_mean'] / 1e3)
             co2_stds.append(results_row['total_ton_co2_saved_mean_sum_std'] / 1e3)
             weights.append(equity_row['equity_weight'])
@@ -934,8 +934,8 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
             equity_row = budget_equity_subset[budget_equity_subset['scenario'] == scenario].iloc[0]
             results_row = budget_results_subset[budget_results_subset['scenario'] == scenario].iloc[0]
             
-            vuln_means_ind.append(equity_row['vulnerable_pct_mean'] )
-            vuln_stds_ind.append(equity_row['vulnerable_pct_std'] )
+            vuln_means_ind.append(equity_row['high_deprived_pct_mean'] )
+            vuln_stds_ind.append(equity_row['high_deprived_pct_std'] )
             co2_means_ind.append(results_row['total_ton_co2_saved_mean_sum_mean'] / 1e3)
             co2_stds_ind.append(results_row['total_ton_co2_saved_mean_sum_std'] / 1e3)
             weights_ind.append(equity_row['equity_weight'])
@@ -1051,7 +1051,7 @@ def plot_tradeoff_efficiency(results_subset, equity_subset, scenarios, scenario_
             base_scenario = sorted_scenarios[0]
             
             # *** UPDATED COLUMN NAMES ***
-            base_vuln = equity_subset[equity_subset['scenario'] == base_scenario]['vulnerable_pct_mean'].iloc[0] 
+            base_vuln = equity_subset[equity_subset['scenario'] == base_scenario]['high_deprived_pct_mean'].iloc[0] 
             base_co2 = results_subset[results_subset['scenario'] == base_scenario]['total_ton_co2_saved_mean_sum_mean'].iloc[0] / 1e3
             
             tradeoff_scenarios = []
@@ -1063,7 +1063,7 @@ def plot_tradeoff_efficiency(results_subset, equity_subset, scenarios, scenario_
                 results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
                 
                 # *** UPDATED COLUMN NAMES ***
-                vuln_cov = equity_row['vulnerable_pct_mean'] * 100
+                vuln_cov = equity_row['high_deprived_pct_mean'] * 100
                 co2_saved = results_row['total_ton_co2_saved_mean_sum_mean'] / 1e3
                 
                 vuln_gain = vuln_cov - base_vuln
@@ -1129,7 +1129,7 @@ def plot_radar_chart(results_subset, equity_subset,  filename, scenario_colors):
         # *** UPDATED COLUMN NAMES for normalization ***
         norm_co2 = results_subset['total_ton_co2_saved_mean_sum_mean'].max()
         norm_cost_eff = (1 / results_subset['cost_per_net_ton_co2_kg_mean_mean_mean']).max()
-        norm_vuln = equity_subset['vulnerable_pct_mean'].max()
+        norm_vuln = equity_subset['high_deprived_pct_mean'].max()
         norm_equity = equity_subset['equity_concentration_mean'].max()
         norm_buildings = results_subset['num_buildings_sum_mean'].max()
 
@@ -1141,7 +1141,7 @@ def plot_radar_chart(results_subset, equity_subset,  filename, scenario_colors):
             # *** UPDATED COLUMN NAMES ***
             carbon_norm = results_row['total_ton_co2_saved_mean_sum_mean'] / norm_co2
             cost_eff_norm = (1 / results_row['cost_per_net_ton_co2_kg_mean_mean_mean']) / norm_cost_eff
-            vuln_norm = equity_row['vulnerable_pct_mean'] / norm_vuln
+            vuln_norm = equity_row['high_deprived_pct_mean'] / norm_vuln
             equity_norm = 1 - (equity_row['equity_concentration_mean'] / norm_equity)
             buildings_norm = results_row['num_buildings_sum_mean'] / norm_buildings
             
