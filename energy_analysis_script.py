@@ -352,7 +352,7 @@ def main():
 
     # Load data once
     log_memory("Before loading data")
-    res_df = load_data(args.input_pattern, args.scenarios, number=6)
+    res_df = load_data(args.input_pattern, args.scenarios,)
     log_memory("After loading data")
 
     # Filter out domestic outbuildings

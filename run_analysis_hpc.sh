@@ -12,8 +12,8 @@ ON_HPC=true  # Set to true if running on HPC, false for local
 
 if [ "$ON_HPC" = true ]; then
     # HPC paths
-    INPUT_PATTERN="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v5/NE/*.csv"
-    OUTPUT_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/retrofit_scenario_analysis/1_post_analysis/v5"
+    INPUT_PATTERN="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v6/NE/*.csv"
+    OUTPUT_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/retrofit_scenario_analysis/1_post_analysis/v6"
     SCRIPT_PATH="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/energy_analysis_script.py"
     LOG_DIR="/rds/user/gb669/hpc-work/energy_map/RetrofitModel/post_analysis_logs_slurm"
 else
@@ -59,7 +59,7 @@ ELEC_CARBON_FACTOR=0.19338
 
 SLURM_ACCOUNT="CULLEN-SL3-CPU"
 SLURM_PARTITION="icelake"
-SLURM_TIME="00:45:00"
+SLURM_TIME="00:55:00"
 SLURM_NODES=1
 SLURM_NTASKS=1
 SLURM_MEM="100G"

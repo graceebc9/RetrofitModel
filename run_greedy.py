@@ -51,6 +51,7 @@ def main():
     running_locally = not is_running_on_hpc()
     if running_locally:
         personas_path='/Users/gracecolverd/RetrofitModel/NE_region_personas.csv'
+        personas_path='/Users/gracecolverd/RetrofitModel/filt_domestic_personas_fuel_poverty_clustering_vars13_kn9.csv'
         BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
         # INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*.csv'
