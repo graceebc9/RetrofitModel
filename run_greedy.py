@@ -28,15 +28,7 @@ from src.RetrofitGreedy import run_greedy_algo
 from src.RetrofitGreedyUtils import setup_logging
 from src.RetrofitAnalysisUtils import load_data , prepare_data_for_postanalysis
 from src.RetrofitGreedyPost import post_proc_greedy 
-# ============================================================================
-# DATA LOADING (UPDATED FOR NEW FORMAT)
-# ============================================================================
- 
-
-def load_personas(path):
-    """Load persona/demographic data."""
-    personas = pd.read_csv(path)
-    return personas
+from src.personas import load_personas  
 
 # ============================================================================
 # MAIN EXECUTION
@@ -51,6 +43,7 @@ def main():
     running_locally = not is_running_on_hpc()
     if running_locally:
         personas_path='/Users/gracecolverd/RetrofitModel/NE_region_personas.csv'
+        personas_path='/Users/gracecolverd/RetrofitModel/filt_domestic_personas_fuel_poverty_clustering_vars13_kn9.csv'
         BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
         # INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*.csv'
@@ -129,7 +122,7 @@ def main():
             res_df = load_data(INPUT_FILES_PATH, scenario_list)
         
         print("\nLoading personas...")
-        personas = load_personas(path=personas_path) 
+        personas = load_personas( ) 
         res_df = res_df.merge(personas, on='postcode', how='inner')
         print(f"After persona merge: {len(res_df)} rows")
         
