@@ -166,6 +166,22 @@ def aggregate_equity(df, group_cols=['scenario']):
         print("Warning: Equity dataframe is empty. Cannot aggregate.")
         return pd.DataFrame()
         
+    # agg_dict = {
+    #     'vulnerable_pct': ['mean', 'std'],
+    #     'equity_concentration': ['mean', 'std'],
+    #     'deprived_count': ['mean', 'std'],
+    #     'struggling_count': ['mean', 'std'],
+    #     'lower middle_count': ['mean', 'std'],
+    #     'upper middle_count': ['mean', 'std'],
+    #     'affluent_count': ['mean', 'std'],
+    #     'student_count': ['mean', 'std'],
+    #     'deprived_pct': ['mean', 'std'],
+    #     'struggling_pct': ['mean', 'std'],
+    #     'lower middle_pct': ['mean', 'std'],
+    #     'upper middle_pct': ['mean', 'std'],
+    #     'affluent_pct': ['mean', 'std'],
+    #     'student_pct': ['mean', 'std']
+    # }
     agg_dict = {
         'high_deprived_pct': ['mean', 'std'],
         'equity_concentration': ['mean', 'std'],

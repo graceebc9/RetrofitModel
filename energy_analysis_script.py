@@ -41,7 +41,7 @@ def analyze_uncertainty(df, scenario_name, measure_type, years, output_dir):
     print("\n" + "="*60)
     print(f"UNCERTAINTY ANALYSIS - {scenario_name}")
     print("="*60)
-
+    
     # Use CO2 columns (created in add_co2_columns function)
     GAS_MEAN_COL = f'gas_{years}yr_kg_co2_saved_{scenario_name}_mean'
     GAS_P50_COL = f'gas_{years}yr_kg_co2_saved_{scenario_name}_p50'
