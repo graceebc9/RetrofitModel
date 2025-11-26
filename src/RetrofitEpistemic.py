@@ -10,8 +10,7 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
     The sampling space is 6-dimensional (one for each factor).
     """
     
-    # 1. Define the Number of Factors (N=6)
-    N_factors = 12
+    N_factors = 13
     
     # 2. Generate the Latin Hypercube Samples (N_epistemic_runs rows, N_factors columns)
     # The output is uniformly distributed between 0 and 1.
@@ -42,11 +41,7 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
     age_samples = uniform.ppf(lhs_samples_uniform[:, 5], loc=0.92, scale=0.16)
     
     # --- NEW: Factor 7 - Discrete Cost Scenario ---
-    
-    # We map the [0, 1] sample to 3 bins:
-    # [0.0, 0.333...) -> 'optimistic'
-    # [0.333..., 0.666...) -> 'central'
-    # [0.666..., 1.0] -> 'pessimistic'
+
     
     scenario_choices = np.array(['optimistic', 'central', 'pessimistic'])
     # Get the 7th column of samples (index 6)
@@ -68,9 +63,6 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
     ewo_samples = uniform.ppf(lhs_samples_uniform[:, 7], loc=0.1, scale=0.8)
 
     # --- NEW: 4 Factors (Flat Estimation Model, Default Typology) ---
-    
-    # Based on epistemic_footprint_default = ( (55, 5), (8, 2) )
-    # Based on epistemic_efficiency_default = ( (0.75, 0.03), (0.05, 0.02) )
 
     # Factor 9: Mean Flat Footprint (fp_mean) - Truncated Normal: loc=55, scale=5, bounds [40, 70]
     a_fp_m, b_fp_m = (40 - 55) / 5, (70 - 55) / 5
@@ -88,6 +80,17 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
     a_ef_s, b_ef_s = (0.01 - 0.05) / 0.02, (0.1 - 0.05) / 0.02
     eff_std_samples = truncnorm.ppf(lhs_samples_uniform[:, 11], a=a_ef_s, b=b_ef_s, loc=0.05, scale=0.02)
 
+    # --- NEW: Factor 13 - Area-Based Choice (Discrete) ---
+    area_choices = np.array(['min', 'max', 'mode'])
+    # Get the 13th column of samples (index 12)
+    area_choice_samples_uniform = lhs_samples_uniform[:, 12]
+    # Convert [0, 1] to indices [0, 1, 2]
+    area_indices = np.floor(area_choice_samples_uniform * 3).astype(int)
+    # Clip to handle edge case of sample being exactly 1.0
+    area_indices = np.clip(area_indices, 0, 2)
+    # Select from the array
+    area_choice_samples = area_choices[area_indices]
+    
     # 4. Compile into DataFrame
     epistemic_df = pd.DataFrame({
         'time_scale_bias': ts_samples,
@@ -103,6 +106,8 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
         'flat_fp_std': fp_std_samples,
         'flat_eff_mean': eff_mean_samples,
         'flat_eff_std': eff_std_samples,
+
+        'area_based_choice': area_choice_samples,  # NEW
     })
     
     return epistemic_df
