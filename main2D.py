@@ -72,7 +72,7 @@ if running_locally:
     job_name = 'all'
     batch_size = 500
     log_size = 10
-    n_monte_carlo = 5000
+    n_monte_carlo = 1000
     N_EPISTEMIC_RUNS = 5
     RANDOM_SEED_OUTER = 42
     OUTPUT_DIR = 'final_dataset'
@@ -180,10 +180,10 @@ def postcode_main(batch_path, data_dir, path_to_onsud_file, path_to_pcshp, INPUT
     log_file = os.path.join(proc_dir, f'{batch_label}_log_file.csv')
     logger.debug(f'Using log file: {log_file}')
 
-
     # Load ONSUD data
     logger.debug('Loading ONSUD data')
     onsud_data = load_onsud_data(path_to_onsud_file, path_to_pcshp)
+    
     logger.debug('ONSUD data loaded successfully')
 
     # Load and filter postcodes
@@ -199,8 +199,7 @@ def postcode_main(batch_path, data_dir, path_to_onsud_file, path_to_pcshp, INPUT
         'Input GPK': INPUT_GPK,
         'SubBatch log limit': log_size,
         'Batch label': batch_label,
-        # 'RetrofitConfig_energy_cost_per_kwh': retrofit_config.energy_cost_per_kwh,
-        # 'RetrofitConfig_existing_intervention_probs': retrofit_config.existing_intervention_probs,
+        
         'RetrofitModel2DSettings': RetrofitModel2D.n_samples,
         'Scenarios': scenarios,
         'Output dir': data_dir,

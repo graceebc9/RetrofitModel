@@ -7,7 +7,7 @@ import pandas as pd
 import os 
 from src.retrofit_calc2D import process_postcodes_for_retrofit_with_uncertainty2D
 
-
+from src.RetrofitDownscale import load_scaled_gas_elec 
 
 
 
@@ -25,7 +25,8 @@ def process_retrofit_batch_with_uncertainty(
     # retrofig_model,
     scenarios,
     conservation_data,
-    energy_column='total_gas',
+    scaled_gas_elec_data,
+    # energy_column='total_gas',
     # random_seed=42,
     use_uncertainty=True
 ):
@@ -54,7 +55,6 @@ def process_retrofit_batch_with_uncertainty(
         
         try:
             if use_uncertainty:
-                
                 pc_result = process_postcodes_for_retrofit_with_uncertainty2D(
                     pc=pc,
                     onsud_data=data,
@@ -63,9 +63,9 @@ def process_retrofit_batch_with_uncertainty(
                     retrofit_config=retrofit_config, 
                     scenarios=scenarios,
                     conservation_data=conservation_data,
-                    energy_column=energy_column,
                     RANDOM_SEED_OUTER=RANDOM_SEED_OUTER,
                     N_EPISTEMIC_RUNS=N_EPISTEMIC_RUNS,
+                    scaled_gas_elec_data=scaled_gas_elec_data,
                 )
    
             
@@ -203,6 +203,9 @@ def run_retrofit_calc_with_uncertainty2D(
     region = log_file.split('/')[-2]
     logger.info(f'Extracted region: {region}')
     
+    # load the scaled gas and eelc 
+    gas_elec_table = load_scaled_gas_elec() 
+
     # Validate region
     valid_regions = ['NW', 'NE', 'LN', 'WA', 'WM', 'EM', 'EE', 'SE', 'SW', 'YH']
     if region not in valid_regions:
@@ -223,7 +226,7 @@ def run_retrofit_calc_with_uncertainty2D(
         batch = pcs_list[i:i+batch_size]
          
         logger.info(f'Processing batch {batch_num}/{total_batches} ({len(batch)} postcodes)')
-        
+        pcs_elec_gas = gas_elec_table[gas_elec_table['postcode'].isin(batch)]
         try:
             process_retrofit_batch_with_uncertainty(
                 pc_batch=batch,
@@ -236,12 +239,12 @@ def run_retrofit_calc_with_uncertainty2D(
                 # retrofig_model=retrofig_model,
                 scenarios=scenarios,
                 region=region,
-                energy_column=energy_column,
                 RANDOM_SEED_OUTER=RANDOM_SEED_OUTER, 
                 N_EPISTEMIC_RUNS= N_EPISTEMIC_RUNS,
                 # random_seed=random_seed,  
                 use_uncertainty=use_uncertainty,
                 conservation_data=conservation_data,
+                scaled_gas_elec_data=pcs_elec_gas,
             )
             logger.info(f'Completed batch {batch_num}/{total_batches}')
             

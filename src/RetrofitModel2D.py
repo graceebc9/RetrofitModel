@@ -96,6 +96,12 @@ class RetrofitModel2D:
         int_factor = self.epistemic_scenario.get('solid_wall_internal_improvement_factor'  )
         ext_factor = self.epistemic_scenario.get('solid_wall_external_improvement_factor')
         
+        area_choice_setting = self.epistemic_scenario.get('area_based_choice') 
+        
+        self.area_col = f'scaled_area_{area_choice_setting}'
+        self.gas_col =f'gas_scaled_scaled_area_{area_choice_setting}'
+        self.elec_col = f'elec_scaled_scaled_area_{area_choice_setting}'
+
         # Create/Update RetrofitEnergy config
         if self.energy_config is None:
             self.energy_config = RetrofitEnergy(
@@ -499,7 +505,9 @@ class RetrofitModel2D:
         
         # --- 1. Data Validation ---
         # ADD YOUR BASELINE COLUMNS HERE
-        baseline_cols = ['total_gas_derived', 'total_elec_derived'] 
+
+
+        baseline_cols = [self.gas_col, self.elec_col] 
         
         required_cols = ['floor_count', 'gross_external_area', 'gross_internal_area', 'inferred_wall_type', 'inferred_insulation_type',
                         'footprint_circumference', 'building_type', 'age_band', 'building_footprint_area', 'avg_gas_percentile']
@@ -529,8 +537,8 @@ class RetrofitModel2D:
         flat_count = int(raw_flat_count) if pd.notna(raw_flat_count) and raw_flat_count > 0 else 1
         
         # Extract baseline energy
-        total_gas_derived = float(row['total_gas_derived'])
-        total_elec_derived = float(row['total_elec_derived'])
+        total_gas_derived = float(row[self.gas_col])
+        total_elec_derived = float(row[self.elec_col])
         
         building_chars = BuildingCharacteristics(
             floor_count=floor_count,
@@ -696,13 +704,12 @@ class RetrofitModel2D:
         logger.debug(f'Col mapping is " {col_mapping }')
         results  = result_df.apply(
             lambda row: self.calculate_row_statistics(row, 
-                                                            col_mapping=col_mapping, 
-                                                            scenario_interventions=scenario_interventions, 
-                                                            region=region,  
-                                                            return_statistics=return_statistics,
-                                                            scenario_name=scenario,
-                                                            
-                                                             ), axis=1
+                                                        col_mapping=col_mapping, 
+                                                        scenario_interventions=scenario_interventions, 
+                                                        region=region,  
+                                                        return_statistics=return_statistics,
+                                                        scenario_name=scenario,
+                                                            ), axis=1
                                     )
         logger.debug('Row Calc complete')
         logger.debug('Row cols: ')
@@ -923,7 +930,7 @@ class RetrofitModel2D:
         costs_result_df  = result_df.copy() 
         energy_results_df = result_df.copy() 
         dfcols = result_df.columns.tolist()
-         
+        logger.debug(dfcols)
         # Calculate and add costs  
         costs_result_df, energy_results_df = self._calculate_and_add_costs(result_df = costs_result_df, 
                                                                             col_mapping = col_mapping, 

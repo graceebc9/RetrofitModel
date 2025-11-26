@@ -10,7 +10,7 @@ import numpy as np
 from typing import Dict, List, Optional, Any
 # Assuming these modules are available in the package structure
 from .RetrofitScenarioGenerator2DMC import RetrofitScenarioGenerator2DMC 
-# from .RetrofitModel import RetrofitConfig, BuildingCharacteristics
+
 from .postcode_utils import find_data_pc_joint
 from .pre_process_buildings import pre_process_building_data
 from .RetrofitEpistemic import generate_epistemic_scenarios_lhs 
@@ -18,6 +18,13 @@ from .RetrofitModel2D import RetrofitModel2D
 from pathlib import Path
 root_dir = Path(__file__).resolve().parent.parent
 
+
+energy_columns = [ 'gas_scaled_scaled_area_max',
+ 'elec_scaled_scaled_area_max',
+ 'gas_scaled_scaled_area_min',
+ 'elec_scaled_scaled_area_min',
+ 'gas_scaled_scaled_area_mode',
+ 'elec_scaled_scaled_area_mode',]
 
 def load_energy():
     energy_df = pd.read_csv(f'{root_dir}/src/global_avs/neb_enegry_data.csv')
@@ -71,13 +78,11 @@ def process_postcodes_for_retrofit_with_uncertainty2D(
     INPUT_GPK,
     region,
     retrofit_config,
-    # retrofig_model,
-    energy_column, 
     scenarios,
     conservation_data,
-    # n_monte_carlo,
     RANDOM_SEED_OUTER, 
     N_EPISTEMIC_RUNS,
+    scaled_gas_elec_data,
 ):
     """
     Process postcode with full uncertainty analysis.
@@ -116,25 +121,30 @@ def process_postcodes_for_retrofit_with_uncertainty2D(
     if uprn_match is None or uprn_match.empty:
         return error_dict
     logger.debug('Loading EUI...' ) 
-    energy = load_eui() 
+    
+    energy = scaled_gas_elec_data[scaled_gas_elec_data['postcode']==pc]
+
     logger.debug('Pre process buildigns...')
     building_data = pre_process_building_data(uprn_match)
-    
-    gas_eui, elec_eui = get_eui_factor(pc=pc, eui_df= energy, region = region)
-    building_data['total_gas_derived'] =  building_data['scaled_fl_area'] * gas_eui
-    building_data['total_elec_derived'] =  building_data['scaled_fl_area'] * elec_eui
-    building_data['total_energy_dervied'] = building_data['total_gas_derived']  + building_data['total_elec_derived']
+
     deciles = load_gas_deciles(f'{root_dir}/src/global_avs/neb_unfil_final_gas_deciles.csv')
 
     gas_decile = get_gas_decile_single(pc, deciles)
     building_data['avg_gas_percentile'] = [gas_decile[0] for x in range(len(building_data)  ) ]
+    
+    prev_shape= building_data.shape[0]
+    building_data = building_data.merge(energy, on='upn')
+    if building_data.shape[0] !=  prev_shape:
+        logger.warning('Lost some data mering with the scaled energy')
+    
     if building_data is None or building_data.empty:
         return error_dict
     
     # Check for energy data
-    if energy_column not in building_data.columns:
-        error_dict['error'] = f'Missing energy column: {energy_column}'
-        return error_dict
+    for col in energy_columns:
+        if col not in building_data.columns:
+            error_dict['error'] = f'Missing energy column: {col}'
+            return error_dict
     
     logger.debug('Starting scenario generation')
     

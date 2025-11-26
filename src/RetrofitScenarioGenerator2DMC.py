@@ -65,8 +65,8 @@ class RetrofitScenarioGenerator2DMC:
             'age_band': 'premise_age_bucketed',
             # 'current_energy_kwh': 'total',
             'floor_count': 'fc_filled',
-        'gross_external_area': 'total_fl_area_avg',
-            'gross_internal_area': 'scaled_fl_area',
+            'gross_external_area': None , 
+            'gross_internal_area': None, 
             'footprint_area': 'premise_area',
             'footprint_circumference': 'perimeter_length',
             'flat_count': 'est_num_flats',
@@ -106,8 +106,16 @@ class RetrofitScenarioGenerator2DMC:
             epistemic_scenario = scenario_row.to_dict()
             logger.info(f"--- Running Outer Loop Scenario {run_idx + 1}/{self.n_epistemic_runs} ---")
             
+            # update the col mapping based on scenario 
+            area_choice = epistemic_scenario['area_based_choice']
+            logger.debug(f'Updating with are choice: {area_choice}')
+            col_mapping['gross_external_area'] = f'area_{area_choice}'
+            col_mapping['gross_internal_area'] = f'scaled_area_{area_choice}'
+            
             # 5. INSTANTIATE THE INNER LOOP MODEL (RetrofitModel)
             logger.info('Vectorising preproess now in epistemic loop ... ')
+            
+            
             df_typ = vectorized_process_buildings(
                 result_df=result_df,
                 col_mapping=col_mapping, 
