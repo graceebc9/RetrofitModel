@@ -192,7 +192,6 @@ def aggregate_equity(df, group_cols=['scenario']):
         'low_deprived_pct': ['mean', 'std'],
         
     }
-
     aggregated = df.groupby(group_cols).agg(agg_dict).reset_index()
     aggregated = flatten_multiindex_cols(aggregated)
     
@@ -260,6 +259,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     print("EQUITY WEIGHTING COMPARISON SUMMARY (MEAN ACROSS EPISTEMIC RUNS)")
     print("=" * 80)
     # Define columns to display for a cleaner summary
+    
     display_cols = [
         'scenario_label',
         'total_ton_co2_saved_mean_sum_mean',
@@ -269,6 +269,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
         'med_deprived_pct_mean',
         'low_deprived_pct_mean'
     ]
+    
     # Filter for columns that actually exist in the final dataframe
     display_cols = [col for col in display_cols if col in comparison_df.columns]
     
