@@ -1003,15 +1003,15 @@ def plot_vulnerable_groups_coverage(equity_subset, filename, y_axis_zero=False):
         width = 0.35
         
         # *** These columns were simple strings, so NO change needed ***
-        deprived_means = [equity_subset[equity_subset['scenario'] == s]['deprived_pct_mean'].iloc[0] * 100 
+        deprived_means = [equity_subset[equity_subset['scenario'] == s]['high_deprived_pct_mean'].iloc[0] * 100 
                         for s in scenarios]
-        struggling_means = [equity_subset[equity_subset['scenario'] == s]['struggling_pct_mean'].iloc[0] * 100 
-                            for s in scenarios]
+        # struggling_means = [equity_subset[equity_subset['scenario'] == s]['struggling_pct_mean'].iloc[0] * 100 
+        #                     for s in scenarios]
         
         bars1 = ax.bar(x_pos - width/2, deprived_means, width, label='Deprived', 
                     color='#c0392b', alpha=0.8)
-        bars2 = ax.bar(x_pos + width/2, struggling_means, width, label='Struggling', 
-                    color='#e67e22', alpha=0.8)
+        # bars2 = ax.bar(x_pos + width/2, struggling_means, width, label='Struggling', 
+        #             color='#e67e22', alpha=0.8)
         
         ax.set_xlabel('Equity Weight', fontsize=14, fontweight='bold')
         ax.set_ylabel('Coverage (%)', fontsize=14, fontweight='bold')

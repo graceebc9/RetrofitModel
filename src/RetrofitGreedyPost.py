@@ -166,23 +166,33 @@ def aggregate_equity(df, group_cols=['scenario']):
         print("Warning: Equity dataframe is empty. Cannot aggregate.")
         return pd.DataFrame()
         
+    # agg_dict = {
+    #     'vulnerable_pct': ['mean', 'std'],
+    #     'equity_concentration': ['mean', 'std'],
+    #     'deprived_count': ['mean', 'std'],
+    #     'struggling_count': ['mean', 'std'],
+    #     'lower middle_count': ['mean', 'std'],
+    #     'upper middle_count': ['mean', 'std'],
+    #     'affluent_count': ['mean', 'std'],
+    #     'student_count': ['mean', 'std'],
+    #     'deprived_pct': ['mean', 'std'],
+    #     'struggling_pct': ['mean', 'std'],
+    #     'lower middle_pct': ['mean', 'std'],
+    #     'upper middle_pct': ['mean', 'std'],
+    #     'affluent_pct': ['mean', 'std'],
+    #     'student_pct': ['mean', 'std']
+    # }
     agg_dict = {
-        'vulnerable_pct': ['mean', 'std'],
+        'high_deprived_pct': ['mean', 'std'],
         'equity_concentration': ['mean', 'std'],
-        'deprived_count': ['mean', 'std'],
-        'struggling_count': ['mean', 'std'],
-        'lower middle_count': ['mean', 'std'],
-        'upper middle_count': ['mean', 'std'],
-        'affluent_count': ['mean', 'std'],
-        'student_count': ['mean', 'std'],
-        'deprived_pct': ['mean', 'std'],
-        'struggling_pct': ['mean', 'std'],
-        'lower middle_pct': ['mean', 'std'],
-        'upper middle_pct': ['mean', 'std'],
-        'affluent_pct': ['mean', 'std'],
-        'student_pct': ['mean', 'std']
+        'high_deprived_count': ['mean', 'std'],
+        'med_deprived_count': ['mean', 'std'],
+        'med_deprived_pct': ['mean', 'std'],
+        'low_deprived_count': ['mean', 'std'],
+        'low_deprived_pct': ['mean', 'std'],
+        
     }
-    
+
     aggregated = df.groupby(group_cols).agg(agg_dict).reset_index()
     aggregated = flatten_multiindex_cols(aggregated)
     
@@ -254,10 +264,10 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
         'scenario_label',
         'total_ton_co2_saved_mean_sum_mean',
         'num_buildings_sum_mean',
-        'vulnerable_pct_mean',
+        'high_deprived_pct_mean',
         'equity_concentration_mean',
-        'deprived_pct_mean',
-        'affluent_pct_mean'
+        'med_deprived_pct_mean',
+        'low_deprived_pct_mean'
     ]
     # Filter for columns that actually exist in the final dataframe
     display_cols = [col for col in display_cols if col in comparison_df.columns]
