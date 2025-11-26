@@ -4,6 +4,24 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
+label_cleaner_map = {
+    'high_deprived':  'High Deprivation' , 
+    'med_deprived': 'Medium Deprivation', 
+    'low_deprived': 'Low Deprivation', 
+}
+
+name_mapping = { 
+    0: "Struggling Lone Parents",
+    1: "Secure Established Families",
+    2: "Solvent Working Households",
+    3: "Modest Solo Dwellers",
+    4: "At-Risk Singles",
+    5: "Senior Citizens",
+    6: "Isolated and Deprived",
+    7: "Younger Strugglers",
+    8: "The Squeezed Middle"
+}
+
 
 scenario_label_map = {
     'budget_1000000_equity_0': 'equity_0', 
@@ -425,66 +443,6 @@ def plot_equity_concentration_vs_weight(equity_subset, equity_weights, budget_la
     plt.close()
     print(f"Saved: {filename}")
 
-# def plot_socioeconomic_distribution(equity_subset, scenario_colors, filename, y_axis_zero=False):
-#     """Plot 5: Socio-economic Distribution by Equity Weight"""
-    
-#     # This plot is complex with budgets, so we'll just plot for the *first* budget found
-#     # Or you could adapt this to create one plot per budget
-    
-  
-#     def plot_one_budget(equity_subset, budget_to_plot, filename, scenario_colors, y_axis_zero):
-#         # budget_to_plot = budgets[0]
-#         rl_filename =f'{filename.split(".png")[0]}_budget{budget_to_plot}.png'
-              
-#         equity_subset = equity_subset[equity_subset['budget'] == budget_to_plot]
-#         budget_label = f'Budget £{budget_to_plot/1e6:.0f}M'
-#         scenarios = equity_subset['scenario'].unique()
-        
-#         fig, ax = plt.figure(figsize=(12, 7)), plt.gca()
-        
-#         # *** These columns were simple strings, so NO change needed ***
-#         socio_groups = ['deprived_pct', 'struggling_pct', 'lower middle_pct', 
-#                         'upper middle_pct', 'affluent_pct', 'student_pct']
-#         socio_labels = ['Deprived', 'Struggling', 'Lower\nMiddle', 
-#                         'Upper\nMiddle', 'Affluent', 'Student']
-        
-#         x = np.arange(len(socio_labels))
-#         n_scenarios = len(scenarios)
-#         width = 0.8 / n_scenarios
-        
-#         for i, scenario in enumerate(scenarios):
-#             equity_row = equity_subset[equity_subset['scenario'] == scenario].iloc[0]
-#             means = [equity_row[f'{group}_mean'] for group in socio_groups]
-#             offset = (i - n_scenarios/2 + 0.5) * width
-            
-#             weight = equity_row['equity_weight']
-#             label = f'EW={weight}'
-#             ax.bar(x + offset, means, width, label=label, 
-#                 color=scenario_colors[scenario], alpha=0.7)
-        
-#         ax.set_xlabel('Socio-economic Group', fontsize=14, fontweight='bold')
-#         ax.set_ylabel('Coverage (%)', fontsize=14, fontweight='bold')
-#         ax.set_title(f'Socio-economic Distribution by Equity Weight\n{budget_label}', 
-#                     fontsize=16, fontweight='bold')
-#         ax.set_xticks(x)
-#         ax.set_xticklabels(socio_labels, fontsize=11)
-#         ax.legend(fontsize=11, ncol=min(2, (n_scenarios + 1) // 2))
-#         ax.grid(True, alpha=0.3, axis='y')
-        
-#         # *** ADDED: Set y-axis to 0 if toggled ***
-#         if y_axis_zero:
-#             ax.set_ylim(bottom=0)
-        
-#         plt.tight_layout()
-#         plt.savefig(rl_filename, dpi=300, bbox_inches='tight')
-#         plt.close()
-#         print(f"Saved: {rl_filename}")
-#     budgets = equity_subset['budget'].unique()
-#     if len(budgets) > 1:
-#         print(f"Warning: Plot 5 (Socio-economic) only plotting for first budget: £{budgets[0]/1e6:.0f}M")
-#     for budget_plot in budgets:
-#         plot_one_budget(equity_subset, budget_plot, filename, scenario_colors, y_axis_zero)
-    
 def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename, y_axis_zero=True):
     """
     Plot distribution of total carbon saved by persona (socioeconomic group).
@@ -502,9 +460,12 @@ def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename, y_ax
         
         rl_filename =f'{filename.split(".png")[0]}_budget{budget_to_plot/1_000_000}M.png'
         equity_subset = selected_projects_df[selected_projects_df['budget'] == budget_to_plot]
+        print('equity_subset cols: ' , equity_subset.columns.tolist() ) 
         # Step 1: Sum carbon saved per persona per epistemic run
+        
+        equity_subset['persona_name'] =  equity_subset['cluster'].map(name_mapping)
         carbon_by_run = equity_subset.groupby(
-            ['scenario', 'epistemic_run', 'meta_socio_persona']
+            ['scenario', 'epistemic_run', 'persona_name']
         )['total_ton_co2_saved_mean'].sum().reset_index()
         carbon_by_run.columns = ['scenario', 'epistemic_run', 'persona', 'total_carbon_saved']
         
@@ -519,16 +480,8 @@ def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename, y_ax
         scenarios = carbon_stats['scenario'].unique()
         personas = sorted(carbon_stats['persona'].unique())
         
-        # Map persona names to cleaner labels
-        persona_label_map = {
-            'deprived': 'Deprived',
-            'struggling': 'Struggling',
-            'lower middle': 'Lower\nMiddle',
-            'upper middle': 'Upper\nMiddle',
-            'affluent': 'Affluent',
-            'student': 'Student'
-        }
-        persona_labels = [persona_label_map.get(p, p) for p in personas]
+ 
+        
         
         fig, ax = plt.subplots(figsize=(14, 7))
         
@@ -543,6 +496,7 @@ def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename, y_ax
             means = []
             sds = []
             for persona in personas:
+                print(persona) 
                 persona_row = scenario_data[scenario_data['persona'] == persona]
                 if len(persona_row) > 0:
                     means.append(persona_row['mean_carbon'].iloc[0])
@@ -568,7 +522,7 @@ def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename, y_ax
         ax.set_title('Distribution of Total Carbon Saved by Persona\n(Mean ± SD across epistemic runs)', 
                     fontsize=16, fontweight='bold')
         ax.set_xticks(x)
-        ax.set_xticklabels(persona_labels, fontsize=11)
+        #ax.set_xticklabels(persona_labels, fontsize=11)
         ax.legend(fontsize=11, ncol=min(3, (n_scenarios + 2) // 3))
         ax.grid(True, alpha=0.3, axis='y')
         
@@ -645,11 +599,9 @@ def plot_metric_by_group_mean(selected_projects_df, scenario_colors, filename,
         groups = sorted(run_stats['group'].unique())
         
         # Optional: Map common messy labels to cleaner ones (safe to keep even if not using personas)
-        label_cleaner_map = {
-            'deprived': 'Deprived', 'struggling': 'Struggling',
-            'lower middle': 'Lower\nMiddle', 'upper middle': 'Upper\nMiddle',
-            'affluent': 'Affluent', 'student': 'Student'
-        }
+ 
+
+        
         # .get(g, str(g)) ensures it falls back to the original value if not in the map
         group_labels = [label_cleaner_map.get(g, str(g)) for g in groups]
         
@@ -758,11 +710,7 @@ def plot_count_by_group(selected_projects_df, scenario_colors, filename,
         groups = sorted(run_stats['group'].unique())
         
         # Optional: Map common messy labels to cleaner ones
-        label_cleaner_map = {
-            'deprived': 'Deprived', 'struggling': 'Struggling',
-            'lower middle': 'Lower\nMiddle', 'upper middle': 'Upper\nMiddle',
-            'affluent': 'Affluent', 'student': 'Student'
-        }
+ 
         group_labels = [label_cleaner_map.get(g, str(g)) for g in groups]
         
         fig, ax = plt.subplots(figsize=(14, 7))
@@ -1003,15 +951,13 @@ def plot_vulnerable_groups_coverage(equity_subset, filename, y_axis_zero=False):
         width = 0.35
         
         # *** These columns were simple strings, so NO change needed ***
-        deprived_means = [equity_subset[equity_subset['scenario'] == s]['deprived_pct_mean'].iloc[0] * 100 
+        deprived_means = [equity_subset[equity_subset['scenario'] == s]['high_deprived_pct_mean'].iloc[0] * 100 
                         for s in scenarios]
-        struggling_means = [equity_subset[equity_subset['scenario'] == s]['struggling_pct_mean'].iloc[0] * 100 
-                            for s in scenarios]
+
         
         bars1 = ax.bar(x_pos - width/2, deprived_means, width, label='Deprived', 
                     color='#c0392b', alpha=0.8)
-        bars2 = ax.bar(x_pos + width/2, struggling_means, width, label='Struggling', 
-                    color='#e67e22', alpha=0.8)
+ 
         
         ax.set_xlabel('Equity Weight', fontsize=14, fontweight='bold')
         ax.set_ylabel('Coverage (%)', fontsize=14, fontweight='bold')

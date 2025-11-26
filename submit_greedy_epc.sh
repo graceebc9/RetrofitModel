@@ -20,7 +20,7 @@ CONDA_BASE=/usr/local/software/archive/linux-scientific7-x86_64/gcc-9/miniconda3
 source $CONDA_BASE/etc/profile.d/conda.sh
 
 # Activate the nebula environment
-conda activate /home/gb669/.conda/envs/nebula
+conda activate /home/gb669/.conda/envs/ag3
 
 # Set environment variables
 export SLURM_SUBMIT_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel'
