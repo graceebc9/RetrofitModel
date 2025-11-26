@@ -1,6 +1,5 @@
 import pandas as pd 
 
-path = '/home/gb669/rds/hpc-work/energy_map/uk_postcode_clustering/3_single_runs/regional/NE/fuel_poverty_clustering_vars13_kn9/filt_domestic_samples/clusters_res_df.csv'
 
 vuln_clusters = [0, 6]
 middle_clustrs = [4, 7, 8]
@@ -30,7 +29,14 @@ name_mapping = {
 
 def load_personas():
     """Load persona/demographic data."""
-    personas = pd.read_csv(path)
+
+    try:
+        path = '/home/gb669/rds/hpc-work/energy_map/uk_postcode_clustering/3_single_runs/regional/NE/fuel_poverty_clustering_vars13_kn9/filt_domestic_samples/clusters_res_df.csv'
+        personas = pd.read_csv(path)
+    except:
+        path = '/Volumes/T9/2025_10_RetrofitModel/3-personas/clusters_res_df (1).csv'    
+        personas = pd.read_csv(path)
+    
     personas['meta_socio_persona'] = personas['cluster'].map(mapping)
     personas['persona_name'] = personas['cluster'].map(name_mapping)
     return personas 
