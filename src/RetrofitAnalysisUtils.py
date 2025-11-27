@@ -340,7 +340,7 @@ def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, e
                 # 3. Cast all new columns to float32
                 new_columns[co2_col] = ((df_prep[kwh_col] * years * gas_carbon_factor) / 1000).astype(dtype)
                 new_columns[co2kg_col] = (df_prep[kwh_col] * years * gas_carbon_factor).astype(dtype)
-                print(f"  Created: {co2_col}")
+               
             else:
                 print(f"  ⚠️  Missing: {kwh_col}")
                 sys.exit() 
@@ -352,7 +352,7 @@ def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, e
             if kwh_col in new_columns:
                 # 3. Cast all new columns to float32
                 new_columns[co2_col] = ((new_columns[kwh_col] * years * gas_carbon_factor) / 1000).astype(dtype)
-                print(f"  Created: {co2_col}")
+                
             else:
                 print(f"  ⚠️  Missing: {kwh_col}")
                 sys.exit() 
@@ -363,14 +363,14 @@ def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, e
                 cost_per_kwh_col = f'{scenario_name}_cost_per_{ff}_kwh_{scenario_name}_{stat}'
                 # 3. Cast all new columns to float32
                 new_columns[cost_per_ton_col] = (df_prep[cost_per_kwh_col] * 1000 / (years * gas_carbon_factor)).astype(dtype)
-                print(f"  Created: {cost_per_ton_col}")
+               
             
             # Cost in millions
             cost_col = f'{scenario_name}_cost_{scenario_name}_mean'
             mill_col = f'{scenario_name}_cost_{scenario_name}_{stat}_mill'
             # 3. Cast all new columns to float32
             new_columns[mill_col] = (df_prep[cost_col] / 1_000_000).astype(dtype)
-            print(f"  Created: {mill_col} (in millions)")
+            
 
         # Convert electricity kWh to CO2 (in tonnes, for heat scenarios)
         if 'heat' in scenario_name.lower():
@@ -381,7 +381,7 @@ def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, e
                 if kwh_col in df_prep.columns:
                     # 3. Cast all new columns to float32
                     new_columns[co2_col] = ((df_prep[kwh_col] * years * elec_carbon_factor) / 1000).astype(dtype)
-                    print(f"  Created: {co2_col}")
+                    
         
         # Add total CO2 savings column (gas + elec) for ranking (in tonnes)
         # <<< REVERTED to your original column names >>>
@@ -401,7 +401,7 @@ def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, e
                     # 4. Replace in-place add with a new assignment to ensure dtype
                     new_columns[total_co2_col] = (new_columns[total_co2_col] + new_columns[elec_co2_mean]).astype(dtype)
             
-            print(f"  Created: {total_co2_col} (in tonnes)")
+           
         
         # Ensure cost column exists (should already be there)
         cost_col = f'{scenario_name}_cost_{scenario_name}_mean'
