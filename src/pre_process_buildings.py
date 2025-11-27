@@ -183,6 +183,7 @@ def fill_local_averages(df):
     height_fla = df[~df['validated_height'].isna()]['validated_height'].mean()
     
     df['fc_filled'] = np.where(df['validated_fc'].isna(), fc_fla, df['validated_fc'])
+    df['fc_filled'] = np.where(df['fc_filled'].isna(), df['floor_count_numeric'] , df['fc_filled'] )
     df['height_filled'] = np.where(df['validated_height'].isna(), height_fla, df['validated_height'] )
     df = create_height_bucket_cols(df, 'height_filled')
     logger.debug('Fill local averages complete')
