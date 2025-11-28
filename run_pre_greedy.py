@@ -455,8 +455,10 @@ def process_all_files_with_global_cutoffs(files_list, metrics_dict, config=None)
 # ============================================================================
 import glob 
 from src.RetrofitAnalysisUtils import load_data , prepare_data_for_postanalysis
+local= False  
 
 if __name__ == "__main__":
+    
     
     YEARS = 5
     N_SIMULATIONS = 5000
@@ -476,8 +478,11 @@ if __name__ == "__main__":
     }
     
     # Define your files
-    files_list = glob.glob( '/Volumes/T9/2025_10_RetrofitModel/1_data_runs/NE/*csv' ) 
-    
+    if local:
+        files_list = glob.glob( '/Volumes/T9/2025_10_RetrofitModel/1_data_runs/NE/*csv' ) 
+    else:
+        files_list = glob.glob( '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v7/NE/*csv' ) 
+        files_list=files_list[0:20]
     # ========================================================================
     # OPTION 1: Use default config
     # ========================================================================
@@ -500,8 +505,8 @@ if __name__ == "__main__":
             'loft': {'cv_threshold': 0.5, 'percentile': 95},  # More lenient for loft
         },
         'save_pass1_results': True,
-        'save_pass2_results': True,
-        'save_cleaned_files': True,
+        'save_pass2_results': False,
+        'save_cleaned_files': False,
         'output_dir': 'cleaned_logs'
     }
     
