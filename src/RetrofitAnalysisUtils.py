@@ -262,6 +262,13 @@ import sys
 import pandas as pd
 import numpy as np
 
+import pandas as pd
+import sys
+import pandas as pd
+import numpy as np
+import sys
+
+
 def prepare_data_for_postanalysis(df, scenario_list, years, gas_carbon_factor, elec_carbon_factor):
     """
     Prepare data for post work by adding CO2 conversion columns.
