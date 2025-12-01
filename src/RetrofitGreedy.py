@@ -64,7 +64,7 @@ FINAL_RANK_COLS = [
     
 #     # Check if column already exists to avoid overwriting if pre-processed
 #     if 'already_loft' in df.columns:
-#          return df
+#          return dfff
 
 #     df['already_loft'] = np.where(
 #         df['premise_age'].isin(modern_ages),
@@ -265,6 +265,7 @@ def _process_optimization_batch(epi_df_full: pd.DataFrame,
     # --- 4. Run greedy knapsack ---
     detail_logger.info(f"\n  Running greedy knapsack with budget: £{scenario_budget:,}")
     
+
     # Get the best *potential* project for each building
     baseline_selection = (wdf
                         .sort_values(RANK_COL_WEIGHTED_COST, ascending=True)
