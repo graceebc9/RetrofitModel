@@ -30,15 +30,14 @@ from src.RetrofitGreedyUtils import setup_logging
 from src.RetrofitAnalysisUtils import load_data , prepare_data_for_postanalysis
 from src.RetrofitGreedyPost import post_proc_greedy 
 from src.GreedyEpcVis import run_mode_comparison
+
+from src.personas import load_personas
 # ============================================================================
 # DATA LOADING (UPDATED FOR NEW FORMAT)
 # ============================================================================
  
 
-def load_personas(path):
-    """Load persona/demographic data."""
-    personas = pd.read_csv(path)
-    return personas
+
 
 # ============================================================================
 # MAIN EXECUTION
@@ -53,6 +52,7 @@ def main():
     running_locally = not is_running_on_hpc()
     if running_locally:
         personas_path='/Users/gracecolverd/RetrofitModel/NE_region_personas.csv'
+        personas_path='/Users/gracecolverd/RetrofitModel/filt_domestic_personas_fuel_poverty_clustering_vars13_kn9.csv'
         BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy_epc'
         # INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/test/new_log_epc/*.csv'
@@ -67,7 +67,7 @@ def main():
     else:
         BASE_DIR = os.getenv('BASE_DIR')
         INPUT_FILES_PATH = os.getenv('INPUT_FILES_PATH') 
-        personas_path='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/personas/NE_region_personas.csv'
+             ='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/personas/NE_region_personas.csv'
         scenario_list =  ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
         
         run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
@@ -139,7 +139,7 @@ def main():
                 raise Exception('Log missing epc col')
             
         print("\nLoading personas...")
-        personas = load_personas(path=personas_path) 
+        personas  = load_personas() 
         res_df = res_df.merge(personas, on='postcode', how='inner')
         print(f"After persona merge: {len(res_df)} rows")
         print(res_df.columns.tolist() )
