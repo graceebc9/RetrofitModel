@@ -78,7 +78,7 @@ def analyze_log_file(filepath, metric_alias, metric_col):
     
     # Group by UPN (Building ID) to get stats across the 70 epistemic runs
     # We calculate Mean and Std Dev across the runs
-    stats = df.groupby('upn')[metric_col].agg(['mean', 'std']).reset_index()
+    stats = df.groupby(['upn', 'postcode', 'premise_type'])[metric_col].agg(['mean', 'std']).reset_index()
     
     # Handle zeros to avoid division by zero
     stats['mean'] = stats['mean'].replace(0, 0.001) 
@@ -109,7 +109,7 @@ def run_diagnostics():
         
         # Simplified: Loop through all found files, try to extract the specific metric
         metric_dfs = []
-        for f in files[:35]: # LIMIT to 5 files for speed testing, remove [:5] for full run
+        for f in files[:25]: # LIMIT to 5 files for speed testing, remove [:5] for full run
             res = analyze_log_file(f, alias, col_name)
             if res is not None:
                 metric_dfs.append(res)
@@ -171,7 +171,7 @@ def run_diagnostics():
     plt.xlabel('Mean Cost per Ton (Log Scale)')
     plt.ylabel('Coefficient of Variation (CV)')
     plt.legend()
-    plt.savefig('{output_dir}/diagnostic_cv_vs_mean.png', dpi=150)
+    plt.savefig(f'{output_dir}/diagnostic_cv_vs_mean.png', dpi=150)
     print("Saved: diagnostic_cv_vs_mean.png")
 
     # PLOT 2: The "Actual Risk" (SD vs Mean)
@@ -189,7 +189,7 @@ def run_diagnostics():
     plt.xlabel('Mean Cost per Ton')
     plt.ylabel('Standard Deviation (Uncertainty in £)')
     plt.legend()
-    plt.savefig('{output_dir}/diagnostic_sd_vs_mean.png', dpi=150)
+    plt.savefig(f'{output_dir}/diagnostic_sd_vs_mean.png', dpi=150)
     print("Saved: diagnostic_sd_vs_mean.png")
 
 if __name__ == "__main__":
