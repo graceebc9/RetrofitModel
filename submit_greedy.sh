@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH -A CULLEN-SL3-CPU
 #SBATCH -p icelake
-#SBATCH --time=02:45:00
+#SBATCH --time=0:45:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=NONE
-#SBATCH --mem=250G
-#SBATCH --output=logs_greedy250/rmodel_%A_%a.out
-#SBATCH --error=logs_greedy250/rmodel_%A_%a.err
+#SBATCH --mem=50G
+#SBATCH --output=logs_greedy50/rmodel_%A_%a.out
+#SBATCH --error=logs_greedy50/rmodel_%A_%a.err
 #SBATCH --array=0-10  # 5 budgets × 2 lofts = 10 combinations
  
 # Load required modules
