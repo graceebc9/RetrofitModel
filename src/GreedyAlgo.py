@@ -12,7 +12,8 @@ def true_greedy_knapsack(df_knapsack: pd.DataFrame,
                          budget: float, 
                          cost_column: str = 'cost_of_intervention_mean', 
                          efficiency_column: str = 'cost_per_net_ton_co2_kg',
-                         logger: logging.Logger = None) -> Tuple[pd.DataFrame, float]:
+                         logger: logging.Logger = None, 
+                         carbon_col: str = 'total_ton_co2_saved') -> Tuple[pd.DataFrame, float]:
     """
     Selects the most cost-effective buildings to receive interventions until 
     the budget is exhausted.
@@ -73,7 +74,7 @@ def true_greedy_knapsack(df_knapsack: pd.DataFrame,
         if not selected_df.empty:
             # This 'total_ton_co2_saved' column name is hardcoded based on
             # the context of the main script (RANK_COL_CO2_SAVED)
-            total_co2 = selected_df['total_ton_co2_saved'].sum()
+            total_co2 = selected_df[carbon_col].sum()
             
             logger.info("\n✅ Selection Complete:")
             logger.info(f"  Buildings covered: {len(selected_df):,}")
@@ -162,100 +163,87 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+
 def plot_greedy_distribution_analysis(baseline_df, selected_df, 
-                                      scenario_name="Greedy Selection", 
+                                      scenario_name="intervention", 
                                       output_dir=None):
     """
-    Calculates and plots distributions, including averages and std dev
-    across epistemic runs.
+    Calculates and plots distributions for a single result set 
+    (pre-processed or single run).
     
-    Generates 6 separate plots. If output_dir is provided, saves each
-    plot as a PNG file instead of displaying it.
+    Generates 5 separate plots (A, B, C, D, E). 
+    Plot F (Std Dev) has been removed as this is a single run analysis.
 
     Parameters:
     -----------
     baseline_df : DataFrame
-        Contains the best intervention for ALL buildings.
+        Contains the best intervention for ALL buildings (the pool).
     selected_df : DataFrame
-        Contains the projects chosen by the greedy algorithm. 
-        MUST contain an 'epistemic_run' column.
+        Contains the projects chosen by the greedy algorithm.
     scenario_name : str
-        Name for the scenario (e.g., "50% Budget"), used in titles and filenames.
+        Name for the scenario, used in titles and filenames.
     output_dir : str or Path, optional
         If provided, saves plots to this directory instead of showing them.
     """
     
     print("=" * 60)
-    print(f"ANALYSIS: {scenario_name}")
+    print(f"ANALYSIS: {scenario_name} (Single Result Set)")
     print("=" * 60)
 
-    if 'epistemic_run' not in selected_df.columns:
-        print("ERROR: 'epistemic_run' column not found in selected_df.")
-        print("Cannot perform average-per-run analysis.")
-        return
+    # Validate required columns
+    required_cols = ['avg_gas_percentile', 'intervention']
+    for col in required_cols:
+        if col not in selected_df.columns:
+            print(f"ERROR: '{col}' column not found in selected_df.")
+            return
 
     # ----------------------------------------
     # 1. Calculate Data Distributions
     # ----------------------------------------
     
-    n_runs = selected_df['epistemic_run'].nunique()
-    all_runs = selected_df['epistemic_run'].unique()
+    # Get sorted unique values for consistent plotting order
     all_deciles_sorted = np.sort(selected_df['avg_gas_percentile'].unique())
-    all_scenarios_sorted = np.sort(selected_df['scenario'].unique())
-    
-    print(f"Found {n_runs} epistemic runs.")
+    all_scenarios_sorted = np.sort(selected_df['intervention'].unique())
 
-    # --- Baseline & Aggregate Decile Comparison (Plots A, B, C) ---
+    # --- Baseline & Selected Decile Comparison (Plots A, B, C) ---
+    # Calculate % distribution of buildings across gas deciles
     baseline_decile_dist = baseline_df['avg_gas_percentile'].value_counts().sort_index()
     baseline_decile_pct = (baseline_decile_dist / len(baseline_df) * 100).rename('Baseline (100%)')
 
-    # Note: For comparison, we use the *total* selected distribution
-    total_scenario_decile_dist = selected_df['avg_gas_percentile'].value_counts().sort_index()
-    total_scenario_decile_pct = (total_scenario_decile_dist / len(selected_df) * 100).rename(scenario_name)
+    selected_decile_dist = selected_df['avg_gas_percentile'].value_counts().sort_index()
+    selected_decile_pct = (selected_decile_dist / len(selected_df) * 100).rename(scenario_name)
 
-    comparison_df = pd.concat([baseline_decile_pct, total_scenario_decile_pct], axis=1).fillna(0)
+    comparison_df = pd.concat([baseline_decile_pct, selected_decile_pct], axis=1).fillna(0)
     diff_from_baseline = comparison_df[scenario_name] - comparison_df['Baseline (100%)']
     
     print("\nGas Decile Distribution Comparison (%):")
     print(comparison_df.round(1))
 
-    # --- Per-Run Scenario Distribution (Plot D) ---
-    scenario_counts_per_run = selected_df.groupby('epistemic_run')['scenario'].value_counts().unstack(level='scenario', fill_value=0)
-    # Reindex to ensure all runs/scenarios are present for mean/std calc
-    scenario_counts_per_run = scenario_counts_per_run.reindex(index=all_runs, fill_value=0)
-    scenario_counts_per_run = scenario_counts_per_run.reindex(columns=all_scenarios_sorted, fill_value=0)
+    # --- Scenario Counts (Plot D) ---
+    # Simply count how many times each scenario appears in the selection
+    scenario_counts = selected_df['intervention'].value_counts().reindex(all_scenarios_sorted, fill_value=0)
     
-    scenario_dist_avg = scenario_counts_per_run.mean(axis=0)
-    scenario_dist_std = scenario_counts_per_run.std(axis=0)
-    
-    print("\nAverage Intervention Distribution (per Run):")
-    print(pd.DataFrame({'Mean': scenario_dist_avg, 'StdDev': scenario_dist_std}).round(1))
+    print("\nIntervention Counts:")
+    print(scenario_counts)
 
-    # --- Per-Run Intervention Mix per Decile (Plots E, F) ---
-    counts_per_run_decile = selected_df.pivot_table(
-        index=['epistemic_run', 'avg_gas_percentile'], 
-        columns='scenario', 
-        aggfunc='size', 
-        fill_value=0
+    # --- Intervention Mix per Decile (Plot E) ---
+    # Crosstab to show which interventions are selected within each decile
+    counts_per_decile = pd.crosstab(
+        selected_df['avg_gas_percentile'], 
+        selected_df['intervention']
     )
-    # Reindex to ensure all combinations are present
-    full_multi_index = pd.MultiIndex.from_product(
-        [all_runs, all_deciles_sorted], 
-        names=['epistemic_run', 'avg_gas_percentile']
-    )
-    counts_per_run_decile = counts_per_run_decile.reindex(index=full_multi_index, fill_value=0)
-    counts_per_run_decile = counts_per_run_decile.reindex(columns=all_scenarios_sorted, fill_value=0)
     
-    intervention_decile_avg = counts_per_run_decile.groupby(level='avg_gas_percentile').mean()
-    intervention_decile_std = counts_per_run_decile.groupby(level='avg_gas_percentile').std()
+    # Reindex to ensure strictly consistent axes even if some scenarios/deciles are missing in this specific run
+    counts_per_decile = counts_per_decile.reindex(index=all_deciles_sorted, fill_value=0)
+    counts_per_decile = counts_per_decile.reindex(columns=all_scenarios_sorted, fill_value=0)
 
-    print("\nAverage Intervention Mix per Decile (per Run):")
-    print(intervention_decile_avg.round(1))
+    print("\nIntervention Mix per Decile (Counts):")
+    print(counts_per_decile)
 
-    print("\nDEBUG - comparison_df dtypes:")
-    print(comparison_df.dtypes)
-    print("\nDEBUG - comparison_df values:")
-    print(comparison_df)
     # ----------------------------------------
     # 2. Setup Plot Saving or Showing
     # ----------------------------------------
@@ -279,41 +267,33 @@ def plot_greedy_distribution_analysis(baseline_df, selected_df,
             plt.show()
 
     # ----------------------------------------
-    # 3. Generate Plots (Separately)
+    # 3. Generate Plots
     # ----------------------------------------
 
-    # --- A. Gas Decile Comparison Bar Chart (Aggregate) ---
+    # --- A. Gas Decile Comparison Bar Chart ---
     try:
         fig_a, ax_a = plt.subplots(figsize=(8, 6))
         comparison_df.T.plot(kind='bar', stacked=False, ax=ax_a, 
                              colormap='tab10', edgecolor='black', linewidth=0.5)
-        ax_a.set_xlabel('Scenario', fontsize=11)
+        ax_a.set_xlabel('Dataset', fontsize=11)
         ax_a.set_ylabel('Percentage of Buildings (%)', fontsize=11)
-        ax_a.set_title('A. Gas Decile Distribution: Baseline vs. Selection (All Runs)', fontsize=12, fontweight='bold')
+        ax_a.set_title(f'A. Gas Decile Distribution: Baseline vs. {scenario_name}', fontsize=12, fontweight='bold')
         ax_a.legend(title='Gas Decile', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
         ax_a.tick_params(axis='x', rotation=0)
         ax_a.grid(axis='y', alpha=0.3)
-        save_or_show(fig_a, "A_Decile_Distribution_Aggregate")
+        save_or_show(fig_a, "A_Decile_Distribution")
     except Exception as e:
         print(f"Failed to create Plot A: {e}")
-        if 'fig_a' in locals(): plt.close(fig_a)
 
-    # --- B. Heatmap of Decile Distribution (Aggregate) ---
-    # --- DEBUG: CHECK DATA BEFORE CONVERSION ---
-    print("--- DEBUG PLOT B: BEFORE CONVERSION ---")
-    print(comparison_df.info())
-    print(comparison_df.head())
-    print("------------------------------------------")
+    # --- B. Heatmap of Decile Distribution ---
     try:
         fig_b, ax_b = plt.subplots(figsize=(8, 5))
         comparison_df_numeric = comparison_df.astype('float64')
 
-         # --- DEBUG: CHECK DATA AFTER CONVERSION ---
-        print("--- DEBUG PLOT B: AFTER .astype('float64') ---")
-        print(comparison_df_numeric.info()) # This should now show 'float64'
-        print("-----------------------------------------------")
         cmap = plt.cm.RdYlGn
-        im = ax_b.imshow(comparison_df_numeric.T.values, cmap=cmap, aspect='auto', vmin=0, vmax=comparison_df_numeric.T.values.max() + 5)
+        # vmin/vmax logic handles coloring
+        im = ax_b.imshow(comparison_df_numeric.T.values, cmap=cmap, aspect='auto', 
+                         vmin=0, vmax=comparison_df_numeric.T.values.max() * 1.1)
 
         ax_b.set_xticks(np.arange(len(comparison_df_numeric.index)))
         ax_b.set_yticks(np.arange(len(comparison_df_numeric.columns)))
@@ -321,328 +301,80 @@ def plot_greedy_distribution_analysis(baseline_df, selected_df,
         ax_b.set_yticklabels(comparison_df_numeric.columns)
         ax_b.tick_params(axis='x', rotation=45)
 
+        # Annotate values
         for i in range(len(comparison_df_numeric.columns)):
             for j in range(len(comparison_df_numeric.index)):
                 value = comparison_df_numeric.T.values[i, j]
+                # Dynamic text color based on value for readability
+                text_color = "black" if value < (comparison_df_numeric.values.max()/1.5) else "white"
                 ax_b.text(j, i, f'{value:.1f}', ha="center", va="center", 
-                          color="black", fontsize=9)
+                          color=text_color, fontsize=9, fontweight='bold')
 
-        ax_b.set_title('B. Gas Decile Distribution Heatmap (%) (All Runs)', fontsize=12, fontweight='bold', pad=10)
+        ax_b.set_title('B. Gas Decile Distribution Heatmap (%)', fontsize=12, fontweight='bold', pad=10)
         ax_b.set_xlabel('Gas Decile', fontsize=11)
-        ax_b.set_ylabel('Scenario', fontsize=11)
-
+        
         cbar = plt.colorbar(im, ax=ax_b)
         cbar.set_label('Percentage (%)', rotation=270, labelpad=20)
-        save_or_show(fig_b, "B_Decile_Heatmap_Aggregate")
+        save_or_show(fig_b, "B_Decile_Heatmap")
     except Exception as e:
         print(f"Failed to create Plot B: {e}")
-        if 'fig_b' in locals(): plt.close(fig_b)
 
-    # --- C. Difference from Baseline (Bias Analysis - Aggregate) ---
+    # --- C. Difference from Baseline (Bias Analysis) ---
     try:
         fig_c, ax_c = plt.subplots(figsize=(8, 6))
-        colors = ['red' if x < 0 else 'green' for x in diff_from_baseline]
+        # Color: Green if over-indexed compared to baseline, Red if under-indexed (or vice versa depending on preference)
+        # Here: Green = Positive Difference, Red = Negative Difference
+        colors = ['green' if x >= 0 else 'red' for x in diff_from_baseline]
+        
         ax_c.bar(range(len(diff_from_baseline)), diff_from_baseline, color=colors, edgecolor='black', alpha=0.7)
         ax_c.axhline(y=0, color='black', linestyle='-', linewidth=1)
         ax_c.set_xlabel('Gas Decile', fontsize=11)
         ax_c.set_ylabel('Difference from Baseline (%)', fontsize=11)
-        ax_c.set_title('C. Decile Bias vs. Full Baseline (All Runs)', fontsize=12, fontweight='bold')
+        ax_c.set_title(f'C. Decile Bias: {scenario_name} vs. Baseline', fontsize=12, fontweight='bold')
         ax_c.set_xticks(range(len(diff_from_baseline)))
         ax_c.set_xticklabels(diff_from_baseline.index, rotation=45)
         ax_c.grid(axis='y', alpha=0.3)
-        save_or_show(fig_c, "C_Decile_Bias_Aggregate")
+        save_or_show(fig_c, "C_Decile_Bias")
     except Exception as e:
         print(f"Failed to create Plot C: {e}")
-        if 'fig_c' in locals(): plt.close(fig_c)
 
-    # --- D. Scenario Selection Distribution (Average per Run) ---
+    # --- D. Scenario Selection Distribution (Absolute Counts) ---
     try:
         fig_d, ax_d = plt.subplots(figsize=(8, 6))
-        scenario_dist_avg.plot(
+        scenario_counts.plot(
             kind='bar', ax=ax_d, 
-            color='steelblue', edgecolor='black', alpha=0.7,
-            yerr=scenario_dist_std, capsize=4  # <-- Added error bars
+            color='steelblue', edgecolor='black', alpha=0.8
         )
         ax_d.set_xlabel('Intervention Scenario', fontsize=11)
-        ax_d.set_ylabel('Avg. Number of Buildings Selected (per Run)', fontsize=11) # <-- Updated label
-        ax_d.set_title(f'D. Intervention Distribution for {scenario_name} (Avg. per Run)', fontsize=12, fontweight='bold') # <-- Updated title
+        ax_d.set_ylabel('Total Buildings Selected', fontsize=11)
+        ax_d.set_title(f'D. Intervention Distribution for {scenario_name}', fontsize=12, fontweight='bold')
         ax_d.tick_params(axis='x', rotation=45)
         ax_d.grid(axis='y', alpha=0.3)
-        save_or_show(fig_d, "D_Intervention_Distribution_Average")
+        
+        # Add count labels on top of bars
+        for p in ax_d.patches:
+            ax_d.annotate(str(int(p.get_height())), (p.get_x() * 1.005, p.get_height() * 1.01), fontsize=9)
+            
+        save_or_show(fig_d, "D_Intervention_Distribution")
     except Exception as e:
         print(f"Failed to create Plot D: {e}")
-        if 'fig_d' in locals(): plt.close(fig_d)
 
-    # --- E. Intervention Mix per Decile (Average per Run) ---
+    # --- E. Intervention Mix per Decile (Stacked Counts) ---
     try:
         fig_e, ax_e = plt.subplots(figsize=(9, 6))
-        intervention_decile_avg.plot(  # <-- Using average data
+        counts_per_decile.plot(
             kind='bar', stacked=True, ax=ax_e, 
             colormap='tab20', edgecolor='black', linewidth=0.5
         )
         ax_e.set_xlabel('Gas Decile', fontsize=11)
-        ax_e.set_ylabel('Avg. Number of Interventions Selected (per Run)', fontsize=11) # <-- Updated label
-        ax_e.set_title(f'E. Intervention Mix per Decile for {scenario_name} (Avg. per Run)', fontsize=12, fontweight='bold') # <-- Updated title
+        ax_e.set_ylabel('Number of Buildings Selected', fontsize=11)
+        ax_e.set_title(f'E. Intervention Mix per Decile for {scenario_name}', fontsize=12, fontweight='bold')
         ax_e.legend(title='Intervention', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
         ax_e.tick_params(axis='x', rotation=45)
         ax_e.grid(axis='y', alpha=0.3)
-        save_or_show(fig_e, "E_Intervention_Mix_Average")
+        save_or_show(fig_e, "E_Intervention_Mix")
     except Exception as e:
         print(f"Failed to create Plot E: {e}")
-        if 'fig_e' in locals(): plt.close(fig_e)
-
-    # --- F. NEW: Intervention Mix Standard Deviation per Decile ---
-    try:
-        fig_f, ax_f = plt.subplots(figsize=(9, 6))
-        intervention_decile_std.plot( # <-- Using std dev data
-            kind='bar', stacked=False, ax=ax_f, # <-- Grouped bar
-            colormap='tab20', edgecolor='black', linewidth=0.5, alpha=0.8
-        )
-        ax_f.set_xlabel('Gas Decile', fontsize=11)
-        ax_f.set_ylabel('Std. Dev. of Intervention Count (across Runs)', fontsize=11)
-        ax_f.set_title(f'F. Variability: Intervention Mix Std. Dev. per Decile', fontsize=12, fontweight='bold')
-        ax_f.legend(title='Intervention', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
-        ax_f.tick_params(axis='x', rotation=45)
-        ax_f.grid(axis='y', alpha=0.3)
-        save_or_show(fig_f, "F_Intervention_Mix_StdDev")
-    except Exception as e:
-        print(f"Failed to create Plot F: {e}")
-        if 'fig_f' in locals(): plt.close(fig_f)
 
     print("\nAnalysis plotting complete.")
 
-
-# def plot_greedy_distribution_analysis(baseline_df, selected_df, 
-#                                       scenario_name="Greedy Selection", 
-#                                       output_dir=None):
-#     """
-#     Calculates and plots distributions, including averages and std dev
-#     across epistemic runs.
-    
-#     Generates 6 separate plots. If output_dir is provided, saves each
-#     plot as a PNG file instead of displaying it.
-
-#     Parameters:
-#     -----------
-#     baseline_df : DataFrame
-#         Contains the best intervention for ALL buildings.
-#     selected_df : DataFrame
-#         Contains the projects chosen by the greedy algorithm. 
-#         MUST contain an 'epistemic_run' column.
-#     scenario_name : str
-#         Name for the scenario (e.g., "50% Budget"), used in titles and filenames.
-#     output_dir : str or Path, optional
-#         If provided, saves plots to this directory instead of showing them.
-#     """
-    
-#     print("=" * 60)
-#     print(f"ANALYSIS: {scenario_name}")
-#     print("=" * 60)
-    
-#     if 'epistemic_run' not in selected_df.columns:
-#         print("ERROR: 'epistemic_run' column not found in selected_df.")
-#         print("Cannot perform average-per-run analysis.")
-#         return
-
-#     # ----------------------------------------
-#     # 1. Calculate Data Distributions
-#     # ----------------------------------------
-    
-#     n_runs = selected_df['epistemic_run'].nunique()
-#     all_runs = selected_df['epistemic_run'].unique()
-#     all_deciles_sorted = np.sort(selected_df['avg_gas_percentile'].unique())
-#     all_scenarios_sorted = np.sort(selected_df['scenario'].unique())
-    
-#     print(f"Found {n_runs} epistemic runs.")
-
-#     # --- Baseline & Aggregate Decile Comparison (Plots A, B, C) ---
-#     baseline_decile_dist = baseline_df['avg_gas_percentile'].value_counts().sort_index()
-#     baseline_decile_pct = (baseline_decile_dist / len(baseline_df) * 100).rename('Baseline (100%)')
-
-#     # Note: For comparison, we use the *total* selected distribution
-#     total_scenario_decile_dist = selected_df['avg_gas_percentile'].value_counts().sort_index()
-#     total_scenario_decile_pct = (total_scenario_decile_dist / len(selected_df) * 100).rename(scenario_name)
-
-#     comparison_df = pd.concat([baseline_decile_pct, total_scenario_decile_pct], axis=1).fillna(0)
-#     diff_from_baseline = comparison_df[scenario_name] - comparison_df['Baseline (100%)']
-    
-#     print("\nGas Decile Distribution Comparison (%):")
-#     print(comparison_df.round(1))
-
-#     # --- Per-Run Scenario Distribution (Plot D) ---
-#     scenario_counts_per_run = selected_df.groupby('epistemic_run')['scenario'].value_counts().unstack(level='scenario', fill_value=0)
-#     # Reindex to ensure all runs/scenarios are present for mean/std calc
-#     scenario_counts_per_run = scenario_counts_per_run.reindex(index=all_runs, fill_value=0)
-#     scenario_counts_per_run = scenario_counts_per_run.reindex(columns=all_scenarios_sorted, fill_value=0)
-    
-#     scenario_dist_avg = scenario_counts_per_run.mean(axis=0)
-#     scenario_dist_std = scenario_counts_per_run.std(axis=0)
-    
-#     print("\nAverage Intervention Distribution (per Run):")
-#     print(pd.DataFrame({'Mean': scenario_dist_avg, 'StdDev': scenario_dist_std}).round(1))
-
-#     # --- Per-Run Intervention Mix per Decile (Plots E, F) ---
-#     counts_per_run_decile = selected_df.pivot_table(
-#         index=['epistemic_run', 'avg_gas_percentile'], 
-#         columns='scenario', 
-#         aggfunc='size', 
-#         fill_value=0
-#     )
-#     # Reindex to ensure all combinations are present
-#     full_multi_index = pd.MultiIndex.from_product(
-#         [all_runs, all_deciles_sorted], 
-#         names=['epistemic_run', 'avg_gas_percentile']
-#     )
-#     counts_per_run_decile = counts_per_run_decile.reindex(index=full_multi_index, fill_value=0)
-#     counts_per_run_decile = counts_per_run_decile.reindex(columns=all_scenarios_sorted, fill_value=0)
-    
-#     intervention_decile_avg = counts_per_run_decile.groupby(level='avg_gas_percentile').mean()
-#     intervention_decile_std = counts_per_run_decile.groupby(level='avg_gas_percentile').std()
-
-#     print("\nAverage Intervention Mix per Decile (per Run):")
-#     print(intervention_decile_avg.round(1))
-
-    
-#     # ----------------------------------------
-#     # 2. Setup Plot Saving or Showing
-#     # ----------------------------------------
-    
-#     filename_prefix = scenario_name.replace(' ', '_').replace('%', 'pct').replace('.', '')
-
-#     if output_dir:
-#         os.makedirs(output_dir, exist_ok=True)
-#         print(f"\nPlots will be saved to: {output_dir}")
-
-#     def save_or_show(fig, plot_name):
-#         """Helper function to either save or show the plot."""
-#         fig.tight_layout()
-#         if output_dir:
-#             filename = f"{filename_prefix}_{plot_name}.png"
-#             filepath = os.path.join(output_dir, filename)
-#             fig.savefig(filepath, bbox_inches='tight', dpi=150)
-#             print(f"  ... saved {filename}")
-#             plt.close(fig)
-#         else:
-#             plt.show()
-
-#     # ----------------------------------------
-#     # 3. Generate Plots (Separately)
-#     # ----------------------------------------
-
-#     # --- A. Gas Decile Comparison Bar Chart (Aggregate) ---
-#     try:
-#         fig_a, ax_a = plt.subplots(figsize=(8, 6))
-#         comparison_df.T.plot(kind='bar', stacked=False, ax=ax_a, 
-#                              colormap='tab10', edgecolor='black', linewidth=0.5)
-#         ax_a.set_xlabel('Scenario', fontsize=11)
-#         ax_a.set_ylabel('Percentage of Buildings (%)', fontsize=11)
-#         ax_a.set_title('A. Gas Decile Distribution: Baseline vs. Selection (All Runs)', fontsize=12, fontweight='bold')
-#         ax_a.legend(title='Gas Decile', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
-#         ax_a.tick_params(axis='x', rotation=0)
-#         ax_a.grid(axis='y', alpha=0.3)
-#         save_or_show(fig_a, "A_Decile_Distribution_Aggregate")
-#     except Exception as e:
-#         print(f"Failed to create Plot A: {e}")
-#         if 'fig_a' in locals(): plt.close(fig_a)
-
-#     # --- B. Heatmap of Decile Distribution (Aggregate) ---
-#     try:
-#         fig_b, ax_b = plt.subplots(figsize=(8, 5))
-#         cmap = plt.cm.RdYlGn
-#         im = ax_b.imshow(comparison_df.T.values, cmap=cmap, aspect='auto', vmin=0, vmax=comparison_df.T.values.max() + 5)
-
-#         ax_b.set_xticks(np.arange(len(comparison_df.index)))
-#         ax_b.set_yticks(np.arange(len(comparison_df.columns)))
-#         ax_b.set_xticklabels(comparison_df.index)
-#         ax_b.set_yticklabels(comparison_df.columns)
-#         ax_b.tick_params(axis='x', rotation=45)
-
-#         for i in range(len(comparison_df.columns)):
-#             for j in range(len(comparison_df.index)):
-#                 value = comparison_df.T.values[i, j]
-#                 ax_b.text(j, i, f'{value:.1f}', ha="center", va="center", 
-#                           color="black", fontsize=9)
-
-#         ax_b.set_title('B. Gas Decile Distribution Heatmap (%) (All Runs)', fontsize=12, fontweight='bold', pad=10)
-#         ax_b.set_xlabel('Gas Decile', fontsize=11)
-#         ax_b.set_ylabel('Scenario', fontsize=11)
-
-#         cbar = plt.colorbar(im, ax=ax_b)
-#         cbar.set_label('Percentage (%)', rotation=270, labelpad=20)
-#         save_or_show(fig_b, "B_Decile_Heatmap_Aggregate")
-#     except Exception as e:
-#         print(f"Failed to create Plot B: {e}")
-#         if 'fig_b' in locals(): plt.close(fig_b)
-
-#     # --- C. Difference from Baseline (Bias Analysis - Aggregate) ---
-#     try:
-#         fig_c, ax_c = plt.subplots(figsize=(8, 6))
-#         colors = ['red' if x < 0 else 'green' for x in diff_from_baseline]
-#         ax_c.bar(range(len(diff_from_baseline)), diff_from_baseline, color=colors, edgecolor='black', alpha=0.7)
-#         ax_c.axhline(y=0, color='black', linestyle='-', linewidth=1)
-#         ax_c.set_xlabel('Gas Decile', fontsize=11)
-#         ax_c.set_ylabel('Difference from Baseline (%)', fontsize=11)
-#         ax_c.set_title('C. Decile Bias vs. Full Baseline (All Runs)', fontsize=12, fontweight='bold')
-#         ax_c.set_xticks(range(len(diff_from_baseline)))
-#         ax_c.set_xticklabels(diff_from_baseline.index, rotation=45)
-#         ax_c.grid(axis='y', alpha=0.3)
-#         save_or_show(fig_c, "C_Decile_Bias_Aggregate")
-#     except Exception as e:
-#         print(f"Failed to create Plot C: {e}")
-#         if 'fig_c' in locals(): plt.close(fig_c)
-
-#     # --- D. Scenario Selection Distribution (Average per Run) ---
-#     try:
-#         fig_d, ax_d = plt.subplots(figsize=(8, 6))
-#         scenario_dist_avg.plot(
-#             kind='bar', ax=ax_d, 
-#             color='steelblue', edgecolor='black', alpha=0.7,
-#             yerr=scenario_dist_std, capsize=4  # <-- Added error bars
-#         )
-#         ax_d.set_xlabel('Intervention Scenario', fontsize=11)
-#         ax_d.set_ylabel('Avg. Number of Buildings Selected (per Run)', fontsize=11) # <-- Updated label
-#         ax_d.set_title(f'D. Intervention Distribution for {scenario_name} (Avg. per Run)', fontsize=12, fontweight='bold') # <-- Updated title
-#         ax_d.tick_params(axis='x', rotation=45)
-#         ax_d.grid(axis='y', alpha=0.3)
-#         save_or_show(fig_d, "D_Intervention_Distribution_Average")
-#     except Exception as e:
-#         print(f"Failed to create Plot D: {e}")
-#         if 'fig_d' in locals(): plt.close(fig_d)
-
-#     # --- E. Intervention Mix per Decile (Average per Run) ---
-#     try:
-#         fig_e, ax_e = plt.subplots(figsize=(9, 6))
-#         intervention_decile_avg.plot(  # <-- Using average data
-#             kind='bar', stacked=True, ax=ax_e, 
-#             colormap='tab20', edgecolor='black', linewidth=0.5
-#         )
-#         ax_e.set_xlabel('Gas Decile', fontsize=11)
-#         ax_e.set_ylabel('Avg. Number of Interventions Selected (per Run)', fontsize=11) # <-- Updated label
-#         ax_e.set_title(f'E. Intervention Mix per Decile for {scenario_name} (Avg. per Run)', fontsize=12, fontweight='bold') # <-- Updated title
-#         ax_e.legend(title='Intervention', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
-#         ax_e.tick_params(axis='x', rotation=45)
-#         ax_e.grid(axis='y', alpha=0.3)
-#         save_or_show(fig_e, "E_Intervention_Mix_Average")
-#     except Exception as e:
-#         print(f"Failed to create Plot E: {e}")
-#         if 'fig_e' in locals(): plt.close(fig_e)
-
-#     # --- F. NEW: Intervention Mix Standard Deviation per Decile ---
-#     try:
-#         fig_f, ax_f = plt.subplots(figsize=(9, 6))
-#         intervention_decile_std.plot( # <-- Using std dev data
-#             kind='bar', stacked=False, ax=ax_f, # <-- Grouped bar
-#             colormap='tab20', edgecolor='black', linewidth=0.5, alpha=0.8
-#         )
-#         ax_f.set_xlabel('Gas Decile', fontsize=11)
-#         ax_f.set_ylabel('Std. Dev. of Intervention Count (across Runs)', fontsize=11)
-#         ax_f.set_title(f'F. Variability: Intervention Mix Std. Dev. per Decile', fontsize=12, fontweight='bold')
-#         ax_f.legend(title='Intervention', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
-#         ax_f.tick_params(axis='x', rotation=45)
-#         ax_f.grid(axis='y', alpha=0.3)
-#         save_or_show(fig_f, "F_Intervention_Mix_StdDev")
-#     except Exception as e:
-#         print(f"Failed to create Plot F: {e}")
-#         if 'fig_f' in locals(): plt.close(fig_f)
-
-#     print("\nAnalysis plotting complete.")

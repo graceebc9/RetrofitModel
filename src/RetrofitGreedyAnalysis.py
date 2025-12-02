@@ -22,6 +22,10 @@ name_mapping = {
     8: "The Squeezed Middle"
 }
 
+total_co2_saved_col = 'total_co2_saved_robust_sum'
+# total_co2_saved_col_std = 'total_co2_saved_robust_sum_std'
+capex_per_net_ton_mean_col = 'capex_per_net_ton_mean'
+# capex_per_net_ton_std_col = 'capex_per_net_ton_mean_std'
 
 scenario_label_map = {
     'budget_1000000_equity_0': 'equity_0', 
@@ -318,8 +322,8 @@ def plot_carbon_savings_vs_equity(results_subset, equity_weights, budget_label, 
         weights = subset['equity_weight'].values
         
         # *** UPDATED COLUMN NAMES ***
-        means = subset['total_ton_co2_saved_mean_sum_mean'].values / 1e3
-        stds = subset['total_ton_co2_saved_mean_sum_std'].values / 1e3
+        means = subset[total_co2_saved_col].values / 1e3
+        stds = subset[total_co2_saved_col].values / 1e3
         
         label = f'£{budget_val/1e6:.0f}M' if len(results_subset['budget'].unique()) > 1 else None
         ax.errorbar(weights, means, yerr=stds, fmt='o-', markersize=10, 
@@ -351,11 +355,11 @@ def plot_cost_effectiveness_vs_equity(results_subset, equity_weights, budget_lab
         weights = subset['equity_weight'].values
         
         # *** UPDATED COLUMN NAMES ***
-        means = subset['cost_per_net_ton_co2_kg_mean_mean_mean'].values
-        stds = subset['cost_per_net_ton_co2_kg_mean_mean_std'].values
+        means = subset[capex_per_net_ton_mean_col].values
+        # stds = subset[capex_per_net_ton_std_col].values
         
         label = f'£{budget_val/1e6:.0f}M' if len(results_subset['budget'].unique()) > 1 else None
-        ax.errorbar(weights, means, yerr=stds, fmt='o-', markersize=10, 
+        ax.errorbar(weights, means, fmt='o-', markersize=10, 
                     linewidth=2, capsize=5, label=label, alpha=0.7)
     
     ax.set_xlabel('Equity Weight', fontsize=14, fontweight='bold')
@@ -384,11 +388,11 @@ def plot_vulnerable_coverage_vs_equity(equity_subset, equity_weights, budget_lab
         weights = subset['equity_weight'].values
         
         # *** These columns were simple strings, so NO change needed ***
-        means = subset['high_deprived_pct_mean'].values * 100
-        stds = subset['high_deprived_pct_std'].values * 100
+        means = subset['high_deprived_pct'].values * 100
+        # stds = subset['high_deprived_pct_std'].values * 100
         
         label = f'£{budget_val/1e6:.0f}M' if len(equity_subset['budget'].unique()) > 1 else None
-        ax.errorbar(weights, means, yerr=stds, fmt='o-', markersize=10, 
+        ax.errorbar(weights, means,fmt='o-', markersize=10, 
                     linewidth=2, capsize=5, label=label, alpha=0.7)
     
     ax.set_xlabel('Equity Weight', fontsize=14, fontweight='bold')
@@ -418,11 +422,11 @@ def plot_equity_concentration_vs_weight(equity_subset, equity_weights, budget_la
         weights = subset['equity_weight'].values
         
         # *** These columns were simple strings, so NO change needed ***
-        means = subset['equity_concentration_mean'].values
-        stds = subset['equity_concentration_std'].values
+        means = subset['equity_concentration'].values
+        # stds = subset['equity_concentration_std'].values
         
         label = f'£{budget_val/1e6:.0f}M' if len(equity_subset['budget'].unique()) > 1 else None
-        ax.errorbar(weights, means, yerr=stds, fmt='o-', markersize=10, 
+        ax.errorbar(weights, means,  fmt='o-', markersize=10, 
                     linewidth=2, capsize=5, label=label, alpha=0.7)
     
     ax.set_xlabel('Equity Weight', fontsize=14, fontweight='bold')
@@ -441,48 +445,60 @@ def plot_equity_concentration_vs_weight(equity_subset, equity_weights, budget_la
     plt.tight_layout()
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.close()
+
+
     print(f"Saved: {filename}")
 
-def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename, y_axis_zero=True):
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import os
+
+def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename, 
+                           scenario_label_map=None, y_axis_zero=True):
     """
     Plot distribution of total carbon saved by persona (socioeconomic group).
-    Shows mean across epistemic runs with error bars for SD.
     
     Parameters:
-    - selected_projects_df: Row-level dataframe with columns including 
-      'meta_socio_persona', 'total_ton_co2_saved_mean', 'scenario', 'epistemic_run'
+    - selected_projects_df: DataFrame with columns 'persona_name', 
+      'total_co2_saved_robust', 'scenario', 'budget'
     - scenario_colors: Dict mapping scenario names to colors
-    - filename: Output filename
+    - filename: Base output filename (e.g., 'output.png')
+    - scenario_label_map: (Optional) Dict to rename scenarios for the legend
     - y_axis_zero: Whether to start y-axis at 0
     """
- 
-    def plot_carbon_by_persona_single(selected_projects_df,budget_to_plot,  scenario_colors, filename, y_axis_zero=True):
+    if scenario_label_map is None:
+        scenario_label_map = {}
+
+    budgets = selected_projects_df['budget'].unique()
+    
+    for budget in budgets:
+        # 1. Filter data for current budget
+        equity_subset = selected_projects_df[selected_projects_df['budget'] == budget].copy()
         
-        rl_filename =f'{filename.split(".png")[0]}_budget{budget_to_plot/1_000_000}M.png'
-        equity_subset = selected_projects_df[selected_projects_df['budget'] == budget_to_plot]
-        print('equity_subset cols: ' , equity_subset.columns.tolist() ) 
-        # Step 1: Sum carbon saved per persona per epistemic run
+        # 2. Aggregate data
+        # Group by scenario and persona, summing the robust carbon savings
+        carbon_grouped = equity_subset.groupby(
+            ['scenario', 'persona_name']
+        )['total_co2_saved_robust'].sum().reset_index()
         
-        equity_subset['persona_name'] =  equity_subset['cluster'].map(name_mapping)
-        carbon_by_run = equity_subset.groupby(
-            ['scenario', 'epistemic_run', 'persona_name']
-        )['total_ton_co2_saved_mean'].sum().reset_index()
-        carbon_by_run.columns = ['scenario', 'epistemic_run', 'persona', 'total_carbon_saved']
+        # 3. Pivot for plotting
+        # This creates a matrix where index=Personas, columns=Scenarios
+        # fillna(0) handles cases where a persona exists in one scenario but not another
+        plot_data = carbon_grouped.pivot(
+            index='persona_name', 
+            columns='scenario', 
+            values='total_co2_saved_robust'
+        ).fillna(0)
         
-        # Step 2: Calculate mean and SD across epistemic runs
-        carbon_stats = carbon_by_run.groupby(['scenario', 'persona']).agg(
-            mean_carbon=('total_carbon_saved', 'mean'),
-            sd_carbon=('total_carbon_saved', 'std'),
-            n_runs=('total_carbon_saved', 'count')
-        ).reset_index()
+        # Sort personas alphabetically (or by index)
+        plot_data = plot_data.sort_index()
         
-        # Step 3: Create plot
-        scenarios = carbon_stats['scenario'].unique()
-        personas = sorted(carbon_stats['persona'].unique())
+        personas = plot_data.index.tolist()
+        scenarios = plot_data.columns.tolist()
         
- 
-        
-        
+        # 4. Create Plot
         fig, ax = plt.subplots(figsize=(14, 7))
         
         x = np.arange(len(personas))
@@ -490,176 +506,383 @@ def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename, y_ax
         width = 0.8 / n_scenarios
         
         for i, scenario in enumerate(scenarios):
-            scenario_data = carbon_stats[carbon_stats['scenario'] == scenario]
+            # Calculate bar positions
+            offset = (i - n_scenarios / 2 + 0.5) * width
             
-            # Ensure we have data for all personas (fill with 0 if missing)
-            means = []
-            sds = []
-            for persona in personas:
-                print(persona) 
-                persona_row = scenario_data[scenario_data['persona'] == persona]
-                if len(persona_row) > 0:
-                    means.append(persona_row['mean_carbon'].iloc[0])
-                    sds.append(persona_row['sd_carbon'].iloc[0])
-                else:
-                    means.append(0)
-                    sds.append(0)
+            # Get clean label
+            label_name = scenario_label_map.get(scenario, scenario)
             
-            offset = (i - n_scenarios/2 + 0.5) * width
+            # Get color
+            color = scenario_colors.get(scenario, f'C{i}')
             
-            # Extract scenario label (you might want to customize this)
-            label = scenario
-            clean_scenario_name = scenario_label_map.get(scenario, scenario)
-            ax.bar(x + offset, means, width, 
-                yerr=sds,
-                label=clean_scenario_name,
-                color=scenario_colors.get(scenario, f'C{i}'),
-                alpha=0.7,
-                capsize=3)
+            ax.bar(x + offset, 
+                   plot_data[scenario], 
+                   width, 
+                   label=label_name,
+                   color=color,
+                   alpha=0.7)
         
+        # 5. Styling
         ax.set_xlabel('Socio-economic Persona', fontsize=14, fontweight='bold')
         ax.set_ylabel('Total Carbon Saved (tons CO₂)', fontsize=14, fontweight='bold')
-        ax.set_title('Distribution of Total Carbon Saved by Persona\n(Mean ± SD across epistemic runs)', 
-                    fontsize=16, fontweight='bold')
+        ax.set_title(f'Distribution of Total Carbon Saved by Persona\n(Budget: £{budget/1e6:.1f}M)', 
+                     fontsize=16, fontweight='bold')
+        
         ax.set_xticks(x)
-        #ax.set_xticklabels(persona_labels, fontsize=11)
-        ax.legend(fontsize=11, ncol=min(3, (n_scenarios + 2) // 3))
+        ax.set_xticklabels(personas, fontsize=11, rotation=45, ha='right')
+        
+        # Smart legend positioning
+        ax.legend(fontsize=11, ncol=min(3, max(1, (n_scenarios + 2) // 3)))
         ax.grid(True, alpha=0.3, axis='y')
         
         if y_axis_zero:
             ax.set_ylim(bottom=0)
         
+        # 6. Save File
+        base, ext = os.path.splitext(filename)
+        # Handle case where filename might not have an extension
+        if not ext: ext = ".png"
+        
+        rl_filename = f'{base}_budget{budget/1_000_000:.1f}M{ext}'
+        
         plt.tight_layout()
         plt.savefig(rl_filename, dpi=300, bbox_inches='tight')
         plt.close()
-        print(f"Saved: {filename}")
+        
+        print(f"Saved plot to: {rl_filename}")
+
+# def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename, y_axis_zero=True):
+#     """
+#     Plot distribution of total carbon saved by persona (socioeconomic group).
+#     Shows mean across epistemic runs with error bars for SD.
     
-    budgets = selected_projects_df['budget'].unique()
-    if len(budgets) > 1:
-        print(f"Warning: Plot 5 (Socio-economic) only plotting for first budget: £{budgets[0]/1e6:.0f}M")
-    for budget_plot in budgets:
-        plot_carbon_by_persona_single(selected_projects_df,budget_plot, scenario_colors, filename, y_axis_zero)
+#     Parameters:
+#     - selected_projects_df: Row-level dataframe with columns including 
+#       'meta_socio_persona', 'total_ton_co2_saved_mean', 'scenario', 'epistemic_run'
+#     - scenario_colors: Dict mapping scenario names to colors
+#     - filename: Output filename
+#     - y_axis_zero: Whether to start y-axis at 0
+#     """
+ 
+#     def plot_carbon_by_persona_single(selected_projects_df,budget_to_plot,  scenario_colors, filename, y_axis_zero=True):
+        
+#         rl_filename =f'{filename.split(".png")[0]}_budget{budget_to_plot/1_000_000}M.png'
+#         equity_subset = selected_projects_df[selected_projects_df['budget'] == budget_to_plot]
+#         print('equity_subset cols: ' , equity_subset.columns.tolist() ) 
+#         # Step 1: Sum carbon saved per persona per epistemic run
+        
+#         # equity_subset['persona_name'] =  equity_subset['cluster'].map(name_mapping)
+#         carbon_by_run = equity_subset.groupby(
+#             ['scenario', 'persona_name']
+#         )['total_co2_saved_robust'].sum().reset_index()
+#         carbon_by_run.columns = ['scenario', 'persona', 'mean_carbon']
+        
+#         # # Step 2: Calculate mean and SD across epistemic runs
+#         # carbon_stats = carbon_by_run.groupby(['scenario', 'persona']).agg(
+#         #     mean_carbon=('total_co2_saved_robust', 'mean'),
+#         #     # sd_carbon=('total_carbon_saved', 'std'),
+#         #     n_runs=('total_co2_saved_robust', 'count')
+#         # ).reset_index()
+        
+#         # Step 3: Create plot
+#         scenarios = carbon_by_run['scenario'].unique()
+#         personas = sorted(carbon_by_run['persona'].unique())
+        
+ 
+        
+        
+#         fig, ax = plt.subplots(figsize=(14, 7))
+        
+#         x = np.arange(len(personas))
+#         n_scenarios = len(scenarios)
+#         width = 0.8 / n_scenarios
+        
+#         for i, scenario in enumerate(scenarios):
+#             scenario_data = carbon_by_run[carbon_by_run['scenario'] == scenario]
+            
+#             # Ensure we have data for all personas (fill with 0 if missing)
+#             means = []
+            
+#             for persona in personas:
+#                 print(persona) 
+#                 persona_row = scenario_data[scenario_data['persona'] == persona]
+#                 if len(persona_row) > 0:
+#                     means.append(persona_row['mean_carbon'].iloc[0])
+                    
+#                 else:
+#                     means.append(0)
+                    
+            
+#             offset = (i - n_scenarios/2 + 0.5) * width
+            
+#             # Extract scenario label (you might want to customize this)
+#             label = scenario
+#             clean_scenario_name = scenario_label_map.get(scenario, scenario)
+#             ax.bar(x + offset, means, width, 
+                
+#                 label=clean_scenario_name,
+#                 color=scenario_colors.get(scenario, f'C{i}'),
+#                 alpha=0.7,
+#                 capsize=3)
+        
+#         ax.set_xlabel('Socio-economic Persona', fontsize=14, fontweight='bold')
+#         ax.set_ylabel('Total Carbon Saved (tons CO₂)', fontsize=14, fontweight='bold')
+#         ax.set_title('Distribution of Total Carbon Saved by Persona\n(Mean ± SD across epistemic runs)', 
+#                     fontsize=16, fontweight='bold')
+#         ax.set_xticks(x)
+#         #ax.set_xticklabels(persona_labels, fontsize=11)
+#         ax.legend(fontsize=11, ncol=min(3, (n_scenarios + 2) // 3))
+#         ax.grid(True, alpha=0.3, axis='y')
+        
+#         if y_axis_zero:
+#             ax.set_ylim(bottom=0)
+        
+#         plt.tight_layout()
+#         plt.savefig(rl_filename, dpi=300, bbox_inches='tight')
+#         plt.close()
+#         print(f"Saved: {filename}")
+    
+#     budgets = selected_projects_df['budget'].unique()
+#     print(selected_projects_df.columns.tolist() )
+#     if len(budgets) > 1:
+#         print(f"Warning: Plot 5 (Socio-economic) only plotting for first budget: £{budgets[0]/1e6:.0f}M")
+#     for budget_plot in budgets:
+#         plot_carbon_by_persona_single(selected_projects_df, budget_plot, scenario_colors, filename, y_axis_zero)
       
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-def plot_metric_by_group_mean(selected_projects_df, scenario_colors, filename, 
-                         value_col='total_ton_co2_saved_mean',
+# def plot_metric_by_group_mean(selected_projects_df, scenario_colors, filename, 
+#                          value_col='total_co2_saved_robust',
+#                          group_col='meta_socio_persona',
+#                          xlabel='Socio-economic Persona',
+#                          ylabel='Total Carbon Saved (tons CO₂)',
+#                          title='Distribution of Total Carbon Saved by Persona',
+#                          y_axis_zero=True):
+#     """
+#     Generic function to plot distribution of any metric by a specific group.
+#     Shows mean across epistemic runs with error bars for SD.
+    
+#     Parameters:
+#     - selected_projects_df: Row-level dataframe.
+#     - scenario_colors: Dict mapping scenario names to colors.
+#     - filename: Output filename base.
+#     - value_col: The column name of the metric to sum and plot (e.g., carbon, cost).
+#     - group_col: The column name to group by (e.g., meta_socio_persona, region).
+#     - xlabel: Custom label for the X-axis.
+#     - ylabel: Custom label for the Y-axis.
+#     - title: Custom main title for the plot.
+#     - y_axis_zero: Whether to start y-axis at 0.
+#     """
+ 
+#     def plot_single_budget(df, budget_to_plot):
+#         # Create specific filename for this budget
+#         budget_str = f"{budget_to_plot/1e6:.0f}M"
+#         rl_filename = f'{filename.split(".png")[0]}_budget{budget_str}.png'
+        
+#         subset = df[df['budget'] == budget_to_plot].copy()
+        
+#         # Step 1: Sum flexible metric per flexible group per epistemic run
+#         grouped_by_run = subset.groupby(
+#             ['scenario', group_col]
+#         )[value_col].mean().reset_index()
+        
+#         # Standardize internal column names for generic processing
+#         grouped_by_run.columns = ['scenario', 'group', 'mean_val']
+        
+#         # # Step 2: Calculate mean and SD across epistemic runs
+#         # run_stats = grouped_by_run.groupby(['scenario', 'group']).agg(
+#         #     mean_val=('total_value', 'mean'),
+#         #     sd_val=('total_value', 'std'),
+#         #     n_runs=('total_value', 'count')
+#         # ).reset_index()
+        
+#         # Step 3: Create plot
+#         scenarios = grouped_by_run['scenario'].unique()
+#         print('Scenarios: ') 
+#         print( scenarios)
+
+#         # Sort groups for consistent plotting order
+#         groups = sorted(grouped_by_run['group'].unique())
+        
+#         # Optional: Map common messy labels to cleaner ones (safe to keep even if not using personas)
+ 
+
+        
+#         # .get(g, str(g)) ensures it falls back to the original value if not in the map
+#         group_labels = [label_cleaner_map.get(g, str(g)) for g in groups]
+        
+#         fig, ax = plt.subplots(figsize=(14, 7))
+        
+#         x = np.arange(len(groups))
+#         n_scenarios = len(scenarios)
+#         width = 0.8 / n_scenarios
+
+#         for i, scenario in enumerate(scenarios):
+#             scenario_data = grouped_by_run[grouped_by_run['scenario'] == scenario]
+            
+#             # Ensure data exists for all groups (fill with 0 if missing for a scenario)
+#             means = []
+#             sds = []
+#             for group in groups:
+#                 group_row = scenario_data[scenario_data['group'] == group]
+#                 if not group_row.empty:
+#                     means.append(group_row['mean_val'].iloc[0])
+#                     # sds.append(group_row['sd_val'].iloc[0])
+#                 else:
+#                     means.append(0)
+#                     # sds.append(0)
+            
+#             offset = (i - n_scenarios/2 + 0.5) * width
+            
+#             clean_scenario_name = scenario_label_map.get(scenario, scenario)
+            
+#             ax.bar(x + offset, means, width, 
+#                 # yerr=sds,
+#                 label=clean_scenario_name,
+#                 color=scenario_colors.get(scenario, f'C{i}'),
+#                 alpha=0.7,
+#                 capsize=3)
+        
+#         # Apply flexible labels
+#         ax.set_xlabel(xlabel, fontsize=14, fontweight='bold')
+#         ax.set_ylabel(ylabel, fontsize=14, fontweight='bold')
+#         ax.set_title(f'{title}\n(Mean ± SD across epistemic runs)', 
+#                     fontsize=16, fontweight='bold')
+#         ax.set_xticks(x)
+#         ax.set_xticklabels(group_labels, fontsize=11)
+#         ax.legend(fontsize=11, ncol=min(3, (n_scenarios + 2) // 3))
+#         ax.grid(True, alpha=0.3, axis='y')
+        
+#         if y_axis_zero:
+#             ax.set_ylim(bottom=0)
+        
+#         plt.tight_layout()
+#         plt.savefig(rl_filename, dpi=300, bbox_inches='tight')
+#         plt.close()
+#         print(f"Saved: {rl_filename}")
+    
+#     # Main loop over budgets
+#     budgets = selected_projects_df['budget'].unique()
+#     for budget in budgets:
+#         plot_single_budget(selected_projects_df, budget)
+
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import os
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import os
+
+def plot_metric_by_group(selected_projects_df, scenario_colors, filename, 
+                         value_col='total_co2_saved_robust',
                          group_col='meta_socio_persona',
+                         metric_stat='mean',  # <--- NEW TOGGLE ('mean', 'sum', 'count', etc.)
                          xlabel='Socio-economic Persona',
-                         ylabel='Total Carbon Saved (tons CO₂)',
-                         title='Distribution of Total Carbon Saved by Persona',
+                         ylabel=None,         # Set to None to auto-generate based on stat
+                         title=None,          # Set to None to auto-generate based on stat
+                         group_label_map=None,
+                         scenario_label_map=None,
                          y_axis_zero=True):
     """
-    Generic function to plot distribution of any metric by a specific group.
-    Shows mean across epistemic runs with error bars for SD.
+    Generic function to plot distribution of any metric by group using a specific statistic (mean/sum).
     
     Parameters:
-    - selected_projects_df: Row-level dataframe.
-    - scenario_colors: Dict mapping scenario names to colors.
-    - filename: Output filename base.
-    - value_col: The column name of the metric to sum and plot (e.g., carbon, cost).
-    - group_col: The column name to group by (e.g., meta_socio_persona, region).
-    - xlabel: Custom label for the X-axis.
-    - ylabel: Custom label for the Y-axis.
-    - title: Custom main title for the plot.
-    - y_axis_zero: Whether to start y-axis at 0.
+    - metric_stat: 'mean', 'sum', 'median', 'count', etc. (passed to pivot_table)
+    - ylabel: Y-axis label. If None, auto-generates based on metric_stat.
+    - title: Plot title. If None, auto-generates based on metric_stat.
     """
- 
-    def plot_single_budget(df, budget_to_plot):
-        # Create specific filename for this budget
-        budget_str = f"{budget_to_plot/1e6:.0f}M"
-        rl_filename = f'{filename.split(".png")[0]}_budget{budget_str}.png'
-        
-        subset = df[df['budget'] == budget_to_plot].copy()
-        
-        # Step 1: Sum flexible metric per flexible group per epistemic run
-        grouped_by_run = subset.groupby(
-            ['scenario', 'epistemic_run', group_col]
-        )[value_col].mean().reset_index()
-        
-        # Standardize internal column names for generic processing
-        grouped_by_run.columns = ['scenario', 'epistemic_run', 'group', 'total_value']
-        
-        # Step 2: Calculate mean and SD across epistemic runs
-        run_stats = grouped_by_run.groupby(['scenario', 'group']).agg(
-            mean_val=('total_value', 'mean'),
-            sd_val=('total_value', 'std'),
-            n_runs=('total_value', 'count')
-        ).reset_index()
-        
-        # Step 3: Create plot
-        scenarios = run_stats['scenario'].unique()
-        print('Scenarios: ') 
-        print( scenarios)
+    
+    if group_label_map is None: group_label_map = {}
+    if scenario_label_map is None: scenario_label_map = {}
 
-        # Sort groups for consistent plotting order
-        groups = sorted(run_stats['group'].unique())
+    # Auto-generate dynamic labels if not provided
+    if ylabel is None:
+        stat_name = "Total" if metric_stat == 'sum' else metric_stat.capitalize()
+        ylabel = f"{stat_name} {value_col.replace('_', ' ').title()}"
         
-        # Optional: Map common messy labels to cleaner ones (safe to keep even if not using personas)
- 
+    if title is None:
+        stat_name = "Total" if metric_stat == 'sum' else metric_stat.capitalize()
+        title = f"Distribution of {stat_name} {value_col.replace('_', ' ')} by Group"
 
+    budgets = selected_projects_df['budget'].unique()
+    
+    for budget in budgets:
+        # 1. Filter for current budget
+        subset = selected_projects_df[selected_projects_df['budget'] == budget].copy()
         
-        # .get(g, str(g)) ensures it falls back to the original value if not in the map
-        group_labels = [label_cleaner_map.get(g, str(g)) for g in groups]
+        # 2. Pivot and Aggregate
+        # pivot_table handles grouping, pivoting, and aggregation in one step
+        # fill_value=0 replaces NaNs with 0 immediately
+        plot_data = subset.pivot_table(
+            index=group_col, 
+            columns='scenario', 
+            values=value_col,
+            aggfunc=metric_stat,
+            fill_value=0
+        )
         
+        # Sort groups (index)
+        plot_data = plot_data.sort_index()
+        
+        groups = plot_data.index.tolist()
+        scenarios = plot_data.columns.tolist()
+        
+        # 3. Create Plot
         fig, ax = plt.subplots(figsize=(14, 7))
         
         x = np.arange(len(groups))
         n_scenarios = len(scenarios)
         width = 0.8 / n_scenarios
-
+        
         for i, scenario in enumerate(scenarios):
-            scenario_data = run_stats[run_stats['scenario'] == scenario]
-            
-            # Ensure data exists for all groups (fill with 0 if missing for a scenario)
-            means = []
-            sds = []
-            for group in groups:
-                group_row = scenario_data[scenario_data['group'] == group]
-                if not group_row.empty:
-                    means.append(group_row['mean_val'].iloc[0])
-                    sds.append(group_row['sd_val'].iloc[0])
-                else:
-                    means.append(0)
-                    sds.append(0)
-            
             offset = (i - n_scenarios/2 + 0.5) * width
             
-            clean_scenario_name = scenario_label_map.get(scenario, scenario)
+            # Get display names and colors
+            display_label = scenario_label_map.get(scenario, scenario)
+            color = scenario_colors.get(scenario, f'C{i}')
             
-            ax.bar(x + offset, means, width, 
-                yerr=sds,
-                label=clean_scenario_name,
-                color=scenario_colors.get(scenario, f'C{i}'),
-                alpha=0.7,
-                capsize=3)
+            ax.bar(x + offset, 
+                   plot_data[scenario], 
+                   width, 
+                   label=display_label,
+                   color=color,
+                   alpha=0.7)
         
-        # Apply flexible labels
+        # 4. Styling
         ax.set_xlabel(xlabel, fontsize=14, fontweight='bold')
         ax.set_ylabel(ylabel, fontsize=14, fontweight='bold')
-        ax.set_title(f'{title}\n(Mean ± SD across epistemic runs)', 
+        ax.set_title(f'{title}\n(Budget: £{budget/1e6:.1f}M)', 
                     fontsize=16, fontweight='bold')
+        
+        # Clean x-axis labels
+        clean_labels = [group_label_map.get(g, str(g)) for g in groups]
         ax.set_xticks(x)
-        ax.set_xticklabels(group_labels, fontsize=11)
-        ax.legend(fontsize=11, ncol=min(3, (n_scenarios + 2) // 3))
+        ax.set_xticklabels(clean_labels, fontsize=11, rotation=45, ha='right')
+        
+        ax.legend(fontsize=11, ncol=min(3, max(1, (n_scenarios + 2) // 3)))
         ax.grid(True, alpha=0.3, axis='y')
         
         if y_axis_zero:
             ax.set_ylim(bottom=0)
         
+        # 5. Save File
+        base, ext = os.path.splitext(filename)
+        if not ext: ext = ".png"
+        
+        # Add the stat type to the filename so they don't overwrite each other
+        rl_filename = f'{base}_{metric_stat}_budget{budget/1_000_000:.1f}M{ext}'
+        
         plt.tight_layout()
         plt.savefig(rl_filename, dpi=300, bbox_inches='tight')
         plt.close()
-        print(f"Saved: {rl_filename}")
-    
-    # Main loop over budgets
-    budgets = selected_projects_df['budget'].unique()
-    for budget in budgets:
-        plot_single_budget(selected_projects_df, budget)
-
+        print(f"Saved ({metric_stat}): {rl_filename}")
 
 def plot_count_by_group(selected_projects_df, scenario_colors, filename, 
                        group_col='meta_socio_persona',
@@ -691,23 +914,23 @@ def plot_count_by_group(selected_projects_df, scenario_colors, filename,
         
         # Step 1: Count items per group per epistemic run
         grouped_by_run = subset.groupby(
-            ['scenario', 'epistemic_run', group_col]
+            ['scenario', group_col]
         ).size().reset_index(name='count')
         
         # Standardize internal column names for generic processing
-        grouped_by_run.columns = ['scenario', 'epistemic_run', 'group', 'total_count']
+        grouped_by_run.columns = ['scenario', 'group', 'mean_count']
         
-        # Step 2: Calculate mean and SD of counts across epistemic runs
-        run_stats = grouped_by_run.groupby(['scenario', 'group']).agg(
-            mean_count=('total_count', 'mean'),
-            sd_count=('total_count', 'std'),
-            n_runs=('total_count', 'count')
-        ).reset_index()
+        # # Step 2: Calculate mean and SD of counts across epistemic runs
+        # run_stats = grouped_by_run.groupby(['scenario', 'group']).agg(
+        #     mean_count=('total_count', 'mean'),
+        #     sd_count=('total_count', 'std'),
+        #     n_runs=('total_count', 'count')
+        # ).reset_index()
         
         # Step 3: Create plot
-        scenarios = run_stats['scenario'].unique()
+        scenarios = grouped_by_run['scenario'].unique()
         # Sort groups for consistent plotting order
-        groups = sorted(run_stats['group'].unique())
+        groups = sorted(grouped_by_run['group'].unique())
         
         # Optional: Map common messy labels to cleaner ones
  
@@ -720,26 +943,26 @@ def plot_count_by_group(selected_projects_df, scenario_colors, filename,
         width = 0.8 / n_scenarios
         
         for i, scenario in enumerate(scenarios):
-            scenario_data = run_stats[run_stats['scenario'] == scenario]
+            scenario_data = grouped_by_run[grouped_by_run['scenario'] == scenario]
             
             # Ensure data exists for all groups (fill with 0 if missing for a scenario)
             means = []
-            sds = []
+            # sds = []
             for group in groups:
                 group_row = scenario_data[scenario_data['group'] == group]
                 if not group_row.empty:
                     means.append(group_row['mean_count'].iloc[0])
-                    sds.append(group_row['sd_count'].iloc[0])
+                    # sds.append(group_row['sd_count'].iloc[0])
                 else:
                     means.append(0)
-                    sds.append(0)
+                    # sds.append(0)
             
             offset = (i - n_scenarios/2 + 0.5) * width
             
             clean_scenario_name = scenario_label_map.get(scenario, scenario)
             
             ax.bar(x + offset, means, width, 
-                yerr=sds,
+                # yerr=sds,
                 label=clean_scenario_name,
                 color=scenario_colors.get(scenario, f'C{i}'),
                 alpha=0.7,
@@ -789,7 +1012,7 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
         scenarios_subset = subset['scenario'].unique()
         
         vuln_means = []
-        vuln_stds = []
+        # vuln_stds = []
         co2_means = []
         co2_stds = []
         weights = []
@@ -804,10 +1027,10 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
             equity_row = equity_subset[equity_subset['scenario'] == scenario].iloc[0]
             results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
             
-            vuln_means.append(equity_row['high_deprived_pct_mean'] )
-            vuln_stds.append(equity_row['high_deprived_pct_std'] )
-            co2_means.append(results_row['total_ton_co2_saved_mean_sum_mean'] / 1e3)
-            co2_stds.append(results_row['total_ton_co2_saved_mean_sum_std'] / 1e3)
+            vuln_means.append(equity_row['high_deprived_pct'] )
+            # vuln_stds.append(equity_row['high_deprived_pct_std'] )
+            co2_means.append(results_row[total_co2_saved_col] / 1e3)
+            # co2_stds.append(results_row[total_co2_saved_col] / 1e3)
             weights.append(equity_row['equity_weight'])
             colors.append(scenario_colors[scenario])
         
@@ -819,7 +1042,7 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
         
         # Plot points with error bars
         for i in range(len(vuln_means)): # Use vuln_means len as it matches collected data
-            ax_comb.errorbar(vuln_means[i], co2_means[i], xerr=vuln_stds[i], yerr=co2_stds[i],
+            ax_comb.errorbar(vuln_means[i], co2_means[i],
                              fmt='o', markersize=12, capsize=5,
                              color=colors[i], 
                              label=f'EW={weights[i]}' if budget_val == all_budgets[0] else None) # Only label weights once
@@ -868,9 +1091,9 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
         budget_equity_subset = equity_subset[equity_subset['scenario'].isin(scenarios_for_budget)]
 
         vuln_means_ind = []
-        vuln_stds_ind = []
+        # vuln_stds_ind = []
         co2_means_ind = []
-        co2_stds_ind = []
+        # co2_stds_ind = []
         weights_ind = []
         colors_ind = []
 
@@ -882,10 +1105,10 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
             equity_row = budget_equity_subset[budget_equity_subset['scenario'] == scenario].iloc[0]
             results_row = budget_results_subset[budget_results_subset['scenario'] == scenario].iloc[0]
             
-            vuln_means_ind.append(equity_row['high_deprived_pct_mean'] )
-            vuln_stds_ind.append(equity_row['high_deprived_pct_std'] )
-            co2_means_ind.append(results_row['total_ton_co2_saved_mean_sum_mean'] / 1e3)
-            co2_stds_ind.append(results_row['total_ton_co2_saved_mean_sum_std'] / 1e3)
+            vuln_means_ind.append(equity_row['high_deprived_pct'] )
+            # vuln_stds_ind.append(equity_row['high_deprived_pct_std'] )
+            co2_means_ind.append(results_row[total_co2_saved_col] / 1e3)
+            # co2_stds_ind.append(results_row[total_co2_saved_col_std] / 1e3)
             weights_ind.append(equity_row['equity_weight'])
             colors_ind.append(scenario_colors[scenario])
 
@@ -896,7 +1119,7 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
             
         # Plot points with error bars
         for i in range(len(vuln_means_ind)):
-            ax_ind.errorbar(vuln_means_ind[i], co2_means_ind[i], xerr=vuln_stds_ind[i], yerr=co2_stds_ind[i],
+            ax_ind.errorbar(vuln_means_ind[i], co2_means_ind[i],
                             fmt='o', markersize=12, capsize=5,
                             color=colors_ind[i], 
                             label=f'EW={weights_ind[i]}') # Label weights for every individual plot
@@ -951,7 +1174,7 @@ def plot_vulnerable_groups_coverage(equity_subset, filename, y_axis_zero=False):
         width = 0.35
         
         # *** These columns were simple strings, so NO change needed ***
-        deprived_means = [equity_subset[equity_subset['scenario'] == s]['high_deprived_pct_mean'].iloc[0] * 100 
+        deprived_means = [equity_subset[equity_subset['scenario'] == s]['high_deprived_pct'].iloc[0] * 100 
                         for s in scenarios]
 
         
@@ -997,8 +1220,8 @@ def plot_tradeoff_efficiency(results_subset, equity_subset, scenarios, scenario_
             base_scenario = sorted_scenarios[0]
             
             # *** UPDATED COLUMN NAMES ***
-            base_vuln = equity_subset[equity_subset['scenario'] == base_scenario]['high_deprived_pct_mean'].iloc[0] 
-            base_co2 = results_subset[results_subset['scenario'] == base_scenario]['total_ton_co2_saved_mean_sum_mean'].iloc[0] / 1e3
+            base_vuln = equity_subset[equity_subset['scenario'] == base_scenario]['high_deprived_pct'].iloc[0] 
+            base_co2 = results_subset[results_subset['scenario'] == base_scenario][total_co2_saved_col].iloc[0] / 1e3
             
             tradeoff_scenarios = []
             tradeoff_ratios = []
@@ -1009,8 +1232,8 @@ def plot_tradeoff_efficiency(results_subset, equity_subset, scenarios, scenario_
                 results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
                 
                 # *** UPDATED COLUMN NAMES ***
-                vuln_cov = equity_row['high_deprived_pct_mean'] * 100
-                co2_saved = results_row['total_ton_co2_saved_mean_sum_mean'] / 1e3
+                vuln_cov = equity_row['high_deprived_pct'] * 100
+                co2_saved = results_row[total_co2_saved_col] / 1e3
                 
                 vuln_gain = vuln_cov - base_vuln
                 co2_loss = base_co2 - co2_saved
@@ -1073,11 +1296,11 @@ def plot_radar_chart(results_subset, equity_subset,  filename, scenario_colors):
         angles += angles[:1]
         
         # *** UPDATED COLUMN NAMES for normalization ***
-        norm_co2 = results_subset['total_ton_co2_saved_mean_sum_mean'].max()
-        norm_cost_eff = (1 / results_subset['cost_per_net_ton_co2_kg_mean_mean_mean']).max()
-        norm_vuln = equity_subset['high_deprived_pct_mean'].max()
-        norm_equity = equity_subset['equity_concentration_mean'].max()
-        norm_buildings = results_subset['num_buildings_sum_mean'].max()
+        norm_co2 = results_subset[total_co2_saved_col].max()
+        norm_cost_eff = (1 / results_subset[capex_per_net_ton_mean_col]).max()
+        norm_vuln = equity_subset['high_deprived_pct'].max()
+        norm_equity = equity_subset['equity_concentration'].max()
+        norm_buildings = results_subset['num_buildings_sum'].max()
 
         for scenario in scenarios:
             results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
@@ -1085,11 +1308,11 @@ def plot_radar_chart(results_subset, equity_subset,  filename, scenario_colors):
             
             # Normalize metrics (0-1, higher is better)
             # *** UPDATED COLUMN NAMES ***
-            carbon_norm = results_row['total_ton_co2_saved_mean_sum_mean'] / norm_co2
-            cost_eff_norm = (1 / results_row['cost_per_net_ton_co2_kg_mean_mean_mean']) / norm_cost_eff
-            vuln_norm = equity_row['high_deprived_pct_mean'] / norm_vuln
-            equity_norm = 1 - (equity_row['equity_concentration_mean'] / norm_equity)
-            buildings_norm = results_row['num_buildings_sum_mean'] / norm_buildings
+            carbon_norm = results_row[total_co2_saved_col] / norm_co2
+            cost_eff_norm = (1 / results_row[capex_per_net_ton_mean_col]) / norm_cost_eff
+            vuln_norm = equity_row['high_deprived_pct'] / norm_vuln
+            equity_norm = 1 - (equity_row['equity_concentration'] / norm_equity)
+            buildings_norm = results_row['num_buildings_sum'] / norm_buildings
             
             values = [carbon_norm, cost_eff_norm, vuln_norm, equity_norm, buildings_norm]
             values += values[:1]
@@ -1160,10 +1383,10 @@ def plot_pareto_retrofit_carbon_by_budget(results_subset, equity_subset, scenari
             equity_row = equity_subset[equity_subset['scenario'] == scenario].iloc[0]
             results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
             
-            buildings_means.append(results_row['num_buildings_sum_mean'])
-            buildings_stds.append(results_row['num_buildings_sum_std'])
-            co2_means.append(results_row['total_ton_co2_saved_mean_sum_mean'] / 1e3)
-            co2_stds.append(results_row['total_ton_co2_saved_mean_sum_std'] / 1e3)
+            buildings_means.append(results_row['num_buildings_sum'])
+            # buildings_stds.append(results_row['num_buildings_sum_std'])
+            co2_means.append(results_row[total_co2_saved_col] / 1e3)
+            # co2_stds.append(results_row[total_co2_saved_col_std] / 1e3)
             weights.append(equity_row['equity_weight'])
             colors.append(scenario_colors[scenario])
         
@@ -1174,7 +1397,7 @@ def plot_pareto_retrofit_carbon_by_budget(results_subset, equity_subset, scenari
         
         # Plot points with error bars
         for i in range(len(scenarios_subset)):
-            ax.errorbar(buildings_means[i], co2_means[i], xerr=buildings_stds[i], yerr=co2_stds[i],
+            ax.errorbar(buildings_means[i], co2_means[i] , 
                        fmt='o', markersize=12, capsize=5,
                        color=colors[i], 
                        label=f'EW={weights[i]}') # Label weights on every plot
@@ -1261,12 +1484,12 @@ def plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenar
             # CHANGED: Grab the results_row for the *specific budget*
             results_row = subset[subset['scenario'] == scenario].iloc[0]
             
-            buildings_means.append(results_row['num_buildings_sum_mean'])
-            buildings_stds.append(results_row['num_buildings_sum_std'])
+            buildings_means.append(results_row['num_buildings_sum'])
+            # buildings_stds.append(results_row['num_buildings_sum_std'])
             
             # CHANGED: Use the new cost-effectiveness variables for the Y-axis
-            cost_eff_means.append(results_row['cost_per_net_ton_co2_kg_mean_mean_mean'])
-            cost_eff_stds.append(results_row['cost_per_net_ton_co2_kg_mean_mean_std'])
+            cost_eff_means.append(results_row[capex_per_net_ton_mean_col])
+            # cost_eff_stds.append(results_row[capex_per_net_ton_std_col])
             
             weights.append(equity_row['equity_weight'])
             colors.append(scenario_colors[scenario])
@@ -1280,7 +1503,7 @@ def plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenar
         for i in range(len(scenarios_subset)):
             # CHANGED: Use cost_eff_means and cost_eff_stds for Y-axis and y-error
             ax.errorbar(buildings_means[i], cost_eff_means[i], 
-                       xerr=buildings_stds[i], yerr=cost_eff_stds[i],
+                      
                        fmt='o', markersize=12, capsize=5,
                        color=colors[i], 
                        label=f'EW={weights[i]}') # Label weights on every plot
