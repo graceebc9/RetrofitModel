@@ -156,9 +156,12 @@ class RetrofitScenarioGenerator2DMC:
                 # Identify only the NEW scenario-specific output columns 
                 # (exclude columns that already exist in df_typ)
                 output_columns = [col for col in scenario_results.columns 
-                                if col not in df_typ.columns]
-                
-                # Merge only the new output columns
+                                if col not in  df_typ.columns  and col != 'est_num_flats'  ]
+                print('output cols')
+                print(output_columns)
+                # Me   rge only the new output columns
+                print('run_results')
+                print(run_results.columns.tolist() ) 
                 run_results = pd.merge(
                     run_results,
                     scenario_results[output_columns],
