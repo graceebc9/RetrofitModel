@@ -7,15 +7,10 @@
 import sys
 from pathlib import Path
 import os 
- 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-# Local application/library specific imports
-# Note: Using sys.path.append is brittle. Consider making RetrofitModel
-# an installable package (e.g., with `pip install -e .`)
  
 from .RetrofitGreedyAnalysis import plot_greedy_compairosn_main, plot_carbon_by_persona, plot_count_by_group,  plot_metric_by_group
  
