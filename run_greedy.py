@@ -23,15 +23,32 @@ from src.validate import validate
 from src.GreedyAlgo import true_greedy_knapsack, plot_greedy_distribution_analysis
 from src.RetrofitGreedy import run_greedy_algo 
 from src.RetrofitGreedyUtils import setup_logging
-
-
+# from src.RetrofitAnalysisUtils import load_data , prepare_data_for_postanalysis
 from src.RetrofitGreedyPost import post_proc_greedy 
 from src.personas import load_personas  
-from src.utils import is_running_on_hpc 
-
+from src.RetrofitEquity import EQUITY_WEIGHTS  
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
+
+def load_data_simple(files):
+    res = [] 
+    for f in files:
+        df = pd.read_csv(f)
+        res.append(df)
+    return pd.concat(res)
+
+
+def add_equity_weight(scenario_df, equity_factor , capex_col='capex_per_net_ton' ): 
+    EQUITY_WEIGHT_COL = 'equity_weight'
+    PERSONA_COL = 'meta_socio_persona'
+    scenario_df[EQUITY_WEIGHT_COL] = scenario_df[PERSONA_COL].map(EQUITY_WEIGHTS)
+    scenario_df['weighted_capex_per_net_ton'] = (
+        scenario_df[capex_col] * (1 + (scenario_df[EQUITY_WEIGHT_COL] - 1) * equity_factor)
+    )
+    print('equity weight added')
+    return scenario_df
+
 
 def main():
     """
@@ -41,26 +58,30 @@ def main():
     running_locally = not is_running_on_hpc()
     
     if running_locally:
-       
-        BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
-        # UPDATED: Path now points to the processed chunks folder
-        PROCESSED_DATA_PATH = '/Users/gracecolverd/RetrofitModel/optimized_priorities/processed_chunks/*.csv'
         
-        scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
-        setting_name = 'local'
-        run_greedy_runs = True 
+        
+        BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
+        
+        INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/optimized_priorities/processed_best_only/*.csv'
+        
+        # scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
+ 
+
+        setting_name = 'lcoal'
+        run_greedy_runs=True 
+ 
         budgets = [1_000_000, 10_000_000, 100_000_000]
-        loft_probs = [0.65]
+        loft_probs = [0.65, 0.95]
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
 
+        run_greedy_runs=False   
     else:
         BASE_DIR = os.getenv('BASE_DIR')
+        INPUT_FILES_PATH = os.getenv('INPUT_FILES_PATH') 
         
-        PROCESSED_DATA_PATH = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/optimized_priorities/processed_chunks/*'
         
-        scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
         setting_name = 'v7'
-        run_g_yn = os.getenv('RUN_GREEDY_RUNS_YN') 
+        run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
         
         if run_g_yn == 'N':
             run_greedy_runs = False
@@ -102,96 +123,66 @@ def main():
         except:
             number= None 
     
-    # These parameters are implicitly handled in the pre-processing, 
-    # but kept here if needed for calculations.
-    YEARS = 5
-    N_SIMULATIONS = 5000
-    GAS_CARBON_FACTOR = 0.18       
-    ELEC_CARBON_FACTOR = 0.19338  
+
+    # YEARS = 5
+    # N_SIMULATIONS = 5000
+ 
+    # GAS_CARBON_FACTOR=0.18      
+    # ELEC_CARBON_FACTOR=0.19338  
     
-    
+    input_files = glob.glob(INPUT_FILES_PATH)
+    number=None
     if number:
         greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}', setting_name) 
     else:
-        greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', setting_name)
-
-    # ------------------------------------------------------------------------
-    # PART 1: LOAD PRE-PROCESSED DATA
-    # ------------------------------------------------------------------------
-    if run_greedy_runs: 
-        print("\n" + "="*80)
-        print("GREEDY ALGORITHM ANALYSIS - USING PRE-PROCESSED CHUNKS")
-        print("="*80)
-        
-        # 1. Load Data from Chunks (Replacing load_data + prepare_data)
-        print(f"\nLoading processed chunks from: {PROCESSED_DATA_PATH}")
-        chunk_files = glob.glob(PROCESSED_DATA_PATH)
-        
-        if not chunk_files:
-            raise FileNotFoundError(f"No processed chunk files found at {PROCESSED_DATA_PATH}")
-            
-        df_list = []
-        for f in chunk_files:
-            # Read only essential columns if possible to save memory
-            # Assuming chunks have: upn, intervention, cost_robust, cost_mean, postcode (if preserved)
-            try:
-                chunk = pd.read_csv(f)
-                df_list.append(chunk)
-            except Exception as e:
-                print(f"Warning: Failed to read {f}: {e}")
-
-        proc_df = pd.concat(df_list, ignore_index=True)
-        print(f"Loaded {len(proc_df)} rows from {len(chunk_files)} files.")
-        
-        # Free memory
-        del df_list
-        gc.collect()
-
-        # 2. Merge Personas
-        # Note: This relies on 'postcode' being present in the processed chunks.
-        # If processed chunks only have UPN, you may need to join with a master building file first.
-        print("\nLoading personas...")
-        personas = load_personas() 
-        
-        if 'postcode' in proc_df.columns:
-            proc_df = proc_df.merge(personas, on='postcode', how='inner')
-            print(f"After persona merge: {len(proc_df)} rows")
-        else:
-            print("WARNING: 'postcode' column missing from processed chunks. Cannot merge Personas.")
-            print("Equity analysis relying on persona data will likely fail.")
-
-        # 3. Apply Filters
-        print("\nFiltering data...")
-        # Check if premise_type exists (it might have been filtered out during pre-processing)
-        if 'premise_type' in proc_df.columns:
-            mask1 = proc_df['premise_type'] != 'Domestic_outbuilding'
-            proc_df = proc_df[mask1]
-            mask2 = ~proc_df['premise_type'].isna()
-            proc_df = proc_df[mask2]
-            print(f"After filtering premise types: {len(proc_df)} rows")
-        else:
-            print("Note: 'premise_type' column not found. Assuming pre-processing already filtered buildings.")
-
-        # Create reference
-        df = proc_df 
-        print(f"Final dataset size ready for Greedy: {len(df)} rows")
-
+        greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', setting_name )
  
+       
+    print("\n" + "="*80)
+    print("GREEDY ALGORITHM ANALYSIS - UPDATED FOR NEW COLUMN FORMAT")
+    print("="*80)
+    if run_greedy_runs: 
 
+        for prob_loft in loft_probs:
+            files_to_use =  [x for x in input_files if f'loft_{prob_loft}' in x ]
+            print(f'Found {len(files_to_use)} files with loft prob {prob_loft}')
 
+            
+            # Load and concatenate input data
+            print("\nLoading input data...")
+            if number:
+                res_df = load_data_simple(files_to_use, number )
+            else:
+                res_df = load_data_simple(files_to_use )
+            
+            print("\nLoading personas...")
+            personas = load_personas( ) 
+            df = res_df.merge(personas, on='postcode', how='inner')
+            print(f"After persona merge: {len(df)} rows")
+    
+    
+            
+            
+            
+            print("\nFiltering data...")
+            # Filter in steps to avoid large boolean array
+            mask1 = df['premise_type'] != 'Domestic_outbuilding'
+            df = df[mask1]
+            del mask1
+            gc.collect()
 
-        # This loop acts as a Knapsack solver: trying to fit the most value (Carbon Savings/Equity)
-        # into the fixed capacity (Budget).
-
-        # --------------------------------------------------------------------
-        # PART 2: RUN GREEDY LOOPS
-        # --------------------------------------------------------------------
-        prob_loft='None'
-        
-        for budget in budgets:
-           # -- for prob_loft in loft_probs:
-            for equity_factor in equity_factors: 
-                   
+            mask2 = ~df['premise_type'].isna()
+            df = df[mask2]
+            del mask2
+            
+            
+            print(f"After filtering: {len(df)} rows")
+            print('cols with personas')
+            print(df.columns.tolist() )
+    
+            for budget in budgets:
+                for equity_factor in equity_factors: 
+                  
                     # Create output directory
                     output_dir = os.path.join(
                         greedy_runs_folder, 
@@ -211,15 +202,13 @@ def main():
                     )
                         
                     baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
-                    combined_path = os.path.join(output_dir, f'combined_results.csv')
                     
-                    # Check if already done
-                    if os.path.exists(baseline_path) and os.path.exists(combined_path):
-                        print(f"✓ Results already exist for this configuration, skipping...")
-                        # Clear loggers for next iteration
-                        summary_logger.handlers.clear()
-                        detail_logger.handlers.clear()
-                        continue
+                    # combined_path = os.path.join(output_dir, f'equity_tracking_with_ranges.csv')
+
+                    # if os.path.exists(baseline_path) and os.path.exists(combined_path):
+                    #     print(f"✓ Results already exist for this configuration, skipping...")
+                    #     print(f"  Existing files found in: {output_dir}")
+                    #     continue
                     
                     print(f"\n{'='*80}")
                     print(f"Starting analysis:")
@@ -227,38 +216,41 @@ def main():
                     print(f"  Loft Probability: {prob_loft}")
                     print(f"  Equity Factor: {equity_factor}")
                     print(f"{'='*80}")
-                 
+                
+                    df = add_equity_weight(df, equity_factor , capex_col='capex_per_net_ton' )
+
                     # Run greedy algorithm
+                    baseline_selection = df 
+
+
                     try:
-                        baseline_selection, combined_results = run_greedy_algo(
-                            budget, 
-                            
-                            df, 
-                            scenario_list, 
-                            summary_logger, 
-                            detail_logger, 
-                            equity_factor, 
-                            output_dir,  
+                        selected_projects_df, remaining_funds = true_greedy_knapsack(
+                            df_knapsack=baseline_selection,
+                            budget=budget,
+                            cost_column='total_capex',
+                            efficiency_column='weighted_capex_per_net_ton' ,
+                            carbon_col='total_co2_saved_robust'
                         )
-                        
-                        # check if empty 
+                        selected_projects_df['remaining_funds'] = remaining_funds
+
                         if baseline_selection.empty:
-                            raise Exception('Baseline results empty')
-                        if combined_results.empty: 
-                            raise Exception('Combined results empty')
-                        
+                            raise Exception('Baselin results empty ')
+                   
                         # Save results to CSV
+                        baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
+                        selected_path = os.path.join(output_dir, f'selected_projects.csv')
+                        
                         baseline_selection.to_csv(baseline_path, index=False)
-                        combined_results.to_csv(combined_path, index=False)
+                        selected_projects_df.to_csv(selected_path, index=False)
                         
                         summary_logger.info(f"Baseline selection saved to: {baseline_path}")
-                        summary_logger.info(f"Combined results saved to: {combined_path}")
+                        summary_logger.info(f"Selected projects results saved to: {selected_path}")
                         
                         # Generate visualization
                         summary_logger.info("\nGenerating visualization...")
                         plot_greedy_distribution_analysis(
                             baseline_df=baseline_selection,
-                            selected_df=combined_results,
+                            selected_df=selected_projects_df,
                             scenario_name=f'£{budget:,} Budget - All Epistemic Runs',
                             output_dir=output_dir
                         )

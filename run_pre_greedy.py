@@ -17,12 +17,12 @@ if is_hpc:
 else: 
     LOG_DIR = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE'
 
-OUTPUT_BASE_DIR = 'optimized_priorities/v7/processed_best_only'
-LOG_FILE_PATH = 'optimized_priorities/v7/processing_log.txt'
+OUTPUT_BASE_DIR = 'optimized_priorities/processed_best_only'
+LOG_FILE_PATH = 'optimized_priorities/processing_log.txt'
 
 # --- NEW PARAMETER ---
 # 0.35 means 35% of buildings already have loft insulation and cannot get it again.
-LOFT_INSULATION_EXISTING_PERCENT = 0.95 
+LOFT_INSULATION_EXISTING_PERCENT = 0.65 
 
 # CUTOFFS & PARAMETERS
 ABS_COST_CAP = 200000.0
@@ -41,7 +41,7 @@ SCENARIO_LIST = [
     'loft_installation'
 ]
 
-COLS_KEEP = ['upn', 'postcode', 'premise_type'] 
+COLS_KEEP = ['upn', 'postcode', 'premise_type', 'avg_gas_percentile' ] 
 
 # pre process
 

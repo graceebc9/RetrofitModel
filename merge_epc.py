@@ -16,8 +16,8 @@ if running_locally:
     lk = pd.read_csv('/Volumes/T9/2024_Data_downloads/Eng_wales_boundary_shapefiles/Local_Authority_District_to_Region_(December_2022)_Lookup_in_England.csv')
     epc_pattern = '/Volumes/T9/2024_Data_downloads/2025_epc_database/all-domestic-certificates'
 else:
-    LOG_FILE_PATTERN = "/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v7/NE/*file.csv"
-    new_log_epc_dir='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/v7_logs_with_epc'
+    LOG_FILE_PATTERN = "/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/*file.csv"
+    new_log_epc_dir='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/v8_logs_with_epc'
 
     epc_pattern = '/home/gb669/rds/hpc-work/energy_map/data/epc_database/all-domestic-certificates'
     lk = pd.read_csv('/home/gb669/rds/hpc-work/energy_map/RetrofitModel/lookup_data_ew/Local_Authority_District_to_Region_(December_2022)_Lookup_in_England.csv')

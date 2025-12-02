@@ -17,7 +17,7 @@ import seaborn as sns
 # Note: Using sys.path.append is brittle. Consider making RetrofitModel
 # an installable package (e.g., with `pip install -e .`)
  
-from .RetrofitGreedyAnalysis import plot_greedy_compairosn_main, plot_carbon_by_persona, plot_count_by_group,  plot_metric_by_group_mean
+from .RetrofitGreedyAnalysis import plot_greedy_compairosn_main, plot_carbon_by_persona, plot_count_by_group,  plot_metric_by_group
  
 from .Sankey import run_sankey_greedy 
 
@@ -45,17 +45,12 @@ def load_data(budgets, equity_weights, loft_val, base_path):
             dir_path = os.path.join(base_path , dir_name) 
             
             # Define file paths
-            equity_file =os.path.join( dir_path , 'equity_tracking_with_ranges.csv' ) 
-            results_file = os.path.join( dir_path , 'combined_results.csv') 
-            print(equity_file)
+      
+            results_file = os.path.join( dir_path , 'selected_projects.csv') 
+
             print(results_file) 
             try:
-                # Load equity tracking data
-                equity_df_temp = pd.read_csv(equity_file)
-                equity_df_temp['scenario'] = scenario_label
-                equity_df_temp['budget'] = budget
-                equity_df_temp['equity_weight'] = equity_weight
-                equity_dfs.append(equity_df_temp)
+     
                 
                 # Load combined results data
                 results_df_temp = pd.read_csv(results_file)
@@ -69,6 +64,36 @@ def load_data(budgets, equity_weights, loft_val, base_path):
                 results_df_temp['equity_weight'] = equity_weight
                 results_dfs.append(results_df_temp)
                 
+
+                # Load equity tracking data
+                # Get counts and percentages
+                counts = results_df_temp.groupby('meta_socio_persona')['upn'].count()
+                pcts = results_df_temp.groupby('meta_socio_persona')['upn'].count() / results_df_temp.groupby('meta_socio_persona')['upn'].count().sum()
+
+                # Create dataframe with separate columns
+                equity_df_temp = pd.DataFrame({
+                    'high_deprived_count': [counts.iloc[0]],
+                    'high_deprived_pct': [pcts.iloc[0]],
+                    'low_deprived_count': [counts.iloc[1]],
+                    'low_deprived_pct': [pcts.iloc[1]],
+                    'med_deprived_count': [counts.iloc[2]],
+                    'med_deprived_pct': [pcts.iloc[2]]
+                })
+                equity_df_temp['scenario'] = scenario_label
+                equity_df_temp['budget'] = budget
+                equity_df_temp['equity_weight'] = equity_weight
+                # Calculate concentration index (Herfindahl index: 0 = perfect equality, 1 = concentrated)            
+                
+                persona_counts = results_df_temp['meta_socio_persona'].value_counts()
+                total = len(results_df_temp)
+                proportions = persona_counts / total
+                concentration = (proportions ** 2).sum()
+    
+                equity_df_temp['equity_concentration'] =  concentration
+                
+                equity_dfs.append(equity_df_temp)
+
+
                 print(f"✓ Loaded: budget=${budget/1e6:.1f}M, equity_weight={equity_weight}")
                 loaded_combinations += 1
                 
@@ -125,15 +150,12 @@ def aggregate_results(df):
     # 1. Count number of buildings per scenario/epistemic run
     df['num_buildings'] = 1  # Each row is a building
     
-    # 2. Calculate totals per epistemic run
-    df_summary = df.groupby(['scenario', 'epistemic_run']).agg({
-        'cost_of_intervention_mean': ['mean', 'sum'],  # mean per bldg, sum = total spent
-        'cost_of_intervention_p95': ['mean', 'sum'], 
-        'total_ton_co2_saved_mean': 'sum',  # total CO2 saved across all bldgs
-        'total_ton_co2_saved_p95': 'sum', 
-        'total_ton_co2_saved_p5': 'sum', 
-        'cost_per_net_ton_co2_kg_mean': 'mean', # avg cost effectiveness
-        'weighted_cost_per_net_ton': 'mean',  # avg weighted cost
+    # # 2. Calculate totals per epistemic run
+    df_summary = df.groupby(['scenario']).agg({
+        'total_capex': ['mean', 'sum'],  # mean per bldg, sum = total spent
+        'total_co2_saved_robust': 'sum',  # total CO2 saved across all bldgs
+        'capex_per_net_ton': 'mean', # avg cost effectiveness
+        'weighted_capex_per_net_ton': 'mean',  # avg weighted cost
         'remaining_funds': 'first',  # should be same for all in run
         'num_buildings': 'sum'  # total number of buildings retrofitted
     }).reset_index()
@@ -141,23 +163,23 @@ def aggregate_results(df):
     # Flatten column names (e.g., ('cost_of_intervention_mean', 'mean') -> 'cost_of_intervention_mean_mean')
     df_summary = flatten_multiindex_cols(df_summary)
     
-    # 3. Now aggregate stats (mean, std) across all epistemic runs
-    agg_dict = {
-        'cost_of_intervention_mean_mean': ['mean', 'std'], # avg cost per building
-        'cost_of_intervention_mean_sum': ['mean', 'std'], # avg total budget spent
-        'total_ton_co2_saved_mean_sum': ['mean', 'std'], # avg total CO2 saved
-        'cost_per_net_ton_co2_kg_mean_mean': ['mean', 'std'], # avg cost effectiveness
-        'weighted_cost_per_net_ton_mean': ['mean', 'std'], # avg weighted cost
-        'remaining_funds_first': ['mean', 'std'], # avg remaining funds
-        'num_buildings_sum': ['mean', 'std'] # avg number of buildings
-    }
+    # # 3. Now aggregate stats (mean, std) across all epistemic runs
+    # agg_dict = {
+    #     'total_capex_mean': ['mean', 'std'], # avg cost per building
+    #     'total_capex_sum': ['mean', 'std'], # avg total budget spent
+    #     'total_co2_saved_robust_sum': ['mean', 'std'], # avg total CO2 saved
+    #     'capex_per_net_ton_mean': ['mean', 'std'], # avg cost effectiveness
+    #     'weighted_capex_per_net_ton_mean': ['mean', 'std'], # avg weighted cost
+    #     'remaining_funds_first': ['mean', 'std'], # avg remaining funds
+    #     'num_buildings_sum': ['mean', 'std'] # avg number of buildings
+    # }
     
-    aggregated = df_summary.groupby('scenario').agg(agg_dict).reset_index()
+    # aggregated = df_summary.groupby('scenario').agg(agg_dict).reset_index()
     
     # Fix: Flatten the final aggregated columns
-    aggregated = flatten_multiindex_cols(aggregated)
+    # aggregated = flatten_multiindex_cols(aggregated)
     
-    return aggregated
+    return df_summary
 
 
 def aggregate_equity(df, group_cols=['scenario']):
@@ -220,16 +242,18 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
 
     # --- 2. Aggregate Data ---
     results_agg = aggregate_results(results_df)
-    equity_agg = aggregate_equity(equity_df)
+    # equity_agg = aggregate_equity(equity_df)
+    equity_agg= equity_df
 
     if results_agg.empty or equity_agg.empty:
         print("Critical error: Aggregation failed. Exiting.")
         return
     
-
+    results_df.to_csv('testresults.csv')
     # --- 3. Merge & Format ---
     comparison_df = results_agg.merge(equity_agg, on='scenario', how='left')
-
+    print('comparison_df')
+    print(comparison_df.columns.tolist())
     # Fix: Create scenario map with correct keys (matching the 'scenario' col)
     scenario_map = {
         f'budget_{b}_equity_{e}': f'${b/1e6:.0f}M, Equity={e}'
@@ -262,7 +286,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     
     display_cols = [
         'scenario_label',
-        'total_ton_co2_saved_mean_sum_mean',
+        'total_co2_saved_robust_sum',
         'num_buildings_sum_mean',
         'high_deprived_pct_mean',
         'equity_concentration_mean',
@@ -289,19 +313,29 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     plot_carbon_by_persona(results_df, scenario_colors, 
                            os.path.join(OUTPUT_PATH, "12_carbon_per_persona.png") 
                            , y_axis_zero=True)
-    
-    plot_metric_by_group_mean(results_df, scenario_colors, 
+
+    plot_metric_by_group(results_df, scenario_colors, 
+                         filename=os.path.join(OUTPUT_PATH, "12b_carbon_metapersona.png")  , 
+                         value_col='total_co2_saved_robust',
+                         metric_stat='sum',
+                         group_col='meta_socio_persona',
+                         xlabel='Socio-economic Persona',
+                         ylabel='Total Carbon Saved (Ton)', 
+                         title='Distribution of Total Carbon Ton by Persona',
+                         y_axis_zero=True)
+
+    plot_metric_by_group(results_df, scenario_colors, 
                          filename=os.path.join(OUTPUT_PATH, "13_cost_per_Ton_per_persona.png")  , 
-                         value_col='cost_per_net_ton_co2_kg_mean',
+                         value_col='capex_per_net_ton',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
                          ylabel='Total Cost per Ton Saved (£)',
                          title='Distribution of Total Cost per Ton by Persona',
                          y_axis_zero=True)
     
-    plot_metric_by_group_mean(results_df, scenario_colors, 
+    plot_metric_by_group(results_df, scenario_colors, 
                          filename=os.path.join(OUTPUT_PATH, "14_cost_per_intervention_prr_persona.png")  , 
-                         value_col='cost_of_intervention_mean',
+                         value_col='total_capex',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
                          ylabel='Total Cost per Intervention (£)',

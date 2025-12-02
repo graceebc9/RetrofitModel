@@ -36,7 +36,7 @@ def load_personas():
     except:
         path = '/Volumes/T9/2025_10_RetrofitModel/3-personas/clusters_res_df (1).csv'    
         personas = pd.read_csv(path)
-    
+    print('Personas loaded')
     personas['meta_socio_persona'] = personas['cluster'].map(mapping)
     personas['persona_name'] = personas['cluster'].map(name_mapping)
     return personas 
