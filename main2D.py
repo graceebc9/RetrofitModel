@@ -291,7 +291,7 @@ def main():
     else:
         # Local mode: process all batches
         batch_paths = all_batch_paths
-        batch_paths=['batches/NE/batch_6.txt']
+        batch_paths=['batches/NE/batch_10.txt']
         logger.info(f"Local mode: Processing all {len(batch_paths)} batches")
 
     print(f"Batch paths to process: {batch_paths}")
