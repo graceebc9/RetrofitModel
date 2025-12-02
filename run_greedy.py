@@ -1,30 +1,27 @@
 """
-Greedy Algorithm Analysis for Retrofit Scenarios (Updated for new column format)
-Processes multiple epistemic runs and selects optimal retrofit projects within budget constraints.
+Greedy Algorithm Analysis for Retrofit Scenarios (Updated for Pre-Processed Chunks)
+Processes pre-calculated retrofit project files (chunks) and selects optimal projects within budget constraints.
 
 Key Changes:
-- Works with new column format (gas_saving_abs_kwh, etc.)
-- No longer uses process_multiple_scenarios() - data already processed
-- Adds CO2 conversion from kWh savings
+- Loads pre-processed CSV chunks instead of raw simulation logs.
+- Skips redundant `prepare_data_for_postanalysis`.
+- Preserves logic for Equity, Budget, and Risk.
 """
 
 import os
 import sys
 import glob
-
 import gc
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as pltn
+import matplotlib.pyplot as plt
 
 # Add custom module path
 sys.path.append('/Users/gracecolverd/RetrofitModel')
 
 from src.validate import validate
-# from src.RetrofitPostProcess import process_multiple_scenarios  # NO LONGER NEEDED
 from src.GreedyAlgo import true_greedy_knapsack, plot_greedy_distribution_analysis
 from src.RetrofitGreedy import run_greedy_algo 
-# from src.RetrofitEquity import EQUITY_WEIGHTS, calculate_social_equity_score, calculate_scenario_persona_metrics
 from src.RetrofitGreedyUtils import setup_logging
 # from src.RetrofitAnalysisUtils import load_data , prepare_data_for_postanalysis
 from src.RetrofitGreedyPost import post_proc_greedy 
@@ -33,7 +30,6 @@ from src.RetrofitEquity import EQUITY_WEIGHTS
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
-from src.utils import is_running_on_hpc 
 
 def load_data_simple(files):
     res = [] 
@@ -56,10 +52,11 @@ def add_equity_weight(scenario_df, equity_factor , capex_col='capex_per_net_ton'
 
 def main():
     """
-    Main execution function for greedy algorithm analysis.
+    Main execution function for greedy algorithm analysis using pre-processed data.
     """
     # Configuration
     running_locally = not is_running_on_hpc()
+    
     if running_locally:
         
         
@@ -86,34 +83,45 @@ def main():
         setting_name = 'v7'
         run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
         
-        if run_g_yn=='N':
-            run_greedy_runs=False
+        if run_g_yn == 'N':
+            run_greedy_runs = False
         else:
-            run_greedy_runs=True 
-        BUDGET_SETTING = os.getenv('BUDGET_SETTING')
+            run_greedy_runs = True 
+            
+        BUDGET_SETTING = os.getenv('BUDGET_SETTING' )
         
-        
-        if BUDGET_SETTING=='1':
-            budgets=[1_000_000]
-        elif BUDGET_SETTING=='2':
-            budgets=[10_000_000]
-        elif BUDGET_SETTING=='3':
-            budgets=[50_000_000]
-        elif BUDGET_SETTING=='4':
-            budgets=[80_000_000]
-        elif BUDGET_SETTING=='5':
-            budgets=[100_000_000]
+        if BUDGET_SETTING == '1':
+            budgets = [1_000_000]
+        elif BUDGET_SETTING == '2':
+            budgets = [10_000_000]
+        elif BUDGET_SETTING == '3':
+            budgets = [50_000_000]
+        elif BUDGET_SETTING == '4':
+            budgets = [80_000_000]
+        elif BUDGET_SETTING == '5':
+            budgets = [100_000_000]
         else:
             budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
         
-        loft_setting = os.getenv('loft_setting') 
-        if loft_setting=='1':
-            loft_probs = [0.65 ]
-        elif loft_setting=='2':
-            loft_probs = [0.95 ] 
+        budgets = [1_000_000] 
+        
+        loft_setting = os.getenv('loft_setting')
+        
+        if loft_setting == '1':
+            loft_probs = [0.65]
+        elif loft_setting == '2':
+            loft_probs = [0.95] 
         else: 
             loft_probs = [0.65, 0.95] 
+            
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
+        equity_factors=[1]
+        number = os.getenv("NUMBER")
+        try: 
+            number=int(number)
+            print(number ) 
+        except:
+            number= None 
     
 
     # YEARS = 5
@@ -125,7 +133,7 @@ def main():
     input_files = glob.glob(INPUT_FILES_PATH)
     number=None
     if number:
-        greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}' , setting_name ) 
+        greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}', setting_name) 
     else:
         greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', setting_name )
  
@@ -192,7 +200,7 @@ def main():
                         f'Loft Probability {prob_loft}, '
                         f'Equity Factor {equity_factor}'
                     )
-                       
+                        
                     baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
                     
                     # combined_path = os.path.join(output_dir, f'equity_tracking_with_ranges.csv')
@@ -265,24 +273,28 @@ def main():
         print("Greedy RUNS  COMPLETE!")
         print("="*80)
     else:
-        print('Set to skip runs. goin to wrap up ')
+        print('Set to skip runs. going to wrap up ')
+
+    # ------------------------------------------------------------------------
+    # PART 3: POST PROCESSING (VISUALIZATION)
+    # ------------------------------------------------------------------------
     print("\n" + "="*80)
-    print("Start post proces ") 
+    print("Start post process ") 
     print("="*80)
     
     for LOFT_VALUE in loft_probs:
         if number:
-            OUTPUT_PATH=os.path.join(BASE_DIR, f'greedy_vis_num{number}', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
+            OUTPUT_PATH = os.path.join(BASE_DIR, f'greedy_vis_num{number}', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
         else:
-            OUTPUT_PATH=os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
- 
+            OUTPUT_PATH = os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
+
         # Ensure output directory exists
-        os.makedirs(OUTPUT_PATH, exist_ok = True )
-        post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH )
+        os.makedirs(OUTPUT_PATH, exist_ok=True)
+        post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH)
+
     print("\n" + "="*80)
     print("ALL ANALYSES COMPLETE!")
     print("="*80)
 
 if __name__ == "__main__":
     main()
- 

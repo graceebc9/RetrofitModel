@@ -25,14 +25,17 @@ CO2_SAVED_TPL = 'total_tonne_co2_saved_{scenario}_5yr'
 COST_PER_TON_TPL = '{scenario}_cost_per_total_energy_ton_{scenario}'
 COST_TPL = '{scenario}_cost_{scenario}'
 
-# --- Scenario Names ---
-LOFT_SCENARIO = 'loft_installation'
+# Metrics
+COST_COL = 'optimizer_cost' 
+CO2_COL = 'raw_mean' # Assumed POSITIVE (Savings) based on pre-processing
+PERSONA_COL = 'meta_socio_persona' 
 
 # --- Internal/Calculated Columns ---
 FLIP_CO2_TPL = 'flip_sign_total_tonne_co2_saved_{scenario}_5yr'
 FLIP_COST_PER_TON_TPL = 'flip_sign_cost_per_net_ton_co2_{scenario}'
 EQUITY_WEIGHT_COL = 'equity_weight'
-WEIGHTED_COST_PER_TON_TPL = 'flip_sign_weighted_cost_per_ton_{scenario}'
+COST_PER_TON_COL = 'cost_per_net_ton_co2' # Calculated directly
+WEIGHTED_COST_PER_TON_COL = 'weighted_cost_per_net_ton'
 
 # --- Final Rank DataFrame Columns (UPDATED: Removed Epi Run) ---
 RANK_COL_UPN = 'upn'
@@ -48,7 +51,6 @@ RANK_COL_SCENARIO = 'scenario'
 FINAL_RANK_COLS = [
     RANK_COL_UPN,
     RANK_COL_PERSONA,
-    RANK_COL_GAS_PCT,
     RANK_COL_COST,
     RANK_COL_CO2_SAVED,
     RANK_COL_COST_PER_TON,
@@ -74,13 +76,12 @@ FINAL_RANK_COLS = [
 #     return df
 
 # =============================================================================
-# HELPER FUNCTION: PROCESS ONE SCENARIO
+# HELPER FUNCTION: PREPARE AND RANK DATA (Vectorized)
 # =============================================================================
 
-def _process_scenario(epi_df: pd.DataFrame, 
-                    scenario: str, 
-                    equity_factor: float,
-                    detail_logger: logging.Logger) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+def _prepare_and_rank_data(df: pd.DataFrame, 
+                          equity_factor: float,
+                          detail_logger: logging.Logger) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
     Filters, weights, and formats data for a single scenario.
     """
@@ -118,24 +119,12 @@ def _process_scenario(epi_df: pd.DataFrame,
     
     detail_logger.info(f"    Excluded {n_excluded_buildings} UPNs ({n_excluded_records} records, {pct_excluded:.1f}%) with positive CO2 values")
     
-    exclusion_stats = {
-        'scenario': scenario,
-        'n_upns_excluded': n_excluded_buildings,
-        'n_records_excluded': n_excluded_records,
-        'pct_records_excluded': pct_excluded
-    }
-    
-    scenario_df = epi_df[~epi_df[UPN_COL].isin(bad_upns_for_scenario)].copy()
-    
-    # --- 2. Handle scenario-specific logic ---
-    if scenario == LOFT_SCENARIO:
-        detail_logger.info('    Removing buildings with existing loft insulation')
-        scenario_df = scenario_df[scenario_df[LOFT_EXISTS_COL] == False]
-    
-    detail_logger.info(f"    Remaining buildings for {scenario}: {len(scenario_df)}")
-    
-    if scenario_df.empty:
-        return pd.DataFrame(columns=FINAL_RANK_COLS), exclusion_stats
+    # 1. Validate Columns
+    required_cols = [COST_COL, CO2_COL, PERSONA_COL, INTERVENTION_COL, UPN_COL]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        detail_logger.error(f"CRITICAL: Missing columns: {missing}")
+        return pd.DataFrame(), {}
 
     # --- 3. Apply calculations ---
     
@@ -338,11 +327,8 @@ def _process_optimization_batch(epi_df_full: pd.DataFrame,
 # =============================================================================
 
 def log_comprehensive_summary(combined_results: pd.DataFrame,
-                            all_exclusion_stats: List[Dict],
-                            all_scenario_performance: List[Dict],
-                            all_equity_tracking: List[Dict],
+                            equity_tracking: Dict,
                             scenario_budget: float,
-                            prob_loft: float,
                             equity_factor: float,
                             scenario_list: List[str],
                             summary_logger: logging.Logger,
@@ -446,9 +432,8 @@ def log_comprehensive_summary(combined_results: pd.DataFrame,
 # =============================================================================
 
 def run_greedy_algo(scenario_budget: float, 
-                    prob_loft: float, 
                     df: pd.DataFrame, 
-                    scenario_list: List[str], 
+                    scenario_list: List[str], # Kept in signature for compatibility, but unused for filtering
                     summary_logger: logging.Logger, 
                     detail_logger: logging.Logger, 
                     equity_factor: float, 
@@ -501,7 +486,6 @@ def run_greedy_algo(scenario_budget: float,
         all_scenario_performance=all_scenario_performance,
         all_equity_tracking=all_equity_tracking,
         scenario_budget=scenario_budget,
-        prob_loft=prob_loft,
         equity_factor=equity_factor,
         scenario_list=scenario_list,
         summary_logger=summary_logger,
