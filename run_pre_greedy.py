@@ -2,37 +2,35 @@ import pandas as pd
 import numpy as np
 import glob
 from pathlib import Path
-from src.RetrofitAnalysisUtils import load_data, prepare_data_for_postanalysis
 import os
 import gc
 import logging
 import csv
+from src.utils import is_running_on_hpc 
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
-LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v7/NE'
-OUTPUT_BASE_DIR = 'optimized_priorities/processed_chunks'
-LOG_FILE_PATH = 'optimized_priorities/processing_log.txt'
-STATS_FILE_PATH = 'optimized_priorities/processing_stats.csv'
+is_hpc = is_running_on_hpc() 
+if is_hpc:
+    LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v7/NE'
+else: 
+    LOG_DIR = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE'
 
-RISK_QUANTILE = 0.15
+OUTPUT_BASE_DIR = 'optimized_priorities/v7/processed_best_only'
+LOG_FILE_PATH = 'optimized_priorities/v7/processing_log.txt'
 
-# SYMMETRIC CAP
+# --- NEW PARAMETER ---
+# 0.35 means 35% of buildings already have loft insulation and cannot get it again.
+LOFT_INSULATION_EXISTING_PERCENT = 0.95 
+
+# CUTOFFS & PARAMETERS
 ABS_COST_CAP = 200000.0
 
-# Simulation Parameters
+RISK_PENALTY_SIGMA = 0  
 YEARS = 5
-N_SIMULATIONS = 5000
 GAS_CARBON_FACTOR = 0.18
 ELEC_CARBON_FACTOR = 0.19338
-
-METRICS = {
-    'hp_only': 'heat_pump_only_cost_per_total_energy_ton_heat_pump_only_mean',
-    'loft':    'loft_installation_cost_per_total_energy_ton_loft_installation_mean',
-    'wall':    'wall_installation_cost_per_total_energy_ton_wall_installation_mean',
-    'heat_wall': 'joint_heat_wall_decay_cost_per_total_energy_ton_joint_heat_wall_decay_mean'
-}
 
 SCENARIO_LIST = [
     'joint_heat_loft_decay',
@@ -43,181 +41,297 @@ SCENARIO_LIST = [
     'loft_installation'
 ]
 
-cols_keep = ['postcode', 'premise_type'] 
+COLS_KEEP = ['upn', 'postcode', 'premise_type'] 
+
+# pre process
+
+def prepare_data_for_postanalysis_greedy(df_input, scenarios, n_years, factor_gas, factor_elec, 
+                                  include_extremes=False, cols_to_keep=None):
+    """
+    Calculates 5-year total Cost and CO2 metrics, optionally preserving metadata columns.
+    
+    Parameters:
+    -----------
+    df_input        : pd.DataFrame : Raw input data
+    scenarios       : list         : List of scenario names
+    n_years         : int          : Number of years for total calculation
+    factor_gas      : float        : CO2 conversion factor for Gas
+    factor_elec     : float        : CO2 conversion factor for Electricity
+    include_extremes: bool         : If True, includes p5 and p95 stats.
+    cols_to_keep    : list         : List of column names from original df to preserve (e.g., UPRN)
+    
+    Returns:
+    --------
+    pd.DataFrame : Contains preserved columns + Cost, Net CO2 Saved, and Efficiency ratios.
+    """
+    print("\n" + "="*80)
+    print(f"CALCULATING METRICS ({n_years} YEAR TOTALS)")
+    print(f"• Extremes (p5/p95): {include_extremes}")
+    print(f"• Preserving columns: {cols_to_keep if cols_to_keep else 'None'}")
+    print("="*80)
+    
+    if isinstance(scenarios, str):
+         scenarios = [scenarios]
+         
+    if cols_to_keep is None:
+        cols_to_keep = []
+    elif isinstance(cols_to_keep, str):
+        cols_to_keep = [cols_to_keep]
+  
+    dtype_float = 'float32'
+    output_data = {}
+    
+    # 1. PRESERVE REQUESTED COLUMNS (Add these first so they appear on the left)
+    for col in cols_to_keep:
+        if col in df_input.columns:
+            output_data[col] = df_input[col]
+        else:
+            print(f"⚠️ Warning: Column '{col}' not found in input dataframe. Skipping.")
+
+    # 2. STANDARDIZE INPUT COLUMNS (Handle known naming inconsistencies)
+    rename_map = {
+        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_mean': 'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_mean',
+        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_std': 'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_std',
+        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p5': 'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p5',
+        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p50': 'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p50',
+        'join_heat_ins_decay_elec_saving_perc__join_heat_ins_decay_p95': 'join_heat_ins_decay_elec_saving_perc_join_heat_ins_decay_p95'
+    }
+    df_src = df_input.rename(columns=rename_map)
+
+    # 3. DEFINE STATS TO PROCESS
+    stats = ['mean', 'std', 'p50']
+    if include_extremes:
+        stats.extend(['p5', 'p95'])
+    
+    for scn in scenarios:
+        is_heat = 'heat' in scn.lower()
+        
+        for stat in stats:
+            # --- 4. DEFINE SOURCE COLUMN NAMES ---
+            col_src_gas_kwh  = f'{scn}_gas_saving_abs_kwh_{scn}_{stat}'
+            col_src_elec_kwh = f'{scn}_elec_saving_abs_kwh_{scn}_{stat}'
+            col_src_cost     = f'{scn}_cost_{scn}_{stat}'
+            col_src_cost_avg = f'{scn}_cost_{scn}_mean' 
+            
+            # --- 5. VALIDATE INPUTS ---
+            if col_src_cost in df_src.columns:
+                series_cost = df_src[col_src_cost]
+            elif col_src_cost_avg in df_src.columns:
+                series_cost = df_src[col_src_cost_avg]
+            else:
+                continue 
+
+            if col_src_gas_kwh not in df_src.columns:
+                continue
+
+            # --- 6. CALCULATE INTERMEDIATE METRICS ---
+            val_gas_tonnes = (df_src[col_src_gas_kwh] * n_years * factor_gas) / 1000
+            
+            val_elec_tonnes = 0
+            if is_heat and col_src_elec_kwh in df_src.columns:
+                val_elec_tonnes = (df_src[col_src_elec_kwh] * n_years * factor_elec) / 1000
+
+            # Invert signs: Savings are Positive
+            val_saved_net = (val_gas_tonnes + val_elec_tonnes) * -1
+            val_saved_gas = val_gas_tonnes * -1
+
+            # --- 7. DEFINE STANDARDIZED OUTPUT NAMES ---
+            col_out_cost      = f'cost_total_{scn}_{stat}'
+            col_out_saved_net = f'co2_saved_net_tonnes_{scn}_{stat}'
+            col_out_saved_gas = f'co2_saved_gas_tonnes_{scn}_{stat}'
+            col_out_cpt_net   = f'capex_per_net_ton_{scn}_{stat}'
+            col_out_cpt_gas   = f'capex_per_gas_ton_{scn}_{stat}'
+
+            # --- 8. POPULATE OUTPUT DICTIONARY ---
+            output_data[col_out_cost]      = series_cost.astype(dtype_float)
+            output_data[col_out_saved_net] = val_saved_net.astype(dtype_float)
+            output_data[col_out_saved_gas] = val_saved_gas.astype(dtype_float)
+
+            ratio_net = series_cost / val_saved_net
+            output_data[col_out_cpt_net] = ratio_net.replace([np.inf, -np.inf], 0).fillna(0).astype(dtype_float)
+
+            ratio_gas = series_cost / val_saved_gas
+            output_data[col_out_cpt_gas] = ratio_gas.replace([np.inf, -np.inf], 0).fillna(0).astype(dtype_float)
+
+    # Convert dict to DF (aligns to original index automatically)
+    df_final = pd.DataFrame(output_data, index=df_input.index)
+    
+    print(f"✓ Calculation complete.")
+    print(f"✓ Returning {len(df_final.columns)} columns.")
+    
+    return df_final
+
 
 # ============================================================================
-# LOGGING SETUP
+# 1. ROBUST AGGREGATION (Unchanged)
 # ============================================================================
+def pool_epistemic_runs_robust(df, scenarios, id_col='upn'):
+    """Combines 70 runs into 1 robust estimate per building."""
+    agg_map = {}
+    calc_cols = []
+    
+    for col in COLS_KEEP:
+        if col in df.columns and col != id_col:
+            agg_map[col] = 'first'
+
+    metrics = ['cost', 'gas_saving_abs_kwh', 'elec_saving_abs_kwh']
+    
+    for scn in scenarios:
+        for m in metrics:
+            base_col = f'{scn}_{m}_{scn}'
+            col_mean = f'{base_col}_mean'
+            col_std  = f'{base_col}_std'
+            
+            if col_mean in df.columns:
+                agg_map[col_mean] = 'mean'
+                if col_std in df.columns:
+                    calc_cols.append({'base': base_col, 'mean': col_mean, 'std': col_std})
+
+    grouped = df.groupby(id_col)
+    df_agg = grouped.agg(agg_map)
+    
+    for item in calc_cols:
+        var_of_means = grouped[item['mean']].var(ddof=1).fillna(0)
+        temp_var = df[[id_col, item['std']]].copy()
+        temp_var['var'] = temp_var[item['std']] ** 2
+        mean_of_vars = temp_var.groupby(id_col)['var'].mean()
+        
+        pooled_std = np.sqrt(mean_of_vars + var_of_means)
+        df_agg[item['std']] = pooled_std.astype('float32')
+
+    return df_agg.reset_index()
+
+# ============================================================================
+# 2. EXISTING MEASURES LOGIC (New)
+# ============================================================================
+def apply_existing_measures_constraint(df, percent_existing):
+    """
+    Randomly assigns 'Existing Loft Insulation' status to buildings based on percentage.
+    Returns a set of UPNs that are disqualified from loft upgrades.
+    """
+    unique_upns = df['upn'].unique()
+    n_existing = int(len(unique_upns) * percent_existing)
+    
+    # Randomly select UPNs that ALREADY have insulation
+    # (Using a fixed seed ensures reproducibility if you re-run on the same file)
+    rng = np.random.default_rng(seed=42) 
+    existing_loft_upns = set(rng.choice(unique_upns, size=n_existing, replace=False))
+    
+    return existing_loft_upns
+
+# ============================================================================
+# 3. PROCESSING PIPELINE
+# ============================================================================
+
 def setup_logging():
-    # Make sure dir exists
     os.makedirs(os.path.dirname(LOG_FILE_PATH), exist_ok=True)
-    
-    # Configure logging to both File and Console
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(LOG_FILE_PATH),
-            logging.StreamHandler()
-        ]
-    )
-
-def append_stats_to_csv(stat_dict):
-    """
-    Appends a dictionary of statistics to the global CSV file.
-    Creates the file with headers if it doesn't exist.
-    """
-    file_exists = os.path.isfile(STATS_FILE_PATH)
-    
-    fieldnames = [
-        'filename', 
-        'scenario', 
-        'total_rows_loaded', 
-        'monsters_removed', 
-        'buildings_found', 
-        'buildings_filtered_low_runs', 
-        'buildings_kept'
-    ]
-    
-    with open(STATS_FILE_PATH, mode='a', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(stat_dict)
-
-# ============================================================================
-# PROCESSING LOGIC
-# ============================================================================
-
-def prepare_data_for_postanalysis_greedy(filepath):
-    try:
-        pre_df = pd.read_csv(filepath)
-        proc_df = prepare_data_for_postanalysis(
-                pre_df,
-                SCENARIO_LIST,
-                YEARS,
-                GAS_CARBON_FACTOR,
-                ELEC_CARBON_FACTOR
-            )
-        return proc_df
-    except Exception as e:
-        logging.error(f"Failed to load or prepare {filepath}: {e}")
-        return None
+    logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler()])
 
 def process_single_file(filepath, output_dir):
     filename = Path(filepath).stem
-    logging.info(f"--> Processing File: {filename}")
+    logging.info(f"--> Processing: {filename}")
 
-    # 1. Load Data
-    full_df = prepare_data_for_postanalysis_greedy(filepath)
-    
-    if full_df is None or full_df.empty:
-        logging.warning(f"Skipping {filename} (Empty dataframe or load error)")
+    # A. LOAD
+    try:
+        raw_df = pd.read_csv(filepath)
+    except Exception as e:
         return
-    if 'postcode' not in full_df.columns:
-         raise Exception('Postcode not present' ) 
 
-    processed_chunks = []
+ 
+    if 'upn' not in raw_df.columns:
+        raise Exception('Missing UPN')
 
-    # 2. Iterate over metrics
-    for metric_name, metric_col in METRICS.items():
-        if metric_col not in full_df.columns:
-            logging.warning(f"Column {metric_col} not found in {filename}")
-            continue
+    # B. AGGREGATE
+    agg_df = pool_epistemic_runs_robust(raw_df, SCENARIO_LIST, id_col='upn')
 
-        # Create a lightweight copy
-        sub_df = full_df[['upn', metric_col] + cols_keep].copy()
+    # --- NEW STEP: Identify buildings that already have loft insulation ---
+    disqualified_loft_upns = apply_existing_measures_constraint(agg_df, LOFT_INSULATION_EXISTING_PERCENT)
+    logging.info(f"   Excluding loft options for {len(disqualified_loft_upns)} buildings ({LOFT_INSULATION_EXISTING_PERCENT*100}%)")
+
+    # C. CALC METRICS
+    df_metrics = prepare_data_for_postanalysis_greedy(
+        df_input=agg_df,
+        scenarios=SCENARIO_LIST,
+        n_years=YEARS,
+        factor_gas=GAS_CARBON_FACTOR,
+        factor_elec=ELEC_CARBON_FACTOR,
+        include_extremes=False, 
+        cols_to_keep=COLS_KEEP
+    )
+    
+    all_interventions = []
+
+    # D. CALCULATE ROBUST SCORES
+    for scn in SCENARIO_LIST:
+        col_cost_mean  = f'cost_total_{scn}_mean'
+        col_saved_mean = f'co2_saved_net_tonnes_{scn}_mean'
         
-        # --- STATS: Initial Count ---
-        total_rows = len(sub_df)
+        if col_cost_mean not in df_metrics.columns: continue
 
-        # --- A. Remove Monsters ---
-        mask_monster = (sub_df[metric_col].abs() > ABS_COST_CAP) | (sub_df[metric_col].isna())
-        n_monsters = mask_monster.sum()
+        # --- CONSTRAINT CHECK ---
+        # If the scenario involves "loft", and the building is in the disqualified set, skip it.
+        is_loft_scenario = 'loft' in scn.lower()
         
-        if n_monsters > 0:
-            sub_df.loc[mask_monster, metric_col] = np.nan
-
-        # --- B. Aggregation (Reduce to 1 row per building) ---
-        agg = sub_df.groupby(cols_keep + ['upn'])[metric_col].agg([
-            ('valid_runs', 'count'),
-            ('raw_mean', 'mean'),
-            ('raw_robust_score', lambda x: x.quantile(RISK_QUANTILE))
-        ]).reset_index()
-
-        # --- STATS: Building Counts ---
-        n_buildings_total = len(agg)
-
-        # --- C. Stability Filter ---
-        # Keep only buildings with > 50 valid runs
-        agg_filtered = agg[agg['valid_runs'] > 50].copy()
+        # 1. Penalty Calculation (Unchanged)
+        raw_gas_std = f'{scn}_gas_saving_abs_kwh_{scn}_std'
+        raw_elec_std = f'{scn}_elec_saving_abs_kwh_{scn}_std'
         
-        n_buildings_kept = len(agg_filtered)
-        n_filtered_out = n_buildings_total - n_buildings_kept
+        if raw_gas_std not in agg_df.columns: continue
 
-        # --- LOGGING STATS ---
-        stats = {
-            'filename': filename,
-            'scenario': metric_name,
-            'total_rows_loaded': total_rows,
-            'monsters_removed': n_monsters,
-            'buildings_found': n_buildings_total,
-            'buildings_filtered_low_runs': n_filtered_out,
-            'buildings_kept': n_buildings_kept
-        }
-        append_stats_to_csv(stats)
+        gas_std_t = (agg_df[raw_gas_std] * YEARS * GAS_CARBON_FACTOR) / 1000
+        elec_std_t = 0
+        if raw_elec_std in agg_df.columns:
+            elec_std_t = (agg_df[raw_elec_std] * YEARS * ELEC_CARBON_FACTOR) / 1000
+            
+        total_std_t = np.sqrt(gas_std_t**2 + elec_std_t**2)
+        robust_savings = df_metrics[col_saved_mean] - (RISK_PENALTY_SIGMA * total_std_t)
+        robust_metric = df_metrics[col_cost_mean] / robust_savings
+
+        # 2. Extract
+        sub_df = df_metrics[COLS_KEEP].copy()
+        sub_df['intervention'] = scn
+        sub_df['total_capex'] = df_metrics[col_cost_mean]
+        sub_df['total_co2_saved_robust'] = robust_savings
+        sub_df['capex_per_net_ton'] = robust_metric
         
-        logging.info(f"   [{metric_name}] Monsters: {n_monsters} | Filtered Buildings: {n_filtered_out} | Kept: {n_buildings_kept}")
-
-        if agg_filtered.empty:
-            continue
-
-        # --- D. Formatting ---
-        agg_filtered['intervention'] = metric_name
-        agg_filtered['optimizer_cost'] = agg_filtered['raw_robust_score'] * -1
-        agg_filtered['cost_robust'] = agg_filtered['raw_robust_score'] * -1
-        agg_filtered['cost_mean'] = agg_filtered['raw_mean'] * -1
-        agg_filtered['risk_premium'] = agg_filtered['cost_robust'] - agg_filtered['cost_mean']
-
-        processed_chunks.append(agg_filtered)
-
-    # 3. Save
-    if processed_chunks:
-        final_file_df = pd.concat(processed_chunks, ignore_index=True)
-        final_file_df.sort_values(by=['upn', 'intervention'], inplace=True)
+        # 3. Filter Monsters
+        mask_valid = (
+            (sub_df['capex_per_net_ton'] > 0) & 
+            (sub_df['capex_per_net_ton'] <= ABS_COST_CAP) &
+            (sub_df['capex_per_net_ton'].notna())
+        )
         
-        output_path = os.path.join(output_dir, f"processed_{filename}.csv")
-        final_file_df.to_csv(output_path, index=False)
-        logging.info(f"Saved processed data to: {output_path}")
+        # --- APPLY CONSTRAINT FILTER ---
+        if is_loft_scenario:
+            # Only keep rows where the UPN is NOT in the disqualified list
+            mask_allowed = ~sub_df['upn'].isin(disqualified_loft_upns)
+            mask_valid = mask_valid & mask_allowed
+
+        clean_df = sub_df[mask_valid].copy()
+        
+        if not clean_df.empty:
+            all_interventions.append(clean_df)
+
+    # E. SELECT BEST
+    if all_interventions:
+        combined_df = pd.concat(all_interventions, ignore_index=True)
+        combined_df.sort_values(by='capex_per_net_ton', ascending=True, inplace=True)
+        best_only_df = combined_df.drop_duplicates(subset=['upn'], keep='first')
+        
+        output_path = os.path.join(output_dir, f"best_intervention_{filename}_loft_{LOFT_INSULATION_EXISTING_PERCENT}.csv")
+        best_only_df.to_csv(output_path, index=False)
     else:
-        logging.warning(f"No valid data remaining for {filename}")
+        logging.warning(f"No valid interventions found for {filename}")
 
-    # 4. Cleanup
-    del full_df
-    del processed_chunks
+    del raw_df, agg_df, df_metrics, all_interventions
     gc.collect()
 
 def run_pipeline():
     setup_logging()
-    
     os.makedirs(OUTPUT_BASE_DIR, exist_ok=True)
-    
-    # Clean/Reset Stats File if you want to start fresh every run
-    # if os.path.exists(STATS_FILE_PATH):
-    #     os.remove(STATS_FILE_PATH)
-
     files = glob.glob(f"{LOG_DIR}/*.csv")
-    
-    logging.info(f"Found {len(files)} log files to process.")
-
-    for i, f in enumerate(files):
-        try:
-            process_single_file(f, OUTPUT_BASE_DIR)
-        except Exception as e:
-            logging.critical(f"CRITICAL ERROR processing {f}: {e}")
-            continue
-        
-    logging.info("Pipeline execution finished.")
+    for f in files:
+        process_single_file(f, OUTPUT_BASE_DIR)
 
 if __name__ == "__main__":
     run_pipeline()
