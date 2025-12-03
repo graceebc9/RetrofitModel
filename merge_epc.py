@@ -7,6 +7,7 @@ import os
 # 1. Point this to your log files (e.g., "data/logs/*.csv")
 #    We will process these ONE BY ONE.
 from src.utils import is_running_on_hpc 
+from src.RetrofitUtils import clean_logs, load_master
 
 running_locally = not is_running_on_hpc()
 
@@ -104,57 +105,111 @@ def load_all_epc_data(epc_files_list, columns_to_load, uprn_col_name):
     print(f"Loaded {len(df_all_epcs)} unique EPC records into memory.")
     return df_all_epcs
     
-    
-def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col):
+    def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col, 
+                               error_log_file, new_log_epc_dir, reference_file):
     """
     Iterates through log files one-by-one and merges them against 
-    the in-memory EPC DataFrame.
+    the in-memory EPC DataFrame. Logs all failures to error log.
     """
     
     log_files = glob.glob(log_file_pattern)
     if not log_files:
         print(f"Warning: No log files found at {log_file_pattern}")
         return pd.DataFrame()
+    
     if df_all_epcs.empty:
         print("Warning: EPC data is empty. Cannot perform merge.")
         return pd.DataFrame()
- 
+    
+    # Load master headers
+    print('Loading master headers...')
+    master_headers = load_master(error_log_file, new_log_epc_dir, reference_file)
+    
+    if master_headers is None:
+        print("CRITICAL: Could not load master headers. Aborting.")
+        return pd.DataFrame()
+    
+    print(f"Master headers: {master_headers}")
     print("\n--- Starting Log File Processing (One by One) ---")
+    
     for log_file in log_files:
-        filename = log_file.split('/')[-1]
+        filename = os.path.basename(log_file)
         new_log_path = os.path.join(new_log_epc_dir, filename)
         
         # Check if output file already exists
         if os.path.exists(new_log_path):
-            print(f"Skipping {log_file} - already processed (output exists at {new_log_path})")
+            print(f"Skipping {filename} - already processed")
             continue
         
-        print(f"Processing log file: {log_file}...")
+        print(f"Processing: {filename}...")
         
-        # Load just this one log file
-        df_log = pd.read_csv(log_file)    
- 
-        df_log = df_log.drop_duplicates() 
-         
-        # Prepare for merge
-        df_log[log_uprn_col] = df_log[log_uprn_col].astype(str)
-        if log_uprn_col != 'uprn':
-            df_log = df_log.rename(columns={log_uprn_col: 'uprn'})
+        try:
+            # Load and validate log file
+            df_log = clean_logs(log_file, master_headers, error_log_file)
+            
+            # Check if load was successful
+            if df_log is None:
+                print(f"  ❌ Failed to load {filename} (see error log)")
+                continue
+            
+            if df_log.empty:
+                log_error_to_file(error_log_file, filename, "File loaded but contains no data")
+                print(f"  ❌ No data in {filename}")
+                continue
+            
+            # Remove duplicates
+            original_rows = len(df_log)
+            df_log = df_log.drop_duplicates()
+            if len(df_log) < original_rows:
+                print(f"  Removed {original_rows - len(df_log)} duplicate rows")
+            
+            # Prepare UPRN column for merge
+            if log_uprn_col not in df_log.columns:
+                log_error_to_file(error_log_file, filename, 
+                                f"Missing UPRN column: '{log_uprn_col}'")
+                print(f"  ❌ Missing UPRN column")
+                continue
+            
+            df_log[log_uprn_col] = df_log[log_uprn_col].astype(str)
+            
+            if log_uprn_col != 'uprn':
+                df_log = df_log.rename(columns={log_uprn_col: 'uprn'})
+            
+            # Perform merge
+            merged_chunk = pd.merge(
+                df_log,
+                df_all_epcs,
+                on='uprn',
+                how='inner'
+            )
+            
+            # Save results
+            if not merged_chunk.empty:
+                merged_chunk.to_csv(new_log_path, index=False)
+                print(f"  ✓ Saved {len(merged_chunk)} matched rows to {filename}")
+            else:
+                log_error_to_file(error_log_file, filename, 
+                                "No UPRN matches found with EPC data")
+                print(f"  ⚠ No matches found for {filename}")
         
-        # --- The Merge ---
-        merged_chunk = pd.merge(
-            df_log,       # The small log DataFrame
-            df_all_epcs,  # The big, in-memory EPC DataFrame
-            on='uprn',    # The common column
-            how='inner'   # Only keep matches
-        )
+        except KeyError as e:
+            log_error_to_file(error_log_file, filename, f"Column error: {e}")
+            print(f"  ❌ Column error in {filename}")
+            continue
         
-        if not merged_chunk.empty:
-            merged_chunk.to_csv(new_log_path, index=False)
-            print(f'Chunk saved to {new_log_path}')
-        else:
-            print(f'No matches found for {log_file}, skipping save.')
-
+        except pd.errors.MergeError as e:
+            log_error_to_file(error_log_file, filename, f"Merge error: {e}")
+            print(f"  ❌ Merge failed for {filename}")
+            continue
+        
+        except Exception as e:
+            log_error_to_file(error_log_file, filename, 
+                            f"Unexpected error during processing: {e}")
+            print(f"  ❌ Unexpected error in {filename}")
+            continue
+    
+    print("\n--- Log File Processing Complete ---")
+    
 # --- Main script execution ---
 if __name__ == "__main__":
     # 2. Load ALL EPC data into memory
@@ -163,6 +218,9 @@ if __name__ == "__main__":
         columns_to_load=EPC_COLS_TO_KEEP,
         uprn_col_name=EPC_UPRN_COL_NAME
     )
+    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/130_log_file.csv'
+    ERROR_LOG_FILE = 'epc_merge_logs/processing_errors.txt'
+    os.makedirs('epc_merge_logs', exist_ok=True) 
     print(df_epc_data.shape)
 
     if not df_epc_data.empty:

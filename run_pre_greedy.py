@@ -37,7 +37,7 @@ else:
 
 # --- NEW PARAMETER ---
 # 0.35 means 35% of buildings already have loft insulation and cannot get it again.
-LOFT_INSULATION_EXISTING_PERCENT = 0.65 
+LOFT_INSULATION_EXISTING_PERCENT = 0.95 
 
 # CUTOFFS & PARAMETERS
 ABS_COST_CAP = 200000.0
