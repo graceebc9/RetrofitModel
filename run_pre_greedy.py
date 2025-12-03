@@ -13,19 +13,27 @@ from src.utils import is_running_on_hpc
 # CONFIGURATION
 # ============================================================================
 is_hpc = is_running_on_hpc() 
-
+is_epc = True 
 if is_hpc:
     # Update this path if necessary to match your actual data location
-    LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE'
-    
+    if not is_epc:
+        LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE'
+    else:
+        LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/v8_logs_with_epc'
+    # Use the file you confirmed works as the Source of Truth for headers
     REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/130_log_file.csv'
 else: 
     LOG_DIR = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE'
     REFERENCE_FILE = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/130_log_file.csv'
 
-OUTPUT_BASE_DIR = 'optimized_priorities/processed_best_only'
-LOG_FILE_PATH = 'optimized_priorities/processing_log.txt'
-ERROR_LOG_FILE = 'processing_errors.txt'
+if is_epc:
+    OUTPUT_BASE_DIR = 'optimized_priorities_epc/processed_best_only'
+    LOG_FILE_PATH = 'optimized_priorities_epc/processing_log.txt'
+    ERROR_LOG_FILE = 'epc_processing_errors.txt'
+else:
+    OUTPUT_BASE_DIR = 'optimized_priorities/processed_best_only'
+    LOG_FILE_PATH = 'optimized_priorities/processing_log.txt'
+    ERROR_LOG_FILE = 'processing_errors.txt'
 
 # --- NEW PARAMETER ---
 # 0.35 means 35% of buildings already have loft insulation and cannot get it again.
