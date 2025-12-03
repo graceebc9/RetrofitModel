@@ -27,6 +27,7 @@ from src.RetrofitGreedyUtils import setup_logging
 from src.RetrofitGreedyPost import post_proc_greedy 
 from src.personas import load_personas  
 from src.RetrofitEquity import EQUITY_WEIGHTS  
+from src.utils import is_running_on_hpc 
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
