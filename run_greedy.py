@@ -27,6 +27,7 @@ from src.RetrofitGreedyUtils import setup_logging
 from src.RetrofitGreedyPost import post_proc_greedy 
 from src.personas import load_personas  
 from src.RetrofitEquity import EQUITY_WEIGHTS  
+from src.utils import is_running_on_hpc
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
@@ -63,6 +64,7 @@ def main():
         BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
         
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/optimized_priorities/processed_best_only/*.csv'
+     
         
         # scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
  
@@ -77,10 +79,10 @@ def main():
         run_greedy_runs=False   
     else:
         BASE_DIR = os.getenv('BASE_DIR')
-        INPUT_FILES_PATH = os.getenv('INPUT_FILES_PATH') 
-        
-        
-        setting_name = 'v7'
+        BASE_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE'
+        INPUT_FILES_PATH='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/optimized_priorities/processed_best_only/*'
+
+        setting_name = 'v8'
         run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
         
         if run_g_yn == 'N':
@@ -103,7 +105,7 @@ def main():
         else:
             budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
         
-        budgets = [1_000_000] 
+        
         
         loft_setting = os.getenv('loft_setting')
         
@@ -115,7 +117,7 @@ def main():
             loft_probs = [0.65, 0.95] 
             
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
-        equity_factors=[1]
+        
         number = os.getenv("NUMBER")
         try: 
             number=int(number)
@@ -189,7 +191,7 @@ def main():
                         f'budget_{budget}__loft_{prob_loft}__equity_{equity_factor}'
                     )
                     os.makedirs(output_dir, exist_ok=True)
-                    
+                    print(f'saving to {output_dir}')
                     # Set up logging
                     summary_logger, detail_logger = setup_logging(
                         output_dir, budget, prob_loft, equity_factor

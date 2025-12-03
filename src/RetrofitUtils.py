@@ -3,10 +3,89 @@ import logging
 
 import logging
 import random # Needed for aleatoric sampling
+import pandas as pd 
+import os 
 
-# Add this import at the top of your file
 import random 
+import os
+import csv
+import logging
+import pandas as pd
 
+def log_error_to_file(error_log_file, filename, error_msg):
+    """Log errors to a file with timestamp."""
+    timestamp = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(error_log_file, 'a') as f:
+        f.write(f"[{timestamp}] FILE: {filename}\n"
+                f"ERROR: {error_msg}\n{'-'*40}\n")
+
+def load_master(error_log_file, output_base_dir, reference_file):
+    """Load reference headers from master CSV file."""
+    # Clean previous error log
+    if os.path.exists(error_log_file):
+        os.remove(error_log_file)
+    
+    os.makedirs(output_base_dir, exist_ok=True)
+    
+    # Load reference headers
+    try:
+        logging.info(f"Loading reference headers from: {reference_file}")
+        with open(reference_file, 'r') as f:
+            master_headers = next(csv.reader(f))
+        return master_headers
+    except Exception as e:
+        logging.error(f"CRITICAL: Could not load reference file. {e}")
+        return None
+
+def clean_logs(filepath, master_headers, error_log_file):
+    """Load and validate CSV file against master headers."""
+    filename = os.path.basename(filepath)
+    
+    try:
+        # Check if file is empty
+        if os.path.getsize(filepath) == 0:
+            log_error_to_file(error_log_file, filename, "File is empty")
+            return None
+        
+        # Peek at first row to check headers/columns
+        with open(filepath, 'r') as f:
+            first_row = next(csv.reader(f))
+        
+        # Validate column count
+        expected_cols = len(master_headers)
+        if len(first_row) != expected_cols:
+            msg = f"Column count mismatch (Found {len(first_row)} vs Expected {expected_cols})"
+            logging.warning(msg)
+            log_error_to_file(error_log_file, filename, msg)
+            return None
+        
+        # Load CSV with error handling
+        load_opts = {
+            'on_bad_lines': 'skip',
+            'low_memory': False
+        }
+        
+        # Load with or without headers
+        if first_row == master_headers:
+            raw_df = pd.read_csv(filepath, header=0, **load_opts)
+        else:
+            logging.info(f"Injecting headers into {filename}")
+            raw_df = pd.read_csv(filepath, header=None, names=master_headers, **load_opts)
+        
+        # Verify UPN column exists
+        if 'upn' not in raw_df.columns:
+            log_error_to_file(error_log_file, filename, "UPN column missing after load")
+            return None
+        
+        return raw_df
+        
+    except pd.errors.ParserError as e:
+        log_error_to_file(error_log_file, filename, f"CSV Parser Error: {e}")
+        return None
+    except Exception as e:
+        log_error_to_file(error_log_file, filename, f"General Load Error: {e}")
+        return None
+    
 
 def calc_est_flats_building(
     building_footprint_area: float, 
