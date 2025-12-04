@@ -32,6 +32,8 @@ from src.utils import is_running_on_hpc
 # MAIN EXECUTION
 # ============================================================================
 
+milion_factor = 1_000_000
+
 def load_data_simple(files):
     res = [] 
     for f in files:
@@ -65,7 +67,7 @@ def main():
         setting_name = 'lcoal'
         run_greedy_runs=True 
         budgets = [1_000_000, 10_000_000, 100_000_000]
-        budgets = [ 10_000_000]
+        # budgets = [ 10_000_000]
         loft_probs = [0.65, 0.95]
         equity_factors = [0, 0.5, 1 , 1.5, 2, 2.5 ,3  ]
 
@@ -122,7 +124,6 @@ def main():
     print("GREEDY ALGORITHM ANALYSIS - UPDATED FOR NEW COLUMN FORMAT")
     print("="*80)
     if run_greedy_runs: 
-
         for prob_loft in loft_probs:
             files_to_use =  [x for x in input_files if f'loft_{prob_loft}' in x ]
             print(f'Found {len(files_to_use)} files with loft prob {prob_loft}')
@@ -140,10 +141,6 @@ def main():
             df = res_df.merge(personas, on='postcode', how='inner')
             print(f"After persona merge: {len(df)} rows")
     
-    
-            
-            
-            
             print("\nFiltering data...")
             # Filter in steps to avoid large boolean array
             mask1 = df['premise_type'] != 'Domestic_outbuilding'
@@ -161,13 +158,10 @@ def main():
             print(df.columns.tolist() )
     
             for budget in budgets:
+                million_budget = str(budget/milion_factor).replace('.0','')
                 for equity_factor in equity_factors: 
-                  
-                    # Create output directory
-                    output_dir = os.path.join(
-                        greedy_runs_folder, 
-                        f'budget_{budget}__loft_{prob_loft}__equity_{equity_factor}'
-                    )
+                    print(f'Million biudget: {million_budget}')
+                    output_dir = os.path.join(greedy_runs_folder, f'budget_{million_budget}M__loft_{prob_loft}__equity_{equity_factor}'  )
                     os.makedirs(output_dir, exist_ok=True)
                     print(f'saving to {output_dir}')
                     # Set up logging
@@ -183,12 +177,7 @@ def main():
                         
                     baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
                     
-                    # combined_path = os.path.join(output_dir, f'equity_tracking_with_ranges.csv')
-
-                    # if os.path.exists(baseline_path) and os.path.exists(combined_path):
-                    #     print(f"✓ Results already exist for this configuration, skipping...")
-                    #     print(f"  Existing files found in: {output_dir}")
-                    #     continue
+         
                     
                     print(f"\n{'='*80}")
                     print(f"Starting analysis:")
@@ -204,6 +193,7 @@ def main():
 
 
                     try:
+                        print(f'Million biudget: {million_budget}')
                         selected_projects_df, remaining_funds = true_greedy_knapsack(
                             df_knapsack=baseline_selection,
                             budget=budget,
@@ -225,13 +215,14 @@ def main():
                         
                         summary_logger.info(f"Baseline selection saved to: {baseline_path}")
                         summary_logger.info(f"Selected projects results saved to: {selected_path}")
-                        
+                        print(f'budget: {budget}')
+                        print(f'Million biudget: {million_budget}')
                         # Generate visualization
                         summary_logger.info("\nGenerating visualization...")
                         plot_greedy_distribution_analysis(
                             baseline_df=baseline_selection,
                             selected_df=selected_projects_df,
-                            scenario_name=f'£{budget:,} Budget - All Epistemic Runs',
+                            scenario_name=f'budget_{million_budget}M__loft{prob_loft}__equity{equity_factor}',
                             output_dir=output_dir
                         )
                         
