@@ -105,7 +105,7 @@ def load_all_epc_data(epc_files_list, columns_to_load, uprn_col_name):
     print(f"Loaded {len(df_all_epcs)} unique EPC records into memory.")
     return df_all_epcs
     
-    def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col, 
+def process_logs_against_epcs(log_file_pattern, df_all_epcs, log_uprn_col, 
                                error_log_file, new_log_epc_dir, reference_file):
     """
     Iterates through log files one-by-one and merges them against 
@@ -229,7 +229,11 @@ if __name__ == "__main__":
             log_file_pattern=LOG_FILE_PATTERN,
             df_all_epcs=df_epc_data,
  
-            log_uprn_col=LOG_UPRN_COL_NAME
+            log_uprn_col=LOG_UPRN_COL_NAME, 
+            
+            error_log_file=ERROR_LOG_FILE,
+            new_log_epc_dir=new_log_epc_dir,
+            reference_file=REFERENCE_FILE , 
         )
 
  
