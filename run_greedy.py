@@ -92,10 +92,10 @@ def main():
             run_greedy_runs = True 
 
         budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
-        budgets = [1_000_000,  10_000_000]
+        
         loft_probs = [0.65, 0.95] 
-        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
-        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.4, 1.6, 1.8 , 2  ]
+        
+        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.4, 1.6, 1.8 ,2  ]
         number = os.getenv("NUMBER")
         try: 
             number=int(number)
@@ -115,7 +115,7 @@ def main():
     if number:
         greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}', setting_name) 
     else:
-        greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs_test', setting_name )
+        greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', setting_name )
  
        
     print("\n" + "="*80)
@@ -266,7 +266,7 @@ def main():
         if number:
             OUTPUT_PATH = os.path.join(BASE_DIR, f'greedy_vis_num{number}', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
         else:
-            OUTPUT_PATH = os.path.join(BASE_DIR, 'greedy_vis_test', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
+            OUTPUT_PATH = os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
 
         # Ensure output directory exists
         os.makedirs(OUTPUT_PATH, exist_ok=True)
