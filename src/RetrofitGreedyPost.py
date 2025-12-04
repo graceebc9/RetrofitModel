@@ -20,6 +20,7 @@ from .Sankey import run_sankey_greedy
 # ==============================================================================
 # 2. DATA LOADING FUNCTION
 # ==============================================================================
+million_factor=1_000_000
 
 def load_data(budgets, equity_weights, loft_val, base_path):
     """
@@ -34,9 +35,10 @@ def load_data(budgets, equity_weights, loft_val, base_path):
 
     for budget in budgets:
         for equity_weight in equity_weights:
+            budg = str(budget/million_factor).replace('.0','') 
             # Construct scenario info
-            dir_name = f'budget_{budget}__loft_{loft_val}__equity_{equity_weight}'
-            scenario_label = f'budget_{budget}_equity_{equity_weight}'
+            dir_name = f'budget_{budg }M__loft_{loft_val}__equity_{equity_weight}'
+            scenario_label = f'budget_{budg}M_equity_{equity_weight}'
             dir_path = os.path.join(base_path , dir_name) 
             
             # Define file paths
@@ -302,7 +304,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
 
     # --- 5. Plot Results ---
     print(f"--- Generating plots in: {OUTPUT_PATH} ---")
-    scenario_colors = plot_greedy_compairosn_main(comparison_df, output_dir=OUTPUT_PATH, y_axis_zero=True )
+    scenario_colors = plot_greedy_compairosn_main(comparison_df, output_dir=OUTPUT_PATH, y_axis_zero=True , loft_val=LOFT_VALUE)
 
          
     plot_carbon_by_persona(results_df, scenario_colors, 
