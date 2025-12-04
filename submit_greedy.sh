@@ -25,8 +25,8 @@ conda activate /home/gb669/.conda/envs/ag3
 export SLURM_SUBMIT_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel'
 cd $SLURM_SUBMIT_DIR
 
-export BASE_DIR='/rds/user/gb669/hpc-work/energy_map/RetrofitModel/retrofit_scenario_analysis/2_greedy/v6'
-export INPUT_FILES_PATH='/rds/user/gb669/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v6/NE/*.csv' 
+
+
 export RUN_GREEDY_RUNS_YN='Y'
 
 # Create logs directory
