@@ -59,28 +59,29 @@ def main():
     running_locally = not is_running_on_hpc()
     
     if running_locally:
-        
-        
         BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
-        
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/optimized_priorities/processed_best_only/*.csv'
-     
         
-        # scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
- 
-
         setting_name = 'lcoal'
         run_greedy_runs=True 
- 
         budgets = [1_000_000, 10_000_000, 100_000_000]
+        budgets = [ 10_000_000]
         loft_probs = [0.65, 0.95]
-        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
+        equity_factors = [0, 0.5, 1 , 1.5, 2, 2.5 ,3  ]
 
         run_greedy_runs=False   
     else:
         BASE_DIR = os.getenv('BASE_DIR')
-        BASE_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE'
-        INPUT_FILES_PATH='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/optimized_priorities/processed_best_only/*'
+        BASE_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v8/NE'
+        
+        epc_run = False 
+        
+        if epc_run:
+            INPUT_FILES_PATH='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities_epc/processed_best_only/*'
+            BASE_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/3_greedy_optimisation/v8/NE/epc'
+        else:
+            INPUT_FILES_PATH='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities/processed_best_only/*'
+            BASE_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/3_greedy_optimisation/v8/NE/all_domestic'
 
         setting_name = 'v8'
         run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
@@ -89,35 +90,12 @@ def main():
             run_greedy_runs = False
         else:
             run_greedy_runs = True 
-            
-        BUDGET_SETTING = os.getenv('BUDGET_SETTING' )
-        
-        if BUDGET_SETTING == '1':
-            budgets = [1_000_000]
-        elif BUDGET_SETTING == '2':
-            budgets = [10_000_000]
-        elif BUDGET_SETTING == '3':
-            budgets = [50_000_000]
-        elif BUDGET_SETTING == '4':
-            budgets = [80_000_000]
-        elif BUDGET_SETTING == '5':
-            budgets = [100_000_000]
-        else:
-            budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
-        
-        
-        
-        loft_setting = os.getenv('loft_setting')
-        
-        if loft_setting == '1':
-            loft_probs = [0.65]
-        elif loft_setting == '2':
-            loft_probs = [0.95] 
-        else: 
-            loft_probs = [0.65, 0.95] 
-            
+
+        budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
+        budgets = [1_000_000,  10_000_000]
+        loft_probs = [0.65, 0.95] 
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
-        
+        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.4, 1.6, 1.8 , 2  ]
         number = os.getenv("NUMBER")
         try: 
             number=int(number)
@@ -137,7 +115,7 @@ def main():
     if number:
         greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}', setting_name) 
     else:
-        greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', setting_name )
+        greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs_test', setting_name )
  
        
     print("\n" + "="*80)
@@ -288,7 +266,7 @@ def main():
         if number:
             OUTPUT_PATH = os.path.join(BASE_DIR, f'greedy_vis_num{number}', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
         else:
-            OUTPUT_PATH = os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
+            OUTPUT_PATH = os.path.join(BASE_DIR, 'greedy_vis_test', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
 
         # Ensure output directory exists
         os.makedirs(OUTPUT_PATH, exist_ok=True)
