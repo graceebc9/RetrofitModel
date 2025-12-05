@@ -22,7 +22,7 @@ SCENARIOS = [
 OUTPUT_BASE = '1_processed_results/vis_outputs/'
 os.makedirs(OUTPUT_BASE, exist_ok=True)
 
-# HPC / Local path toggles
+
 is_hpc = False 
 if is_hpc:
     LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/*csv'
