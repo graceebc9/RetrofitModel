@@ -85,14 +85,21 @@ def main():
         BASE_DIR = os.getenv('BASE_DIR')
         
         
-        epc_run = False 
+        epc_yn = os.getenv('EPC_YN')
+        
+        if epc_yn =='Y':
+            print('Runnig greedy for EPC' ) 
+            epc_run = True 
+        else:
+            epc_run = False 
+            print('Runnig greedy for normal' ) 
         
         if epc_run:
-            INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/2_optimized_priorities_epc/processed_best_only/*'
-            BASE_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/3_greedy_optimisation/v8/NE/epc'
+            INPUT_FILES_PATH='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities_epc/processed_best_only/*'
+            BASE_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v8/NE/epc'
         else:
             INPUT_FILES_PATH='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities/processed_best_only/*'
-            BASE_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/3_greedy_optimisation/v8/NE/all_domestic'
+            BASE_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v8/NE/all_domestic'
 
         setting_name = 'v8'
         run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
@@ -104,7 +111,7 @@ def main():
 
         budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
         
-        loft_probs = [0.65, 0.95] 
+        loft_probs = [0.95, 0.65] 
         
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.4, 1.6, 1.8 ,2  ]
         number = os.getenv("NUMBER")
