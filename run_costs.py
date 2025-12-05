@@ -254,6 +254,13 @@ def run_pipeline():
     print("Generating Summary Figures...")
     df_summary = accumulator.get_summary_dataframe()
     
+    
+    csv_filename = 'global_summary_stats.csv'
+    csv_path = os.path.join(OUTPUT_DIR, csv_filename)
+    
+    print(f"Saving summary data to: {csv_path}")
+    df_summary.to_csv(csv_path, index=False)
+    
     # Create Labels for Plotting
     df_summary['Label'] = df_summary['Scenario'].str.replace('joint_', '').str.replace('_', '\n')
     
