@@ -28,6 +28,7 @@ from src.RetrofitGreedyPost import post_proc_greedy
 from src.personas import load_personas  
 from src.RetrofitEquity import EQUITY_WEIGHTS  
 from src.utils import is_running_on_hpc 
+from src.EPCAlgo import select_epc_algo 
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
@@ -71,15 +72,23 @@ def main():
         loft_probs = [0.65, 0.95]
         equity_factors = [0, 0.5, 1 , 1.5, 2, 2.5 ,3  ]
 
-        run_greedy_runs=False   
+        run_greedy_runs=True   
+        epc_run = True  
+        if epc_run:
+            INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/2_optimized_priorities_epc/processed_best_only/*'
+            BASE_DIR='/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/v8/NE/epc'
+        else:
+            INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/2_optimized_priorities/processed_best_only/*'
+            BASE_DIR='/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/v8/NE/all_domestic'
+
     else:
         BASE_DIR = os.getenv('BASE_DIR')
-        BASE_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v8/NE'
+        
         
         epc_run = False 
         
         if epc_run:
-            INPUT_FILES_PATH='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities_epc/processed_best_only/*'
+            INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/2_optimized_priorities_epc/processed_best_only/*'
             BASE_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/3_greedy_optimisation/v8/NE/epc'
         else:
             INPUT_FILES_PATH='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities/processed_best_only/*'
@@ -228,7 +237,20 @@ def main():
                         
                         summary_logger.info("Analysis complete!")
                         print(f"✓ Results saved to: {output_dir}")
-                        
+
+                        if epc_run:
+                            epc_random_path = os.path.join(output_dir, f'epc_random_selection.csv')
+                            epc_random_selected_df, epc_random_remaining_budget = select_epc_algo( 
+                                                                            df_knapsack=baseline_selection,
+                                                                        budget=budget,
+                                                                        cost_column='total_capex',
+                                                                        efficiency_column='weighted_capex_per_net_ton' ,
+                                                                        carbon_col='total_co2_saved_robust')
+                            
+                            epc_random_selected_df['remaining_funds'] = epc_random_remaining_budget
+                            epc_random_selected_df.to_csv(epc_random_path, index=False) 
+                            summary_logger.info(f"EPC RAndom selection saved to: {epc_random_path}")
+
                     except Exception as e:
                         summary_logger.error(f"Error in analysis: {e}")
                         print(f"✗ Error: {e}")
