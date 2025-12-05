@@ -13,7 +13,7 @@ from src.utils import is_running_on_hpc
 # CONFIGURATION
 # ============================================================================
 is_hpc = is_running_on_hpc() 
-is_epc = False 
+is_epc = True  
 
 if is_hpc:
     # Update this path if necessary to match your actual data location
@@ -46,6 +46,7 @@ if loft ==1 :
 else:
     loft_perc_list = [0.65] 
 
+loft_perc_list  = [0.65, 0.5]
 # CUTOFFS & PARAMETERS
 ABS_COST_CAP = 200000.0
 RISK_PENALTY_SIGMA = 0  
@@ -62,7 +63,10 @@ SCENARIO_LIST = [
     'loft_installation'
 ]
 
-COLS_KEEP = ['upn', 'postcode', 'premise_type', 'avg_gas_percentile' ] 
+if is_epc:
+    COLS_KEEP = ['upn', 'postcode', 'premise_type', 'avg_gas_percentile' , 'CURRENT_ENERGY_RATING' , 'POTENTIAL_ENERGY_RATING',  'CURRENT_ENERGY_EFFICIENCY' , 'POTENTIAL_ENERGY_EFFICIENCY', 'INSPECTION_DATE' ] 
+else:
+    COLS_KEEP = ['upn', 'postcode', 'premise_type', 'avg_gas_percentile' ] 
 
 # ============================================================================
 # HELPER: ERROR LOGGER

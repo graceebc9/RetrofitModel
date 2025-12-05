@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=NONE
-#SBATCH --mem=100G
+#SBATCH --mem=150G
 #SBATCH --output=logs_greedy/rmodel_%A_%a.out
 #SBATCH --error=logs_greedy/rmodel_%A_%a.err
  
@@ -24,7 +24,7 @@ conda activate /home/gb669/.conda/envs/ag3
 # Set environment variables
 export SLURM_SUBMIT_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel'
 cd $SLURM_SUBMIT_DIR
-
+export EPC_YN='Y'
 
 
 export RUN_GREEDY_RUNS_YN='Y'
