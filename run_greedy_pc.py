@@ -51,8 +51,6 @@ def main():
     # Configuration
     running_locally = not is_running_on_hpc()
     if running_locally:
-        personas_path='/Users/gracecolverd/RetrofitModel/NE_region_personas.csv'
-        personas_path='/Users/gracecolverd/RetrofitModel/filt_domestic_personas_fuel_poverty_clustering_vars13_kn9.csv'
         BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy_epc'
         # INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
         INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/test/new_log_epc/*.csv'
@@ -67,7 +65,7 @@ def main():
     else:
         BASE_DIR = os.getenv('BASE_DIR')
         INPUT_FILES_PATH = os.getenv('INPUT_FILES_PATH') 
-             ='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/personas/NE_region_personas.csv'
+        INPUT_FILES_PATH ='/home/gb669/rds/hpc-work/energy_map/RetrofitModel/personas/NE_region_personas.csv'
         scenario_list =  ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
         
         run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
