@@ -6,7 +6,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import csv
-
+from src.utils import is_running_on_hpc 
+from src.RetrofitUtils import safe_load 
+import matplotlib.ticker as mtick
 # ==============================================================================
 # 1. CONFIGURATION
 # ==============================================================================
@@ -15,9 +17,10 @@ import csv
 SCENARIO_NAME = 'stock_summary'      # Just for folder naming
 INPUT_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/*csv'
 OUTPUT_BASE_DIR = '1_processed_results/stock_summary/'
+ERROR_LOG_FILE = '1_summary_results/stock_summary/processing_errors.txt'
 
 # HPC / Local path toggles
-is_hpc = False 
+is_hpc = is_running_on_hpc() 
 if is_hpc:
     REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/130_log_file.csv'
 else:
@@ -38,55 +41,63 @@ TYPOLOGIES = [
 # ==============================================================================
 # 2. HELPER: SAFE LOAD
 # ==============================================================================
-def safe_load(filepath, headers=None):
-    try:
-        if headers:
-            return pd.read_csv(filepath, names=headers, header=0)
-        return pd.read_csv(filepath)
-    except Exception as e:
-        print(f"Failed to load {filepath}: {e}")
-        return pd.DataFrame()
+
 
 # ==============================================================================
 # 3. STOCK ACCUMULATOR (Counts Only)
 # ==============================================================================
-
 class StockCountAccumulator:
     """
-    Reads chunks of building data and counts occurrences by 
-    Age Band, Premise Type, Decile, Insulation Type, and Conservation Status.
+    Reads chunks of building data, DEDUPLICATES based on 'upn' (per file), 
+    and counts occurrences by Age Band, Premise Type, Decile, etc.
     """
     def __init__(self):
-        # We group by these to get counts for all required plots
         self.group_keys = [
             'premise_age_bucketed', 
             'premise_type', 
             'avg_gas_percentile',
-            'inferred_insulation_type',  # Added for stacked bar plots (Age)
-            'conservation_area_bool'     # Added for stacked bar plots (Premise)
+            'inferred_insulation_type',
+            'conservation_area_bool'
         ]
         self.data_store = []
 
     def process_file(self, file_path, headers=None):
         try:
-            df = safe_load(file_path, headers)
+            df = safe_load(file_path, headers, ERROR_LOG_FILE)
             
             if df.empty: return
 
+            # --- 1. LOCAL DEDUPLICATION ---
+            # We only care about duplicates inside THIS specific file
+            initial_count = len(df)
+            if 'upn' in df.columns:
+                df.drop_duplicates(subset=['upn'], keep='first', inplace=True)
+            else:
+                print(f"Warning: 'upn' column missing in {os.path.basename(file_path)}")
+
+            unique_count = len(df)
+            
+            # --- 2. LOGGING ---
+            # Log the count for this specific file as requested
+            dropped = initial_count - unique_count
+            print(f"  -> {os.path.basename(file_path)}: {unique_count} unique UPNs (dropped {dropped} duplicates)")
+
+            # --- 3. FILTERING ---
             # Filter valid typologies if column exists
             if 'premise_type' in df.columns:
                 df = df[df['premise_type'].isin(TYPOLOGIES)]
             
-            # Ensure required columns exist
+            # Ensure required columns exist for grouping
             current_keys = [k for k in self.group_keys if k in df.columns]
             if not current_keys:
                 return
 
-            # Count occurrences (size)
+            # --- 4. AGGREGATION ---
+            # Count occurrences (size) and store
             grouped = df.groupby(current_keys).size().reset_index(name='count')
-            
             self.data_store.append(grouped)
             
+            # Cleanup to save memory
             del df
             gc.collect()
             
@@ -102,7 +113,6 @@ class StockCountAccumulator:
         full_df = pd.concat(self.data_store, ignore_index=True)
         
         # Sum the counts across chunks
-        # Find the actual keys present in the data (in case some were missing)
         keys_present = [k for k in self.group_keys if k in full_df.columns]
         
         final_df = full_df.groupby(keys_present)['count'].sum().reset_index()
@@ -184,8 +194,10 @@ def plot_counts_by_age_band(df, output_dir):
         # Apply consistent Y-limit
         ax.set_ylim(0, global_max_y)
         
-        plt.title(f'Building Count by Gas Decile & Insulation\nAge Band: {age}')
-        plt.xlabel('Gas Usage Decile (1=Low, 10=High)')
+        
+        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}')) # <--- ADDED FORMATTER HERE
+        
+        plt.xlabel('Gas Consumption Decile)')
         plt.ylabel('Count')
         plt.xticks(rotation=0)
         plt.legend(title='Insulation Type', bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -250,9 +262,10 @@ def plot_counts_by_premise_decile(df, output_dir):
         
         # Apply consistent Y-limit
         ax.set_ylim(0, global_max_y)
-
-        plt.title(f'Building Count by Gas Decile & Conservation Area\n{p_type}')
-        plt.xlabel('Gas Usage Decile (1=Low, 10=High)')
+        # This adds commas (e.g. 10,000) to the Y axis
+        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}')) # <--- ADDED FORMATTER HERE
+        
+        plt.xlabel('Gas Consumption Decile')
         plt.ylabel('Count')
         plt.xticks(rotation=0)
         plt.legend(title='Conservation Area', bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -272,6 +285,7 @@ def plot_counts_by_premise_decile(df, output_dir):
 def run_loading_pipeline():
     files = glob.glob(INPUT_PATTERN)
     print(f"Found {len(files)} files.")
+    #files=files[0:5]
     
     # 1. Get Headers if needed (HPC fix)
     headers = None

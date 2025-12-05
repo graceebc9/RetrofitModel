@@ -5,7 +5,7 @@ import os
 import glob
 import gc
 import csv
-
+from src.utils import is_running_on_hpc 
 # ==============================================================================
 # 1. CONFIGURATION & PATHS
 # ==============================================================================
@@ -23,7 +23,7 @@ OUTPUT_BASE = '1_processed_results/vis_outputs/'
 os.makedirs(OUTPUT_BASE, exist_ok=True)
 
 
-is_hpc = False 
+is_hpc = is_running_on_hpc() 
 if is_hpc:
     LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/*csv'
     REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/130_log_file.csv'
@@ -223,7 +223,10 @@ def safe_load(filepath, headers=None):
 # 6. MAIN PIPELINE
 # ==============================================================================
 def run_pipeline():
+    print(LOG_DIR)
     files = glob.glob(LOG_DIR)
+    
+    
     print(f"Found {len(files)} files.")
     
     headers = None
