@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
- 
+import sys  
 import pandas as pd
 
 import pandas as pd
@@ -15,6 +15,7 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
                          budget: float, 
                          cost_column: str = 'cost_of_intervention_mean', 
                          efficiency_column: str = 'cost_per_net_ton_co2_kg',
+                         carbon_col='total_co2_saved_robust',
                          logger: logging.Logger = None
                          ) -> Tuple[pd.DataFrame, float]:
     print('Starting EPC ALgo ')
@@ -75,7 +76,9 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
     for uprn in unique_uprns:
         # Get all interventions for this UPRN
         uprn_interventions = df_filtered[df_filtered[uprn_col] == uprn].copy()
-        
+        if len(uprn_interventions)>1:
+            print('i think this should be 1')
+            sys.exist()
         # Sort by efficiency (lower is better - less cost per ton CO2)
         # Drop NaN values in efficiency column to avoid issues
         uprn_interventions = uprn_interventions[
@@ -116,7 +119,7 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
         if not selected_df.empty:
             # This 'total_ton_co2_saved' column name is hardcoded based on
             # the context of the main script (RANK_COL_CO2_SAVED)
-            total_co2 = selected_df['total_ton_co2_saved'].sum()
+            total_co2 = selected_df[carbon_col].sum()
             
             logger.info("\n✅ Selection Complete:")
             logger.info(f"  Buildings covered: {len(selected_df):,}")
