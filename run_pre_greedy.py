@@ -13,7 +13,7 @@ from src.utils import is_running_on_hpc
 # CONFIGURATION
 # ============================================================================
 is_hpc = is_running_on_hpc() 
-is_epc = False 
+is_epc = True 
 
 if is_hpc:
     # Update this path if necessary to match your actual data location
@@ -24,7 +24,11 @@ if is_hpc:
         # Use the file you confirmed works as the Source of Truth for headers
     REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/130_log_file.csv'
 else: 
-    LOG_DIR = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE'
+    if is_epc:
+        LOG_DIR='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/epc_merge'
+
+    else:
+        LOG_DIR = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE'
     REFERENCE_FILE = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/130_log_file.csv'
 
 if is_epc:
