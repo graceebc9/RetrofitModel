@@ -19,7 +19,7 @@ SCENARIOS = [
     'loft_installation'
 ]
 
-OUTPUT_BASE = '1_processed_results/vis_outputs/'
+OUTPUT_BASE = '2_stock_results/vis_outputs/'
 os.makedirs(OUTPUT_BASE, exist_ok=True)
 
 
@@ -34,15 +34,15 @@ else:
 
 GROUP_COLS = ['avg_gas_percentile', 'premise_type', 'inferred_insulation_type']
 
+
 TYPOLOGIES = [
-    'Medium height flats 5-6 storeys', 'Small low terraces', '3-4 storey and smaller flats',
+    'Small low terraces', '3-4 storey and smaller flats',
     'Tall terraces 3-4 storeys', 'Large semi detached', 'Standard size detached',
     'Standard size semi detached', '2 storeys terraces with t rear extension',
-    'Semi type house in multiples', 'Tall flats 6-15 storeys', 'Large detached',
-    'Very tall point block flats', 'Very large detached', 'Planned balanced mixed estates',
-    'Linked and step linked premises'
+    'Semi type house in multiples', 'Large detached',
+      'Planned balanced mixed estates',
+    'Linked and step linked premises',
 ]
-
 # ==============================================================================
 # 2. THE GROUPED ACCUMULATOR CLASS
 # ==============================================================================

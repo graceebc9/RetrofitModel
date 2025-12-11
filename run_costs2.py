@@ -8,8 +8,8 @@ import seaborn as sns
 from matplotlib.ticker import FuncFormatter # Imported for axis formatting
 from src.utils import is_running_on_hpc 
 import csv
-from src.RetrofitUtils import safe_load 
-
+from src.RetrofitUtils import safe_load , filter_typology
+from src.RetrofitAnalysis import process_batch_robust
 # ==============================================================================
 # 1. CONFIGURATION
 # ==============================================================================
@@ -127,36 +127,6 @@ class GlobalStatsAccumulator:
             
         return pd.DataFrame(rows)
 
-# ==============================================================================
-# 3. HELPER: AGGREGATION LOGIC
-# ==============================================================================
-def process_batch_robust(df, scenarios, id_col='upn'):
-    agg_map = {}
-    calc_tasks = []
-    
-    for scn in scenarios:
-        cols = [f'{scn}_cost_{scn}', f'{scn}_gas_saving_abs_kwh_{scn}', f'{scn}_elec_saving_abs_kwh_{scn}']
-        for base in cols:
-            col_mean = f'{base}_mean'
-            col_std = f'{base}_std'
-            if col_mean in df.columns:
-                agg_map[col_mean] = 'mean'
-                if col_std in df.columns:
-                    calc_tasks.append({'mean': col_mean, 'std': col_std})
-
-    grouped = df.groupby(id_col)
-    df_agg = grouped.agg(agg_map)
-    
-    for task in calc_tasks:
-        var_epistemic = grouped[task['mean']].var(ddof=1).fillna(0)
-        temp = df[[id_col, task['std']]].copy()
-        temp['var'] = temp[task['std']] ** 2
-        var_aleatoric = temp.groupby(id_col)['var'].mean().fillna(0)
-        
-        pooled_std = np.sqrt(var_aleatoric + var_epistemic)
-        df_agg[task['std']] = pooled_std.astype('float32')
-        
-    return df_agg.reset_index()
 
 # ==============================================================================
 # 4. MAIN PROCESSING PIPELINE
@@ -164,7 +134,7 @@ def process_batch_robust(df, scenarios, id_col='upn'):
 def run_pipeline():
     files = glob.glob(LOG_DIR)
     print(f"Found {len(files)} log files.")
-    files = files[0:5] 
+    
     
     accumulator = GlobalStatsAccumulator(SCENARIOS)
     
@@ -181,6 +151,7 @@ def run_pipeline():
         print(f"[{i+1}/{len(files)}] Processing {os.path.basename(file_path)}...")
         try:
             df = safe_load(file_path, master_headers, ERROR_LOG_FILE)
+            
             if df.empty: continue
             
             df_agg = process_batch_robust(df, SCENARIOS)

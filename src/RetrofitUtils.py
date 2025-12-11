@@ -13,7 +13,29 @@ import logging
 import pandas as pd
 from pathlib import Path
 
+typologies_include = ['Semi type house in multiples',
+                        'Standard size semi detached',
+                        'Planned balanced mixed estates',
+                        'Standard size detached',
+                        'Small low terraces',
+                        'Linked and step linked premises',
+                        '3-4 storey and smaller flats',
+                        '2 storeys terraces with t rear extension',
+                        'Tall terraces 3-4 storeys',
+                        'Large detached',
+                        'Large semi detached'
+                        ]
 
+
+def filter_typology(df):
+    '''
+    keep only good typologies 
+    '''
+    
+    print('Bad typologies: ' ) 
+    print(df[~df['premise_type'].isin(typologies_include)].premise_type.unique() ) 
+    df = df[df['premise_type'].isin(typologies_include)]
+    return df 
 
 
 def safe_load(filepath, master_headers, ERROR_LOG_FILE):
@@ -83,7 +105,7 @@ def safe_load(filepath, master_headers, ERROR_LOG_FILE):
     else:
         print('running for epc')
         raw_df = pd.read_csv(filepath ) 
-    return raw_df 
+    return filter_typology(raw_df )
 
 
 

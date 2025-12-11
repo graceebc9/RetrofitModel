@@ -16,8 +16,8 @@ import matplotlib.ticker as mtick
 # Update these paths for your environment
 SCENARIO_NAME = 'stock_summary'      # Just for folder naming
 INPUT_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/*csv'
-OUTPUT_BASE_DIR = '1_processed_results/stock_summary/'
-ERROR_LOG_FILE = '1_summary_results/stock_summary/processing_errors.txt'
+OUTPUT_BASE_DIR = '2_stock_results/stock_summary/'
+ERROR_LOG_FILE = '2_stock_results/stock_summary/processing_errors.txt'
 
 # HPC / Local path toggles
 is_hpc = is_running_on_hpc() 
@@ -30,12 +30,12 @@ else:
 
 # Predefined order for consistency
 TYPOLOGIES = [
-    'Medium height flats 5-6 storeys', 'Small low terraces', '3-4 storey and smaller flats',
+    'Small low terraces', '3-4 storey and smaller flats',
     'Tall terraces 3-4 storeys', 'Large semi detached', 'Standard size detached',
     'Standard size semi detached', '2 storeys terraces with t rear extension',
-    'Semi type house in multiples', 'Tall flats 6-15 storeys', 'Large detached',
-    'Very tall point block flats', 'Very large detached', 'Planned balanced mixed estates',
-    'Linked and step linked premises'
+    'Semi type house in multiples', 'Large detached',
+      'Planned balanced mixed estates',
+    'Linked and step linked premises',
 ]
 
 # ==============================================================================
@@ -228,7 +228,7 @@ def plot_counts_by_premise_decile(df, output_dir):
     # Ensure output dir
     decile_dir = os.path.join(output_dir, 'by_premise_type_decile')
     os.makedirs(decile_dir, exist_ok=True)
-    
+    df[stack_col] = df[stack_col].astype(str)
     # Ensure numeric decile
     df['decile_numeric'] = pd.to_numeric(df['avg_gas_percentile'], errors='coerce')
     
