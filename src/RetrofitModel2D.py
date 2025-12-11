@@ -270,7 +270,36 @@ class RetrofitModel2D:
     # CORE MODIFI-  
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
+ 
+    def bootstrap_ratio(self , capex, carbon, n_boot=1000):
+        # Extracts the two columns as numpy arrays for speed
     
+        n = len(capex)
+        
+        ratios = []
+        
+        # 1. Resample indices n_boot times
+        # This creates a matrix of random indices (n_boot x n)
+        indices = np.random.randint(0, n, size=(n_boot, n))
+        
+        # 2. Calculate Means for all resamples at once
+        # This is much faster than looping
+        boot_mean_capex = capex[indices].mean(axis=1)
+        boot_mean_carbon = carbon[indices].mean(axis=1)
+        
+        # 3. Calculate Ratio (handle potential div by zero if carbon sums to 0)
+        # Using a tiny epsilon just in case, though unlikely in bootstrap mean
+        boot_ratios = boot_mean_capex / (boot_mean_carbon + 1e-9)
+        
+        return pd.Series({
+            'ratio_mean': boot_ratios.mean(),
+            'ratio_p05': np.percentile(boot_ratios, 5),
+            'ratio_p95': np.percentile(boot_ratios, 95),
+            'ratio_p50': np.percentile(boot_ratios, 50),
+            'ratio_std': boot_ratios.std()
+        })
+
+ 
     def calculate_joint_scenario_statistics(self,
                                             joint_intervention,  # A single string, e.g., 'loft+wall'
                                             building_chars,
@@ -352,18 +381,18 @@ class RetrofitModel2D:
             # --- 5. Convert to Absolute kWh Savings ---
             final_gas_abs_kwh_samples = final_gas_perc_samples * total_gas_derived
             final_elec_abs_kwh_samples = final_elec_perc_samples * total_elec_derived
-            final_total_energy_abs_kwh_samples = final_gas_abs_kwh_samples + final_elec_abs_kwh_samples
+            # final_total_energy_abs_kwh_samples = final_gas_abs_kwh_samples + final_elec_abs_kwh_samples
 
             # convert to tons of co2 
             final_gas_abs_ton_co2_samples = (final_gas_abs_kwh_samples * self.YEARS * self.GAS_FACTOR) / 1000  * -1
-            final_elec_abs_ton_co2_samples = (final_elec_abs_kwh_samples * self.YEARS * self.ELEC_FACTOR) / 1000 
+            final_elec_abs_ton_co2_samples = (final_elec_abs_kwh_samples * self.YEARS * self.ELEC_FACTOR) / 1000  * -1 
             final_total_energy_abs_co2_ton_samples = (final_gas_abs_ton_co2_samples + final_elec_abs_ton_co2_samples )
             
             # chekc if cost or energy cost 2 area ll nan 
             logger.debug(f'nan check cost: {np.isnan(np.sum(total_cost_samples)) }') 
             logger.debug(f'nan check energy : {np.isnan(np.sum(final_total_energy_abs_co2_ton_samples)) }') 
-            capex_per_ton =  total_cost_samples / final_total_energy_abs_co2_ton_samples
-      
+            # capex_per_ton =  total_cost_samples.mean() / final_total_energy_abs_co2_ton_samples.mean() 
+            capex_per_ton = self.bootstrap_ratio(capex= total_cost_samples ,  carbon = final_total_energy_abs_co2_ton_samples )
             # ---  6. Define BASE arrays to get stats for ---
             base_sample_arrays = {
                 f"cost_{scenario_name}": total_cost_samples,
@@ -375,7 +404,7 @@ class RetrofitModel2D:
                 f"gas_abs_ton_co2_samples_{scenario_name}": final_gas_abs_ton_co2_samples, 
                 f"elec_abs_ton_co2_samples_{scenario_name}": final_elec_abs_ton_co2_samples, 
                 f"total_energy_abs_co2_ton_samples_{scenario_name}": final_total_energy_abs_co2_ton_samples, 
-                f"capex_per_net_ton_co2_{scenario_name}" : capex_per_ton, 
+                # f"capex_per_net_ton_co2_{scenario_name}" : capex_per_ton, 
             }
 
         except Exception as e:
@@ -404,92 +433,30 @@ class RetrofitModel2D:
                         stats_results[col_name] = np.nan
                             
         # --- 8. [NEW HYBRID LOGIC] Calculate RATIO statistics ---
-        
+        stats_results[f'capex_per_net_ton_co2_{scenario_name}_mean'] = capex_per_ton['ratio_mean']
+        stats_results[f'capex_per_net_ton_co2_{scenario_name}_std'] = capex_per_ton['ratio_std']
+        stats_results[f'capex_per_net_ton_co2_{scenario_name}_p50'] = capex_per_ton['ratio_p50']
+        stats_results[f'capex_per_net_ton_co2_{scenario_name}_p95'] = capex_per_ton['ratio_p95']
+        stats_results[f'capex_per_net_ton_co2_{scenario_name}_p5'] = capex_per_ton['ratio_p05']
+
         # --- 8a. Define the "good" savings threshold (successful reduction) ---
         # Savings are negative, so "good" is < -1e-6
-        min_savings_threshold = -1e-6 
+        # min_savings_threshold = -1e-6 
 
         capex_failure_mask = final_total_energy_abs_co2_ton_samples <= 0 
         n_capex_failures = np.sum(capex_failure_mask)
         capex_failure_rate = n_capex_failures / self.n_samples
-
-        # # This explicitly logs the risk.
-        # gas_failure_mask = final_gas_abs_kwh_samples >= min_savings_threshold
-        # n_gas_failures = np.sum(gas_failure_mask)
-        # gas_failure_rate = n_gas_failures / self.n_samples
-        
-        # elec_failure_mask = final_elec_abs_kwh_samples >= min_savings_threshold
-        # n_elec_failures = np.sum(elec_failure_mask)
-        # elec_failure_rate = n_elec_failures / self.n_samples
-        
-        # Add these to the base stats
+ 
         stats_results[f"capex_saving_failure_rate_{scenario_name}"] = capex_failure_rate
-        # stats_results[f"elec_saving_failure_rate_{scenario_name}"] = elec_failure_rate
-
+     
         
-  
-
-        # # For Standard Deviation (std): We can ONLY use successful simulations
-        # # Here, failures (>=0 savings) are set to np.nan to be ignored by nanstd
-        # gas_ratio_std_array = np.where(
-        #     final_gas_abs_kwh_samples < min_savings_threshold, 
-        #     total_cost_samples / final_gas_abs_kwh_samples, 
-        #     np.nan
-        # )
-
-       
-        # elec_ratio_std_array = np.full_like(total_cost_samples, np.nan, dtype=float)
-        # mask = final_elec_abs_kwh_samples < min_savings_threshold
-        # np.divide(
-        #     total_cost_samples,
-        #     final_elec_abs_kwh_samples,
-        #     out=elec_ratio_std_array,
-        #     where=mask & (final_elec_abs_kwh_samples != 0)
-        # )
-
-        # total_ratio_std_array = np.where(
-        #     final_total_energy_abs_kwh_samples < min_savings_threshold, 
-        #     total_cost_samples / final_total_energy_abs_kwh_samples, 
-        #     np.nan
-        # )
-
-        # # --- 8c. Loop through requested stats and apply the correct logic ---
-        # for stat in return_statistics:
-        #     if stat == 'mean':
-        #         # Use the robust "ratio-of-means" logic
-        #         cost_mean = stats_results.get(f"cost_{scenario_name}_mean", np.nan)
-        #         gas_kwh_mean = stats_results.get(f"gas_saving_abs_kwh_{scenario_name}_mean", np.nan)
-        #         elec_kwh_mean = stats_results.get(f"elec_saving_abs_kwh_{scenario_name}_mean", np.nan)
-        #         total_kwh_mean = stats_results.get(f"total_energy_saving_abs_kwh_{scenario_name}_mean", np.nan)
-
-        #         # Check if mean savings is "good" (i.e., negative enough) before dividing
-        #         stats_results[f"cost_per_gas_kwh_{scenario_name}_mean"] = \
-        #             cost_mean / ( gas_kwh_mean  * self.YEARS * self.GAS_FACTOR )  if gas_kwh_mean < min_savings_threshold else np.nan
-        #         stats_results[f"cost_per_elec_kwh_{scenario_name}_mean"] = \
-        #             cost_mean / (elec_kwh_mean * self.YEARS * self.GAS_FACTOR )  if elec_kwh_mean < min_savings_threshold else np.nan
-        #         stats_results[f"cost_per_total_energy_kwh_{scenario_name}_mean"] = \
-        #             cost_mean / (total_kwh_mean * self.YEARS * self.GAS_FACTOR )  if total_kwh_mean < min_savings_threshold else np.nan
-
-        #     elif stat == 'std' or  stat.startswith('p') or stat=='median':
-        #         # Use the "success-only" (nan) array for std
-        #         # We call _calculate_single_statistic which should use np.nanstd
-        #         stats_results[f"cost_per_gas_kwh_{scenario_name}_{stat}"] = \
-        #             self._calculate_single_statistic(gas_ratio_std_array, stat)
-        #         stats_results[f"cost_per_elec_kwh_{scenario_name}_{stat}"] = \
-        #             self._calculate_single_statistic(elec_ratio_std_array, stat)
-        #         stats_results[f"cost_per_total_energy_kwh_{scenario_name}_{stat}"] = \
-        #             self._calculate_single_statistic(total_ratio_std_array, stat)
        
         stats_results['selected_wall_insulation_type'] = wall_insulation_type
         
         
         return stats_results
 
-
-    # --- [UPDATED] Main Row Function ---
-    # Renamed from calculate_ONLY_row_costs_only
-    # This function now handles setup, baseline extraction, and calls the new stats function.
-
+ 
     def calculate_row_statistics(self,
                                 row,
                                 col_mapping,
