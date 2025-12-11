@@ -193,6 +193,8 @@ def plot_counts_by_age_band(df, output_dir):
         
         # Apply consistent Y-limit
         ax.set_ylim(0, global_max_y)
+        # This adds commas (e.g. 10,000) to the Y axis
+        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}')) # <--- ADDED FORMATTER HERE
         
         
         ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}')) # <--- ADDED FORMATTER HERE

@@ -20,15 +20,14 @@ OUTPUT_DIR = '1_summary_results/'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 ERROR_LOG_FILE = os.path.join(OUTPUT_DIR, 'processing_errors.txt')
 
-# --- ORDERED SCENARIOS ---
-SCENARIOS = [
-    'wall_installation',
+SCENARIOS=[
     'loft_installation',
-    'heat_pump_only',
-    'joint_heat_wall_decay',
+    'wall_installation',
     'joint_heat_loft_decay',
-    'join_heat_ins_decay'
-]
+ 'joint_heat_wall_decay',
+ 'join_heat_ins_decay',
+ 'heat_pump_only',
+ ]
 
 YEARS = 5
 GAS_FACTOR = 0.18        # kgCO2e/kWh
