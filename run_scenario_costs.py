@@ -5,7 +5,7 @@ import os
 import glob
 import gc
 import csv
-
+from src.utils import is_running_on_hpc 
 # ==============================================================================
 # 1. CONFIGURATION & PATHS
 # ==============================================================================
@@ -19,11 +19,11 @@ SCENARIOS = [
     'loft_installation'
 ]
 
-OUTPUT_BASE = '1_processed_results/vis_outputs/'
+OUTPUT_BASE = '2_stock_results/vis_outputs/'
 os.makedirs(OUTPUT_BASE, exist_ok=True)
 
 
-is_hpc = False 
+is_hpc = is_running_on_hpc() 
 if is_hpc:
     LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/*csv'
     REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/130_log_file.csv'
@@ -34,15 +34,15 @@ else:
 
 GROUP_COLS = ['avg_gas_percentile', 'premise_type', 'inferred_insulation_type']
 
+
 TYPOLOGIES = [
-    'Medium height flats 5-6 storeys', 'Small low terraces', '3-4 storey and smaller flats',
+    'Small low terraces', '3-4 storey and smaller flats',
     'Tall terraces 3-4 storeys', 'Large semi detached', 'Standard size detached',
     'Standard size semi detached', '2 storeys terraces with t rear extension',
-    'Semi type house in multiples', 'Tall flats 6-15 storeys', 'Large detached',
-    'Very tall point block flats', 'Very large detached', 'Planned balanced mixed estates',
-    'Linked and step linked premises'
+    'Semi type house in multiples', 'Large detached',
+      'Planned balanced mixed estates',
+    'Linked and step linked premises',
 ]
-
 # ==============================================================================
 # 2. THE GROUPED ACCUMULATOR CLASS
 # ==============================================================================
@@ -223,7 +223,10 @@ def safe_load(filepath, headers=None):
 # 6. MAIN PIPELINE
 # ==============================================================================
 def run_pipeline():
+    print(LOG_DIR)
     files = glob.glob(LOG_DIR)
+    
+    
     print(f"Found {len(files)} files.")
     
     headers = None

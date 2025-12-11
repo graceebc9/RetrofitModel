@@ -8,8 +8,7 @@ import seaborn as sns
 from src.utils import is_running_on_hpc 
 import csv
 from src.RetrofitUtils import safe_load 
-
-REFERENCE_FILE = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/130_log_file.csv'
+from src.RetrofitAnalysis import process_batch_robust
 
 # ==============================================================================
 # 1. CONFIGURATION
@@ -22,12 +21,14 @@ is_epc = False
 OUTPUT_DIR = 'processed_results/'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-SCENARIOS=['joint_heat_loft_decay',
+SCENARIOS=[
+    'loft_installation',
+    'wall_installation',
+    'joint_heat_loft_decay',
  'joint_heat_wall_decay',
- 'wall_installation',
  'join_heat_ins_decay',
  'heat_pump_only',
- 'loft_installation']
+ ]
 
 YEARS = 5
 GAS_FACTOR = 0.18
@@ -54,16 +55,6 @@ else:
 OUTPUT_DIR= '1_summary_results/'
 os.makedirs(OUTPUT_DIR,exist_ok=True)
 ERROR_LOG_FILE = '1_summary_results/processing_errors.txt'
-
-# if is_epc:
-#     OUTPUT_BASE_DIR = '2_optimized_priorities_epc/processed_best_only'
-#     LOG_FILE_PATH = '2_optimized_priorities_epc/processing_log.txt'
-#     ERROR_LOG_FILE = '2_optimized_priorities_epc/epc_processing_errors.txt'
-# else:
-#     OUTPUT_BASE_DIR = '2_optimized_priorities/processed_best_only'
-#     LOG_FILE_PATH = '2_optimized_priorities/processing_log.txt'
-#     ERROR_LOG_FILE = '2_optimized_priorities/processing_errors.txt'
-
 
 # ==============================================================================
 # 2. THE STATS ACCUMULATOR CLASS
@@ -119,9 +110,15 @@ class GlobalStatsAccumulator:
                 if metric_key not in stats or stats[metric_key]['count'] == 0: return 0
                 return stats[metric_key]['sum'] / stats[metric_key]['count']
 
-            # 1. Retrieve Raw Averages
+            # Helper to get count (using cost_mean as proxy for valid buildings)
+            def get_count():
+                if 'cost_mean' not in stats: return 0
+                return stats['cost_mean']['count']
+
+            # 1. Retrieve Raw Averages & Count
+            N = get_count()
             mu_cost = get_avg('cost_mean')
-            sig_cost = get_avg('cost_std') # Average Uncertainty
+            sig_cost = get_avg('cost_std')
             
             mu_gas_kwh = get_avg('gas_mean')
             sig_gas_kwh = get_avg('gas_std')
@@ -137,7 +134,6 @@ class GlobalStatsAccumulator:
             sig_elec_t = (sig_elec_kwh * YEARS * ELEC_FACTOR) / 1000
 
             # 3. Combine Energy (Net Savings)
-            # Flip sign: Input negative -> Output positive savings
             mu_savings = (mu_gas_t + mu_elec_t) * -1
             sig_savings = np.sqrt(sig_gas_t**2 + sig_elec_t**2)
 
@@ -154,6 +150,7 @@ class GlobalStatsAccumulator:
             
             # Store
             row.update({
+                'Count': int(N),
                 'Cost_Mean': mu_cost, 'Cost_Std': sig_cost,
                 'Savings_Mean': mu_savings, 'Savings_Std': sig_savings,
                 'Metric_Mean': mu_metric, 'Metric_Std': sig_metric
@@ -163,52 +160,16 @@ class GlobalStatsAccumulator:
         return pd.DataFrame(rows)
 
 # ==============================================================================
-# 3. HELPER: AGGREGATION LOGIC (From previous step)
+# 3. HELPER: AGGREGATION LOGIC
 # ==============================================================================
-def process_batch_robust(df, scenarios, id_col='upn'):
-    """
-    Simplified robust aggregator that returns the df_agg needed for the accumulator
-    """
-    agg_map = {}
-    calc_tasks = []
-    
-    # Identify Mean/Std columns
-    for scn in scenarios:
-        cols = [f'{scn}_cost_{scn}', f'{scn}_gas_saving_abs_kwh_{scn}', f'{scn}_elec_saving_abs_kwh_{scn}']
-        for base in cols:
-            col_mean = f'{base}_mean'
-            col_std = f'{base}_std'
-            if col_mean in df.columns:
-                agg_map[col_mean] = 'mean'
-                if col_std in df.columns:
-                    calc_tasks.append({'mean': col_mean, 'std': col_std})
 
-    # Group
-    grouped = df.groupby(id_col)
-    df_agg = grouped.agg(agg_map)
-    
-    # Robust Pooling (Law of Total Variance)
-    for task in calc_tasks:
-        var_epistemic = grouped[task['mean']].var(ddof=1).fillna(0)
-        temp = df[[id_col, task['std']]].copy()
-        temp['var'] = temp[task['std']] ** 2
-        var_aleatoric = temp.groupby(id_col)['var'].mean().fillna(0)
-        
-        pooled_std = np.sqrt(var_aleatoric + var_epistemic)
-        df_agg[task['std']] = pooled_std.astype('float32')
-        
-    return df_agg.reset_index()
 
 # ==============================================================================
 # 4. MAIN PROCESSING PIPELINE
 # ==============================================================================
-
 def run_pipeline():
     files = glob.glob(LOG_DIR)
     print(f"Found {len(files)} log files.")
-    
-    # Initialize Accumulator
-    accumulator = GlobalStatsAccumulator(SCENARIOS)
     
     if not is_epc:
         try:
@@ -220,28 +181,25 @@ def run_pipeline():
             return
     else:
         master_headers=None 
-
-
+    
+    # Initialize Accumulator
+    accumulator = GlobalStatsAccumulator(SCENARIOS)
+    
     for i, file_path in enumerate(files):
         print(f"[{i+1}/{len(files)}] Processing {os.path.basename(file_path)}...")
         
         try:
             # A. Load
-            # df = pd.read_csv(file_path) # Add error handling/header checks here
             df = safe_load(file_path, master_headers, ERROR_LOG_FILE)
             if df.empty: continue
-            print('Loaded safe') 
+            
             # B. Aggregate (Robust Stats)
             df_agg = process_batch_robust(df, SCENARIOS)
             
             # C. Update Global Stats (Accumulate)
             accumulator.update(df_agg)
             
-            # D. (Optional) Save Batch Results
-            # If you are filtering for "Best Buildings", do that here and save 
-            # to OUTPUT_DIR immediately to keep RAM clear.
-            
-            # E. Cleanup
+            # D. Cleanup
             del df, df_agg
             gc.collect()
             
@@ -249,20 +207,30 @@ def run_pipeline():
             print(f"Error processing {file_path}: {e}")
 
     # ==========================================================================
-    # 5. FINAL VISUALIZATION
+    # 5. GENERATE DATA
     # ==========================================================================
-    print("Generating Summary Figures...")
+    print("Calculating final statistics...")
     df_summary = accumulator.get_summary_dataframe()
     
-    
+    # Create Labels for Plotting (Include Count in Label)
+    df_summary['Label'] = (
+        df_summary['Scenario'].str.replace('joint_', '').str.replace('_', '\n') + 
+        '\n(n=' + df_summary['Count'].astype(str) + ')'
+    )
+
+    # ==========================================================================
+    # 5A. SAVE SUMMARY TABLE
+    # ==========================================================================
     csv_filename = 'global_summary_stats.csv'
     csv_path = os.path.join(OUTPUT_DIR, csv_filename)
     
     print(f"Saving summary data to: {csv_path}")
     df_summary.to_csv(csv_path, index=False)
     
-    # Create Labels for Plotting
-    df_summary['Label'] = df_summary['Scenario'].str.replace('joint_', '').str.replace('_', '\n')
+    # ==========================================================================
+    # 6. FINAL VISUALIZATION
+    # ==========================================================================
+    print("Generating Summary Figures...")
     
     sns.set_style("whitegrid")
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
@@ -291,7 +259,7 @@ def run_pipeline():
     # Formatting
     for ax in axes:
         ax.set_xticks(x)
-        ax.set_xticklabels(df_summary['Label'], rotation=45, ha='right')
+        ax.set_xticklabels(df_summary['Label'], rotation=45, ha='right', fontsize=9)
         ax.grid(axis='y', alpha=0.3)
     
     plt.suptitle(f"Global Summary across {len(files)} files", fontsize=16, y=1.05)
@@ -299,9 +267,9 @@ def run_pipeline():
     plt.savefig(os.path.join(OUTPUT_DIR, 'global_summary_plot.png'))
     plt.show()
     
-    # Print Table
+    # Print Table (Added Count Column)
     print("\nFINAL GLOBAL STATS:")
-    print(df_summary[['Scenario', 'Cost_Mean', 'Cost_Std', 'Metric_Mean', 'Metric_Std']].round(2))
+    print(df_summary[['Scenario', 'Count', 'Cost_Mean', 'Metric_Mean']].round(2))
 
 if __name__ == "__main__":
     run_pipeline()

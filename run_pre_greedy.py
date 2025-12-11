@@ -8,12 +8,21 @@ import logging
 import csv
 import sys
 from src.utils import is_running_on_hpc 
+from src.RetrofitUtils import  filter_typology
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 is_hpc = is_running_on_hpc() 
-is_epc = True  
+
+epc_yn= os.getenv('EPC_YN')  
+
+if epc_yn =='Y':
+    is_epc = True 
+else:
+    is_epc = False 
+    
+RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')  )   
 
 if is_hpc:
     # Update this path if necessary to match your actual data location
@@ -32,13 +41,13 @@ else:
     REFERENCE_FILE = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/130_log_file.csv'
 
 if is_epc:
-    OUTPUT_BASE_DIR = '2_optimized_priorities_epc/processed_best_only'
-    LOG_FILE_PATH = '2_optimized_priorities_epc/processing_log.txt'
-    ERROR_LOG_FILE = '2_optimized_priorities_epc/epc_processing_errors.txt'
+    OUTPUT_BASE_DIR = f'2_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only'
+    LOG_FILE_PATH = f'2_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processing_log.txt'
+    ERROR_LOG_FILE = f'2_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/epc_processing_errors.txt'
 else:
-    OUTPUT_BASE_DIR = '2_optimized_priorities/processed_best_only'
-    LOG_FILE_PATH = '2_optimized_priorities/processing_log.txt'
-    ERROR_LOG_FILE = '2_optimized_priorities/processing_errors.txt'
+    OUTPUT_BASE_DIR = f'2_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only'
+    LOG_FILE_PATH = f'2_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processing_log.txt'
+    ERROR_LOG_FILE = f'2_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processing_errors.txt'
 
 # --- NEW PARAMETER ---
 # 0.35 means 35% of buildings already have loft insulation and cannot get it again.
@@ -50,10 +59,9 @@ if loft ==1 :
 else:
     loft_perc_list = [0.65] 
 
-loft_perc_list  = [0.65, 0.5]
 # CUTOFFS & PARAMETERS
 ABS_COST_CAP = 200000.0
-RISK_PENALTY_SIGMA = 0  
+
 YEARS = 5
 GAS_CARBON_FACTOR = 0.18
 ELEC_CARBON_FACTOR = 0.19338
@@ -207,6 +215,14 @@ def setup_logging():
     logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler()])
 
 def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EXISTING_PERCENT):
+    NO_REGRETS_CAPS = {
+    'loft_installation': 1000.0,   
+    # Wall is tricky. 
+    # Cavity is cheap (~£1k), Solid is expensive (~£8k-£10k).
+    'wall_installation': 2000.0,    
+    'heat_pump_only': 0.0,       
+    } 
+    
     filename = Path(filepath).stem
     logging.info(f"--> Processing: {filename}")
     
@@ -265,11 +281,16 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
     else:
         print('running for epc')
         raw_df = pd.read_csv(filepath ) 
+    
+    print('clean typolgoies ')
+    clean_df = filter_typology(raw_df )
+    print(f'Shape before: {raw_df.shape}, shape after: {clean_df.shape} ' ) 
+    
     # -------------------------------------------------------------
     # B. AGGREGATE
     # -------------------------------------------------------------
     try:
-        agg_df = pool_epistemic_runs_robust(raw_df, SCENARIO_LIST, id_col='upn')
+        agg_df = pool_epistemic_runs_robust(clean_df, SCENARIO_LIST, id_col='upn')
 
         # --- Identify buildings that already have loft insulation ---
         disqualified_loft_upns = apply_existing_measures_constraint(agg_df, LOFT_INSULATION_EXISTING_PERCENT)
@@ -313,9 +334,33 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
             if raw_elec_std in agg_df.columns:
                 elec_std_t = (agg_df[raw_elec_std] * YEARS * ELEC_CARBON_FACTOR) / 1000
                 
-            total_std_t = np.sqrt(gas_std_t**2 + elec_std_t**2)
-            robust_savings = df_metrics[col_saved_mean] - (RISK_PENALTY_SIGMA * total_std_t)
-            robust_metric = df_metrics[col_cost_mean] / robust_savings
+            # total_std_t = np.sqrt(gas_std_t**2 + elec_std_t**2)
+            total_std_t = gas_std_t + elec_std_t # Assumes correlation (Conservative)
+            
+            cap_limit = NO_REGRETS_CAPS.get(scn, 0.0)
+            # Boolean mask: True if this house's retrofit is cheap
+            is_cheap = df_metrics[col_cost_mean] < cap_limit
+            
+            #robust_savings = df_metrics[col_saved_mean] - (RISK_PENALTY_SIGMA * total_std_t)
+            #robust_metric = df_metrics[col_cost_mean] / robust_savings
+            
+            # 3. Calculate Savings based on Cost Status
+            
+            # Path A: The "Expensive" Path (Apply Strict Risk)
+            # Savings = Mean - (sigma * Uncertainty)
+            savings_strict = df_metrics[col_saved_mean] - (RISK_PENALTY_SIGMA * total_std_t)
+            
+            # Path B: The "No-Regrets" Path (Ignore Risk)
+            # Savings = Mean, (We effectively set Sigma to 0)
+            savings_mean = df_metrics[col_saved_mean]
+            
+            # Vectorized selection: Choose Path B if cheap, Path A if expensive
+            robust_savings = np.where(is_cheap, savings_mean, savings_strict)
+            mask_viable = robust_savings > 0.01 
+            
+            # Calculate Metric (Capex / Robust Savings)
+            robust_metric = np.full_like(robust_savings, np.inf)
+            robust_metric[mask_viable] = df_metrics.loc[mask_viable, col_cost_mean] / robust_savings[mask_viable]
 
             # 2. Extract
             sub_df = df_metrics[COLS_KEEP].copy()

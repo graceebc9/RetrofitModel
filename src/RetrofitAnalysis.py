@@ -10,6 +10,42 @@ import seaborn as sns
 
 # from .RetrofitPostProcess import clean_post_process 
 
+def process_batch_robust(df, scenarios, id_col='upn'):
+    """
+    Simplified robust aggregator that returns the df_agg needed for the accumulator
+    """
+    agg_map = {}
+    calc_tasks = []
+    
+    # Identify Mean/Std columns
+    for scn in scenarios:
+        cols = [f'{scn}_cost_{scn}', f'{scn}_gas_saving_abs_kwh_{scn}', f'{scn}_elec_saving_abs_kwh_{scn}']
+        for base in cols:
+            col_mean = f'{base}_mean'
+            col_std = f'{base}_std'
+            if col_mean in df.columns:
+                agg_map[col_mean] = 'mean'
+                if col_std in df.columns:
+                    calc_tasks.append({'mean': col_mean, 'std': col_std})
+
+    # Group
+    grouped = df.groupby(id_col)
+    df_agg = grouped.agg(agg_map)
+    
+    # Robust Pooling (Law of Total Variance)
+    for task in calc_tasks:
+        var_epistemic = grouped[task['mean']].var(ddof=1).fillna(0)
+        temp = df[[id_col, task['std']]].copy()
+        temp['var'] = temp[task['std']] ** 2
+        var_aleatoric = temp.groupby(id_col)['var'].mean().fillna(0)
+        
+        pooled_std = np.sqrt(var_aleatoric + var_epistemic)
+        df_agg[task['std']] = pooled_std.astype('float32')
+        
+    return df_agg.reset_index()
+
+
+
 def run_meta_portoflio(base_op, df_processed, scenraio,  years=5 ):
     """
     Run costs and energy portolfio level epistemic analysis
