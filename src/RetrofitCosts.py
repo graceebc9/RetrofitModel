@@ -185,7 +185,7 @@ class CostEstimator:
         self.configs = configs or INTERVENTION_CONFIGS
         
         # Build the path to the CSV file relative to this file
-        self.priors_df = pd.read_csv(current_dir / 'global_avs/premise_uprn_priors.csv')
+        self.priors_df = pd.read_csv(current_dir / 'global_avs/premise_uprn_priors_LOG_WEIGHTED.csv')
 
         # 2. Create the lookup maps
         self.default_std_map, self.default_mean_map = self.create_default_maps(self.priors_df)
