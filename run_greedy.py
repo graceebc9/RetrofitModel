@@ -53,6 +53,7 @@ def add_equity_weight(scenario_df, equity_factor , capex_col='capex_per_net_ton'
     print('equity weight added')
     return scenario_df
 
+RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')  )  
 
 def main():
     """
@@ -63,22 +64,22 @@ def main():
     
     if running_locally:
         BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
-        INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/optimized_priorities/processed_best_only/*.csv'
+        
         
         setting_name = 'lcoal'
         run_greedy_runs=True 
         budgets = [1_000_000, 10_000_000, 100_000_000]
         # budgets = [ 10_000_000]
-        loft_probs = [0.65, 0.95]
+        loft_probs = [0.95, 0.65]
         equity_factors = [0, 0.5, 1 , 1.5, 2, 2.5 ,3  ]
 
         run_greedy_runs=True   
-        epc_run = True  
+        epc_run = False  
         if epc_run:
             INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/2_optimized_priorities_epc/processed_best_only/*'
             BASE_DIR='/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/v8/NE/epc'
         else:
-            INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/2_optimized_priorities/processed_best_only/*'
+            INPUT_FILES_PATH=f'/Users/gracecolverd/RetrofitModel/2_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*.csv'
             BASE_DIR='/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/v8/NE/all_domestic'
 
     else:
@@ -223,7 +224,7 @@ def main():
                             budget=budget,
                             cost_column='total_capex',
                             efficiency_column='weighted_capex_per_net_ton' ,
-                            carbon_col='total_co2_saved_robust'
+                            carbon_col='total_co2_saved'
                         )
                         selected_projects_df['remaining_funds'] = remaining_funds
 
@@ -260,7 +261,7 @@ def main():
                                                                         budget=budget,
                                                                         cost_column='total_capex',
                                                                         efficiency_column='weighted_capex_per_net_ton' ,
-                                                                        carbon_col='total_co2_saved_robust')
+                                                                        carbon_col='total_co2_saved')
                             
                             epc_random_selected_df['remaining_funds'] = epc_random_remaining_budget
                             epc_random_selected_df.to_csv(epc_random_path, index=False) 
