@@ -87,8 +87,8 @@ else:
     ELEC_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_all_meters_electricity_2022.csv'
 
     scenarios = ['joint_heat_loft_decay','joint_heat_wall_decay', 'wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only' ]
-    job_name='v8'
-    batch_size = 500
+    job_name='v9'
+    batch_size = 100
     log_size = 50
     n_monte_carlo = 3000
     N_EPISTEMIC_RUNS = 50
@@ -310,7 +310,7 @@ def main():
         
         postcode_main(
             batch_path=batch_path,
-            data_dir='intermediate_data_2D',
+            data_dir='0_intermediate_data_2D',
             path_to_onsud_file=onsud_path,
             path_to_pcshp=PC_SHP_PATH,
             INPUT_GPK=BUILDING_PATH,
