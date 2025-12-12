@@ -37,13 +37,12 @@ SCENARIO_DISPLAY_NAMES = {
     'heat_pump_only': 'Heat Pump Only',
 }
 
-RISK_PENALTY_SIGMA = 1.0
 
 if is_hpc:
     if not is_epc:
-        LOG_FILE_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/*csv'
+        LOG_FILE_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/*csv'
     else:
-        LOG_FILE_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/v8_logs_with_epc/*csv'
+        LOG_FILE_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/v9_logs_with_epc/*csv'
 else: 
     if is_epc:
         LOG_FILE_PATTERN = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/epc_merge/*csv'
