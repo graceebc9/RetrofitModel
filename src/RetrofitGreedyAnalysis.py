@@ -22,10 +22,10 @@ name_mapping = {
     8: "The Squeezed Middle"
 }
 
-total_co2_saved_col = 'total_co2_saved_robust_sum'
-# total_co2_saved_col_std = 'total_co2_saved_robust_sum_std'
+total_co2_saved_col = 'total_co2_saved_sum'
+
 capex_per_net_ton_mean_col = 'capex_per_net_ton_mean'
-# capex_per_net_ton_std_col = 'capex_per_net_ton_mean_std'
+
 
 scenario_label_map = {
     'budget_1000000_equity_0': 'equity_0', 
@@ -448,7 +448,6 @@ def plot_equity_concentration_vs_weight(equity_subset, equity_weights, budget_la
 
     print(f"Saved: {filename}")
 
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -461,7 +460,7 @@ def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename,
     
     Parameters:
     - selected_projects_df: DataFrame with columns 'persona_name', 
-      'total_co2_saved_robust', 'scenario', 'budget'
+      'total_co2_saved', 'scenario', 'budget'
     - scenario_colors: Dict mapping scenario names to colors
     - filename: Base output filename (e.g., 'output.png')
     - scenario_label_map: (Optional) Dict to rename scenarios for the legend
@@ -480,7 +479,7 @@ def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename,
         # Group by scenario and persona, summing the robust carbon savings
         carbon_grouped = equity_subset.groupby(
             ['scenario', 'persona_name']
-        )['total_co2_saved_robust'].sum().reset_index()
+        )['total_co2_saved'].sum().reset_index()
         
         # 3. Pivot for plotting
         # This creates a matrix where index=Personas, columns=Scenarios
@@ -488,7 +487,7 @@ def plot_carbon_by_persona(selected_projects_df, scenario_colors, filename,
         plot_data = carbon_grouped.pivot(
             index='persona_name', 
             columns='scenario', 
-            values='total_co2_saved_robust'
+            values='total_co2_saved'
         ).fillna(0)
         
         # Sort personas alphabetically (or by index)
@@ -566,7 +565,7 @@ import pandas as pd
 import os
 
 def plot_metric_by_group(selected_projects_df, scenario_colors, filename, 
-                         value_col='total_co2_saved_robust',
+                         value_col='total_co2_saved',
                          group_col='meta_socio_persona',
                          metric_stat='mean',  # <--- NEW TOGGLE ('mean', 'sum', 'count', etc.)
                          xlabel='Socio-economic Persona',

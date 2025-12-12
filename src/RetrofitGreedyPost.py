@@ -150,7 +150,7 @@ def aggregate_results(df):
     # # 2. Calculate totals per epistemic run
     df_summary = df.groupby(['scenario']).agg({
         'total_capex': ['mean', 'sum'],  # mean per bldg, sum = total spent
-        'total_co2_saved_robust': 'sum',  # total CO2 saved across all bldgs
+        'total_co2_saved': 'sum',  # total CO2 saved across all bldgs
         'capex_per_net_ton': 'mean', # avg cost effectiveness
         'weighted_capex_per_net_ton': 'mean',  # avg weighted cost
         'remaining_funds': 'first',  # should be same for all in run
@@ -283,7 +283,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     
     display_cols = [
         'scenario_label',
-        'total_co2_saved_robust_sum',
+        'total_co2_saved_sum',
         'num_buildings_sum_mean',
         'high_deprived_pct_mean',
         'equity_concentration_mean',
@@ -313,7 +313,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
 
     plot_metric_by_group(results_df, scenario_colors, 
                          filename=os.path.join(OUTPUT_PATH, "12b_carbon_metapersona.png")  , 
-                         value_col='total_co2_saved_robust',
+                         value_col='total_co2_saved' ,
                          metric_stat='sum',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
