@@ -46,58 +46,55 @@ def load_data(budgets, equity_weights, loft_val, base_path):
             results_file = os.path.join( dir_path , 'selected_projects.csv') 
 
             print(results_file) 
-            try:
-     
-                
-                # Load combined results data
-                results_df_temp = pd.read_csv(results_file)
-                # Rename 'scenario' column if it exists, as it's ambiguous
-                if 'scenario' in results_df_temp.columns:
-                    results_df_temp = results_df_temp.rename(
-                        columns={'scenario': 'intervention'}
-                    )
-                results_df_temp['scenario'] = scenario_label
-                results_df_temp['budget'] = budget
-                results_df_temp['equity_weight'] = equity_weight
-                results_dfs.append(results_df_temp)
-                
+            # try:           
+            # Load combined results data
+            results_df_temp = pd.read_csv(results_file)
+            # Rename 'scenario' column if it exists, as it's ambiguous
+            if 'scenario' in results_df_temp.columns:
+                results_df_temp = results_df_temp.rename(
+                    columns={'scenario': 'intervention'}
+                )
+            results_df_temp['scenario'] = scenario_label
+            results_df_temp['budget'] = budget
+            results_df_temp['equity_weight'] = equity_weight
+            results_dfs.append(results_df_temp)
+            
 
-                # Load equity tracking data
-                # Get counts and percentages
-                counts = results_df_temp.groupby('meta_socio_persona')['upn'].count()
-                pcts = results_df_temp.groupby('meta_socio_persona')['upn'].count() / results_df_temp.groupby('meta_socio_persona')['upn'].count().sum()
+            # Load equity tracking data
+            # Get counts and percentages
+            counts = results_df_temp.groupby('meta_socio_persona')['upn'].count()
+            pcts = results_df_temp.groupby('meta_socio_persona')['upn'].count() / results_df_temp.groupby('meta_socio_persona')['upn'].count().sum()
+            
+            equity_df_temp = pd.DataFrame({
+                'high_deprived_count': [counts.get('high_deprived', 0)],
+                'high_deprived_pct': [pcts.get('high_deprived', 0.0)],
+                'low_deprived_count': [counts.get('low_deprived', 0)],
+                'low_deprived_pct': [pcts.get('low_deprived', 0.0)],
+                'med_deprived_count': [counts.get('med_deprived', 0)],
+                'med_deprived_pct': [pcts.get('med_deprived', 0.0)]
+            })
+            equity_df_temp['scenario'] = scenario_label
+            equity_df_temp['budget'] = budget
+            equity_df_temp['equity_weight'] = equity_weight
+            # Calculate concentration index (Herfindahl index: 0 = perfect equality, 1 = concentrated)            
+            
+            persona_counts = results_df_temp['meta_socio_persona'].value_counts()
+            total = len(results_df_temp)
+            proportions = persona_counts / total
+            concentration = (proportions ** 2).sum()
 
-                # Create dataframe with separate columns
-                equity_df_temp = pd.DataFrame({
-                    'high_deprived_count': [counts.iloc[0]],
-                    'high_deprived_pct': [pcts.iloc[0]],
-                    'low_deprived_count': [counts.iloc[1]],
-                    'low_deprived_pct': [pcts.iloc[1]],
-                    'med_deprived_count': [counts.iloc[2]],
-                    'med_deprived_pct': [pcts.iloc[2]]
-                })
-                equity_df_temp['scenario'] = scenario_label
-                equity_df_temp['budget'] = budget
-                equity_df_temp['equity_weight'] = equity_weight
-                # Calculate concentration index (Herfindahl index: 0 = perfect equality, 1 = concentrated)            
-                
-                persona_counts = results_df_temp['meta_socio_persona'].value_counts()
-                total = len(results_df_temp)
-                proportions = persona_counts / total
-                concentration = (proportions ** 2).sum()
-    
-                equity_df_temp['equity_concentration'] =  concentration
-                
-                equity_dfs.append(equity_df_temp)
+            equity_df_temp['equity_concentration'] =  concentration
+            
+            equity_dfs.append(equity_df_temp)
 
 
-                print(f"✓ Loaded: budget=${budget/1e6:.1f}M, equity_weight={equity_weight}")
-                loaded_combinations += 1
+            print(f"✓ Loaded: budget=${budget/1e6:.1f}M, equity_weight={equity_weight}")
+            loaded_combinations += 1
                 
-            except FileNotFoundError:
-                print(f"✗ Missing: budget=${budget/1e6:.1f}M, equity_weight={equity_weight}")
-            except Exception as e:
-                print(f"✗ Error: budget=${budget/1e6:.1f}M, equity_weight={equity_weight}: {str(e)}")
+            # except FileNotFoundError:
+            #     print(f"✗ Missing: budget=${budget/1e6:.1f}M, equity_weight={equity_weight}")
+            # except Exception as e:
+            #     print(f"✗ Error: budget=${budget/1e6:.1f}M, equity_weight={equity_weight}: {str(e)}")
 
     # --- Combine all dataframes ---
     equity_df = pd.DataFrame()

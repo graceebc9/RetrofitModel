@@ -29,6 +29,9 @@ from src.personas import load_personas
 from src.RetrofitEquity import EQUITY_WEIGHTS  
 from src.utils import is_running_on_hpc 
 from src.EPCAlgo import select_epc_algo 
+from src.GreedyEpcVis import run_epc_vis 
+
+
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
@@ -62,39 +65,54 @@ def main():
     # Configuration
     running_locally = not is_running_on_hpc()
     
+
+    epc_yn = os.getenv('EPC_YN')
+    if epc_yn =='Y':
+        print('Runnig greedy for EPC' ) 
+        epc_run = True 
+    else:
+        epc_run = False 
+        print('Runnig greedy for normal' ) 
+
+    run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
+
+    if run_g_yn == 'N':
+        run_greedy_runs = False
+    else:
+        run_greedy_runs = True 
+
+
     if running_locally:
         BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
         
         
         setting_name = 'lcoal'
-        run_greedy_runs=True 
-        budgets = [1_000_000, 10_000_000, 100_000_000]
-        # budgets = [ 10_000_000]
-        loft_probs = [0.95, 0.65]
-        equity_factors = [0, 0.5, 1 , 1.5, 2, 2.5 ,3  ]
+        # run_greedy_runs=True  
+        # budgets = [1_000_000, 10_000_000, 100_000_000]
+        budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000] 
+        budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000,  100_000_000]
+        # budgets = [  50_000_000,80_000_000]
+        loft_probs = [0.95, 0.65 ]
+        # loft_probs = [0.65, 0.95]
+        
+        
+        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2,1.4 ]
+        # equity_factors = [ 1.4  ]
+        # equity_factors=[0.8] 
 
-        run_greedy_runs=True   
-        epc_run = False  
+        # epc_run = True  
+        epc_yn = os.getenv('EPC_YN')
         if epc_run:
-            INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/2_optimized_priorities_epc/processed_best_only/*'
-            BASE_DIR='/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/v8/NE/epc'
+            INPUT_FILES_PATH=f'/Volumes/T9/2025_10_RetrofitModel/3_optimiseD_iroiities/epc/risk_sigma_{RISK_PENALTY_SIGMA}__processed_best_only/*'
+            # INPUT_FILES_PATH= '/Users/gracecolverd/Downloads/risk_sigma1_epc__processed_best_only/*csv'
+            BASE_DIR=f'/Volumes/T9/2025_10_RetrofitModel/4_gredy_epc/risk_{RISK_PENALTY_SIGMA}/'
+            # BASE_DIR = '/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/epc'
         else:
-            INPUT_FILES_PATH=f'/Users/gracecolverd/RetrofitModel/2_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*.csv'
-            BASE_DIR='/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/v8/NE/all_domestic'
+            INPUT_FILES_PATH=f'/Volumes/T9/2025_10_RetrofitModel/3_optimiseD_iroiities/risk_sigma_{RISK_PENALTY_SIGMA}__processed_best_only/*.csv'
+            BASE_DIR=f'/Volumes/T9/2025_10_RetrofitModel/4_gredy/risk_{RISK_PENALTY_SIGMA}/'
 
     else:
         BASE_DIR = os.getenv('BASE_DIR')
-        
-        
-        epc_yn = os.getenv('EPC_YN')
-        
-        if epc_yn =='Y':
-            print('Runnig greedy for EPC' ) 
-            epc_run = True 
-        else:
-            epc_run = False 
-            print('Runnig greedy for normal' ) 
-    
         sigma_value = float(os.getenv('SIGMA')) 
         
         if epc_run:
@@ -160,7 +178,10 @@ def main():
                 res_df = load_data_simple(files_to_use, number )
             else:
                 res_df = load_data_simple(files_to_use )
-            
+            print('res dsf shap0e: ' )
+            print(res_df.shape)
+            print('num upns')
+            print(len(res_df.upn.unique() )  ) 
             print("\nLoading personas...")
             personas = load_personas( ) 
             df = res_df.merge(personas, on='postcode', how='inner')
@@ -193,6 +214,7 @@ def main():
                     summary_logger, detail_logger = setup_logging(
                         output_dir, budget, prob_loft, equity_factor
                     )
+                    print(detail_logger)
                     
                     summary_logger.info(
                         f'Starting analysis: Budget £{budget:,}, '
@@ -224,7 +246,8 @@ def main():
                             budget=budget,
                             cost_column='total_capex',
                             efficiency_column='weighted_capex_per_net_ton' ,
-                            carbon_col='total_co2_saved'
+                            carbon_col='total_co2_saved',
+                            logger=detail_logger, 
                         )
                         selected_projects_df['remaining_funds'] = remaining_funds
 
@@ -244,11 +267,13 @@ def main():
                         print(f'Million biudget: {million_budget}')
                         # Generate visualization
                         summary_logger.info("\nGenerating visualization...")
+                        
                         plot_greedy_distribution_analysis(
                             baseline_df=baseline_selection,
                             selected_df=selected_projects_df,
                             scenario_name=f'budget_{million_budget}M__loft{prob_loft}__equity{equity_factor}',
-                            output_dir=output_dir
+                            output_dir=output_dir,
+                            
                         )
                         
                         summary_logger.info("Analysis complete!")
@@ -261,9 +286,14 @@ def main():
                                                                         budget=budget,
                                                                         cost_column='total_capex',
                                                                         efficiency_column='weighted_capex_per_net_ton' ,
-                                                                        carbon_col='total_co2_saved')
+                                                                        carbon_col='total_co2_saved', 
+                                                                        logger=detail_logger)
                             
                             epc_random_selected_df['remaining_funds'] = epc_random_remaining_budget
+                            if epc_random_selected_df.empty:
+                                detail_logger.info('EPC selection empty')
+                                raise Exception('EPC selection empty')
+                            
                             epc_random_selected_df.to_csv(epc_random_path, index=False) 
                             summary_logger.info(f"EPC RAndom selection saved to: {epc_random_path}")
 
@@ -290,17 +320,29 @@ def main():
     print("\n" + "="*80)
     print("Start post process ") 
     print("="*80)
-    
-    for LOFT_VALUE in loft_probs:
-        if number:
-            OUTPUT_PATH = os.path.join(BASE_DIR, f'greedy_vis_num{number}', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
-        else:
-            OUTPUT_PATH = os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
+    post_proc_meta=False 
+    post_proc_epc=True 
 
-        # Ensure output directory exists
-        os.makedirs(OUTPUT_PATH, exist_ok=True)
-        post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH)
+    if post_proc_meta: 
+        for LOFT_VALUE in loft_probs:
+            if number:
+                OUTPUT_PATH = os.path.join(BASE_DIR, f'greedy_vis_num{number}', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
+            else:
+                OUTPUT_PATH = os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
 
+            # Ensure output directory exists
+            os.makedirs(OUTPUT_PATH, exist_ok=True)
+            post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH)
+        
+    if post_proc_epc:
+        if epc_run:
+            for LOFT_VALUE in loft_probs:
+                for budget in budgets:
+                    million_budget= budget / milion_factor
+                    for equity_factor in equity_factors:
+                        
+                        run_epc_vis(greedy_runs_folder, os.path.join(BASE_DIR, 'greedy_vis_epc') , million_budget  , LOFT_VALUE , equity_factor    )
+            
     print("\n" + "="*80)
     print("ALL ANALYSES COMPLETE!")
     print("="*80)
