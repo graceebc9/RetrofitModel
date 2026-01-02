@@ -89,6 +89,7 @@ def process_portfolio_data():
     print(f"Saved consolidated data to: {master_csv_path}")
 
     # --- STEP 4: STATISTICAL ANALYSIS ---
+    generate_distribution_plots(merged_df)
     perform_statistical_tests(merged_df)
 
     # --- STEP 5: VISUALIZATIONS ---
@@ -215,7 +216,7 @@ def generate_plots(df):
     # 3. Gas Histogram
     plt.figure(figsize=(10, 6))
     sns.histplot(data=plot_df, x=COL_GAS, kde=True, bins=30, hue=COL_EPC, hue_order=valid_epc, multiple="stack", palette="viridis", edgecolor=".3", linewidth=.5)
-    # plt.title('Distribution of Gas Usage Percentiles by EPC Rating', fontsize=14, fontweight='bold')
+    # plt.title('Distribution of Gas Consumption Deciles by EPC Rating', fontsize=14, fontweight='bold')
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, 'portfolio_gas_histogram.png'), dpi=300)
     plt.close()
@@ -244,7 +245,7 @@ def generate_plots(df):
     # 6. Gas vs EPC Boxplot
     plt.figure(figsize=(10, 6))
     sns.boxplot(data=plot_df, x=COL_EPC, y=COL_GAS, order=valid_epc, palette="RdYlGn_r")
-    plt.title('Gas Usage Percentile vs EPC Rating', fontsize=14, fontweight='bold')
+    plt.title('Gas Consumption Decile vs EPC Rating', fontsize=14, fontweight='bold')
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, 'comparison_gas_vs_epc_boxplot.png'), dpi=300)
     plt.close()
@@ -264,7 +265,7 @@ def generate_plots(df):
             # fontsize=14, fontweight='bold')
     plt.xlabel('EPC Rating', fontsize=12)
     plt.ylim(-1, 11)
-    plt.ylabel('Gas Usage Percentile', fontsize=12)
+    plt.ylabel('Gas Consumption Decile', fontsize=12)
     plt.legend(title='Socio Persona', loc='upper center',  ncol=3)
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, 'duo_comparison_gas_vs_epc_boxplot_by_persona.png'), dpi=300)
@@ -275,105 +276,7 @@ def generate_plots(df):
     print("Visualization Complete. Plots saved to output directory.")
 
  
-
-# def analyze_interactions(df):
-#     """
-#     Focuses on the interaction between Socio-Persona and EPC Rating.
-#     """
-#     sns.set_theme(style="whitegrid")
-    
-#     # Clean Data
-#     plot_df = df.dropna(subset=[COL_PERSONA, COL_EPC, COL_GAS]).copy()
-    
-#     # Filter only valid EPCs
-#     valid_epc = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
-#     plot_df = plot_df[plot_df[COL_EPC].isin(valid_epc)]
-
-#     # Create Simplified EPC Groups for cleaner Interaction Plots
-#     def group_epc(rating):
-#         if rating in ['A', 'B', 'C']: return 'Efficient (A-C)'
-#         if rating in ['D', 'E']: return 'Average (D-E)'
-#         if rating in ['F', 'G']: return 'Inefficient (F-G)'
-#         return 'Unknown'
-    
-#     plot_df['EPC_Group'] = plot_df[COL_EPC].apply(group_epc)
-
-#     # Order Personas by median gas usage (Low -> High consumption)
-#     persona_order = plot_df.groupby(COL_PERSONA)[COL_GAS].median().sort_values().index.tolist()
-
-#     print("-" * 30)
-#     print("INTERACTION ANALYSIS")
-#     print("-" * 30)
-
-#     # ---------------------------------------------
-#     # PLOT 1: Heatmap of MEDIAN Gas Percentile
-#     # ---------------------------------------------
-#     # This directly answers: "Where are the hotspots?" 
-#     # (e.g. Is High Deprivation + EPC G worse than Low Deprivation + EPC C?)
-    
-#     plt.figure(figsize=(12, 8))
-    
-#     # Pivot table: Rows=Persona, Cols=EPC, Values=Median Gas
-#     pivot_median = pd.pivot_table(
-#         plot_df, 
-#         values=COL_GAS, 
-#         index=COL_PERSONA, 
-#         columns=COL_EPC, 
-#         aggfunc='median'
-#     )
-    
-#     # Reorder columns to A -> G
-#     pivot_median = pivot_median[valid_epc]
-    
-#     sns.heatmap(pivot_median, annot=True, fmt='.1f', cmap='RdYlGn_r', linewidths=.5)
-    
-#     plt.title('Median Gas Percentile by Persona and EPC Rating\n(Red = High Consumption, Green = Low)', fontsize=14, fontweight='bold')
-#     plt.xlabel('EPC Rating', fontsize=12)
-#     plt.ylabel('Socio Persona', fontsize=12)
-#     plt.tight_layout()
-#     plt.savefig(os.path.join(OUTPUT_DIR, 'interaction_heatmap_median_gas.png'), dpi=300)
-#     plt.close()
-
-#     # ---------------------------------------------
-#     # PLOT 2: Interaction Point Plot
-#     # ---------------------------------------------
-#     # This visualizes the diverging trends.
-#     # X-axis = Persona (sorted by consumption), Y-axis = Gas %, Lines = EPC Groups
-    
-#     plt.figure(figsize=(14, 8))
-    
-#     sns.pointplot(
-#         data=plot_df, 
-#         x=COL_PERSONA, 
-#         y=COL_GAS, 
-#         hue='EPC_Group', 
-#         hue_order=['Efficient (A-C)', 'Average (D-E)', 'Inefficient (F-G)'],
-#         order=persona_order,
-#         capsize=.1, 
-#         errorbar=('ci', 95), # 95% Confidence Interval
-#         palette={'Efficient (A-C)': 'green', 'Average (D-E)': 'orange', 'Inefficient (F-G)': 'red'}
-#     )
-    
-#     plt.title('Interaction Effect: How EPC Rating impacts Consumption across Personas', fontsize=16, fontweight='bold')
-#     plt.ylabel('Average Gas Percentile', fontsize=12)
-#     plt.xlabel('Socio Persona (Ordered by Low -> High Consumption)', fontsize=12)
-#     plt.xticks(rotation=45, ha='right')
-#     plt.legend(title='EPC Group')
-#     plt.tight_layout()
-#     plt.savefig(os.path.join(OUTPUT_DIR, 'interaction_pointplot.png'), dpi=300)
-#     plt.close()
-
-#     # ---------------------------------------------
-#     # STATS: Pivot Table Printout
-#     # ---------------------------------------------
-#     print("\n--- Median Gas Percentile Matrix ---")
-#     print(pivot_median)
-    
-#     # Save table
-#     pivot_median.to_csv(os.path.join(OUTPUT_DIR, 'stats_median_gas_matrix.csv'))
-
-#     print("\nVisualization Complete. 'interaction_heatmap_median_gas.png' is the key chart.")
-
+ 
 
 def analyze_interactions(df):
     """
@@ -430,7 +333,7 @@ def analyze_interactions(df):
     # UPDATE: Reorder rows to the specific persona order
     pivot_median = pivot_median.reindex(persona_order)
     
-    sns.heatmap(pivot_median, annot=True, fmt='.1f', cmap='RdYlGn_r', linewidths=.5)
+    sns.heatmap(pivot_median, annot=True, fmt='.1f', cmap='RdYlGn_r', linewidths=.5, cbar_kws={'label': 'Median Gas Decile' } )
     
     # plt.title('Median Gas Percentile by Persona and EPC Rating\n(Red = High Consumption, Green = Low)', fontsize=14, fontweight='bold')
     plt.xlabel('EPC Rating', fontsize=12)
@@ -475,6 +378,184 @@ def analyze_interactions(df):
     pivot_median.to_csv(os.path.join(OUTPUT_DIR, 'stats_median_gas_matrix.csv'))
 
     print("\nVisualization Complete. 'interaction_heatmap_median_gas.png' is the key chart.")
+
+
+def generate_distribution_plots(df):
+    """
+    Generates basic distribution plots to understand the dataset composition.
+    """
+    print("-" * 30)
+    print("GENERATING DISTRIBUTION PLOTS")
+    print("-" * 30)
+    
+    sns.set_theme(style="whitegrid")
+    
+    # Clean data for plotting
+    plot_df = df.dropna(subset=[COL_PERSONA, COL_EPC, COL_GAS]).copy()
+    
+    # Valid EPC order
+    valid_epc = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+    plot_df = plot_df[plot_df[COL_EPC].isin(valid_epc)]
+    
+    # ---------------------------------------------
+    # PLOT 1: Distribution of Socio-Personas (Count)
+    # ---------------------------------------------
+    plt.figure(figsize=(10, 6))
+    persona_counts = plot_df[COL_PERSONA].value_counts().reindex(persona_order)
+    ax = sns.barplot(x=persona_counts.index, y=persona_counts.values, palette='Blues_d')
+    plt.xlabel('Socio Persona', fontsize=12)
+    plt.ylabel('Count', fontsize=12)
+    plt.xticks(rotation=45, ha='right')
+    
+    # Add count labels on bars
+    for i, v in enumerate(persona_counts.values):
+        ax.text(i, v + max(persona_counts.values)*0.01, f'{v:,}', 
+                ha='center', va='bottom', fontsize=10)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, 'dist_persona_counts.png'), dpi=300)
+    plt.close()
+    
+    # ---------------------------------------------
+    # PLOT 2: Distribution of EPC Ratings (Count)
+    # ---------------------------------------------
+    plt.figure(figsize=(10, 6))
+    epc_counts = plot_df[COL_EPC].value_counts().reindex(valid_epc)
+    ax = sns.barplot(x=epc_counts.index, y=epc_counts.values, palette='RdYlGn_r')
+    plt.xlabel('EPC Rating', fontsize=12)
+    plt.ylabel('Count', fontsize=12)
+    
+    # Add count labels on bars
+    for i, v in enumerate(epc_counts.values):
+        ax.text(i, v + max(epc_counts.values)*0.01, f'{v:,}', 
+                ha='center', va='bottom', fontsize=10)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, 'dist_epc_counts.png'), dpi=300)
+    plt.close()
+
+   
+    # ---------------------------------------------
+    # PLOT 2b: Distribution of EPC Ratings (Grouped by Persona)
+    # ---------------------------------------------
+    plt.figure(figsize=(12, 6))
+
+    # Create crosstab: rows=EPC, columns=Persona
+    epc_persona_counts = pd.crosstab(plot_df[COL_EPC], plot_df[COL_PERSONA])
+    epc_persona_counts = epc_persona_counts.reindex(valid_epc)
+    epc_persona_counts = epc_persona_counts[persona_order]  # Order personas
+
+    # Grouped bar plot
+    ax = epc_persona_counts.plot(kind='bar', figsize=(12, 6), 
+                                colormap='Set2', edgecolor='black', 
+                                alpha=0.8, width=0.8)
+
+    plt.xlabel('EPC Rating', fontsize=12)
+    plt.ylabel('Count', fontsize=12)
+    plt.legend(title='Socio Persona', loc='upper right')
+    plt.xticks(rotation=0)
+
+    # Add count labels on each bar
+    for container in ax.containers:
+        ax.bar_label(container, fmt='%d', padding=3, fontsize=9)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, 'dist_epc_counts_grouped.png'), dpi=300)
+    plt.close()
+
+    # Save the data table
+    epc_persona_counts.to_csv(os.path.join(OUTPUT_DIR, 'dist_epc_persona_counts_table.csv'))
+    print(f"Saved EPC × Persona counts table to: dist_epc_persona_counts_table.csv")
+
+    # ---------------------------------------------
+    # PLOT 3: Overall Gas Percentile Distribution
+    # ---------------------------------------------
+    plt.figure(figsize=(12, 6))
+    sns.histplot(data=plot_df, x=COL_GAS, kde=True, bins=50, 
+                 color='steelblue', edgecolor='black', alpha=0.7)
+    plt.axvline(plot_df[COL_GAS].median(), color='red', linestyle='--', 
+                linewidth=2, label=f'Median: {plot_df[COL_GAS].median():.2f}')
+    plt.axvline(plot_df[COL_GAS].mean(), color='orange', linestyle='--', 
+                linewidth=2, label=f'Mean: {plot_df[COL_GAS].mean():.2f}')
+    plt.xlabel('Gas Usage Decile', fontsize=12)
+    plt.ylabel('Frequency', fontsize=12)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, 'dist_gas_percentile_overall.png'), dpi=300)
+    plt.close()
+    
+    # ---------------------------------------------
+    # PLOT 4: Gas Percentile Distribution by Persona
+    # ---------------------------------------------
+    plt.figure(figsize=(14, 6))
+    for persona in persona_order:
+        subset = plot_df[plot_df[COL_PERSONA] == persona]
+        sns.kdeplot(data=subset, x=COL_GAS, label=persona, linewidth=2)
+    
+    plt.xlabel('Gas Consumption Decile', fontsize=12)
+    plt.ylabel('Density', fontsize=12)
+    plt.legend(title='Socio Persona')
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, 'dist_gas_by_persona_kde.png'), dpi=300)
+    plt.close()
+    
+    # ---------------------------------------------
+    # PLOT 5: Gas Percentile Distribution by EPC
+    # ---------------------------------------------
+    plt.figure(figsize=(14, 6))
+    for epc in valid_epc:
+        subset = plot_df[plot_df[COL_EPC] == epc]
+        if len(subset) > 0:
+            sns.kdeplot(data=subset, x=COL_GAS, label=f'EPC {epc}', linewidth=2)
+    
+    plt.xlabel('Gas Consumption Decile', fontsize=12)
+    plt.ylabel('Density', fontsize=12)
+    plt.legend(title='EPC Rating')
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, 'dist_gas_by_epc_kde.png'), dpi=300)
+    plt.close()
+    
+    # ---------------------------------------------
+    # PLOT 6: Sample Size Matrix (Persona × EPC)
+    # ---------------------------------------------
+    plt.figure(figsize=(12, 8))
+    sample_sizes = pd.crosstab(plot_df[COL_PERSONA], plot_df[COL_EPC])
+    sample_sizes = sample_sizes[valid_epc]
+    sample_sizes = sample_sizes.reindex(persona_order)
+    
+    sns.heatmap(sample_sizes, annot=True, fmt='d', cmap='Purples', 
+                linewidths=.5, cbar_kws={'label': 'Sample Size'})
+    plt.xlabel('EPC Rating', fontsize=12)
+    plt.ylabel('Socio Persona', fontsize=12)
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, 'dist_sample_sizes_matrix.png'), dpi=300)
+    plt.close()
+    
+    # ---------------------------------------------
+    # Print Summary Statistics
+    # ---------------------------------------------
+    print("\n--- DATASET SUMMARY STATISTICS ---")
+    print(f"Total Records: {len(plot_df):,}")
+    print(f"\nGas Percentile Statistics:")
+    print(f"  Mean:   {plot_df[COL_GAS].mean():.2f}")
+    print(f"  Median: {plot_df[COL_GAS].median():.2f}")
+    print(f"  Std:    {plot_df[COL_GAS].std():.2f}")
+    print(f"  Min:    {plot_df[COL_GAS].min():.2f}")
+    print(f"  Max:    {plot_df[COL_GAS].max():.2f}")
+    
+    print(f"\nPersona Distribution:")
+    for persona in persona_order:
+        count = (plot_df[COL_PERSONA] == persona).sum()
+        pct = (count / len(plot_df)) * 100
+        print(f"  {persona}: {count:,} ({pct:.1f}%)")
+    
+    print(f"\nEPC Rating Distribution:")
+    for epc in valid_epc:
+        count = (plot_df[COL_EPC] == epc).sum()
+        pct = (count / len(plot_df)) * 100
+        print(f"  {epc}: {count:,} ({pct:.1f}%)")
+    
+    print("\nDistribution plots saved successfully.")
 
 
 if __name__ == "__main__":
