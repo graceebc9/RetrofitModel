@@ -320,8 +320,8 @@ def main():
     print("\n" + "="*80)
     print("Start post process ") 
     print("="*80)
-    post_proc_meta=False 
-    post_proc_epc=True 
+    post_proc_meta=True  
+    post_proc_epc=False 
 
     if post_proc_meta: 
         for LOFT_VALUE in loft_probs:

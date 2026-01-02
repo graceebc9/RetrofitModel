@@ -333,16 +333,16 @@ def plot_carbon_savings_vs_equity(results_subset, equity_weights, budget_label, 
     """Plot 1: Carbon Savings vs Equity Weight"""
     fig, ax = plt.figure(figsize=(10, 6)), plt.gca()
     
-    for budget_val in results_subset['budget'].unique():
+    for budget_val in sorted(results_subset['budget'].unique()):
         subset = results_subset[results_subset['budget'] == budget_val]
         weights = subset['equity_weight'].values
         
         # *** UPDATED COLUMN NAMES ***
         means = subset[total_co2_saved_col].values / 1e3
-        stds = subset[total_co2_saved_col].values / 1e3
+        # stds = subset[total_co2_saved_col].values / 1e3
         
         label = f'£{budget_val}' if len(results_subset['budget'].unique()) > 1 else None
-        ax.errorbar(weights, means, yerr=stds, fmt='o-', markersize=10, 
+        ax.errorbar(weights, means, fmt='o-', markersize=10, 
                     linewidth=2, capsize=5, label=label, alpha=0.7)
     
     ax.set_xlabel('Equity Weight', fontsize=14, fontweight='bold')
