@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch  # Added for custom legend
 import os
 import glob
 import gc
@@ -35,12 +36,12 @@ METRIC_PATTERNS = {
     },
     'gas_co2': {
         'pattern': '{sc}_gas_abs_ton_co2_samples_{sc}_p50', 
-        'label': 'Gas: CO2 Changes (Tons/5 years)',
+        'label': 'Gas: CO2 Removal (Tons/5 years)',
         'type': 'co2'
     },
     'elec_co2': {
         'pattern': '{sc}_elec_abs_ton_co2_samples_{sc}_p50', 
-        'label': 'Elec: CO2 Changes (Tons/5 years)',
+        'label': 'Elec: CO2 Removal (Tons/5 years)',
         'type': 'co2'
     }
 }
@@ -180,8 +181,19 @@ def plot_metric_by_decile(df, scenario_name, metric_label, output_path):
     ax.set_xticks(deciles)
     ax.set_xticklabels([int(d) for d in deciles])
     
-    if len(wall_types) > 1 or wall_types[0] != 'All':
-        ax.legend(title='Wall Type')
+    # --- LEGEND UPDATE ---
+    # Get existing handles and labels
+    handles, labels = ax.get_legend_handles_labels()
+    
+    # Create a proxy artist for the shaded area
+    # We use gray to represent a generic shaded region
+    p5_p95_patch = Patch(facecolor='grey', alpha=0.2, label='p5 - p95 Range')
+    
+    # Only add legend if there is data
+    if handles:
+        handles.append(p5_p95_patch)
+        ax.legend(handles=handles, title='Wall Type')
+    # ---------------------
         
     ax.grid(axis='y', alpha=0.3)
     ax.grid(axis='x', alpha=0.1)
@@ -221,8 +233,14 @@ def plot_metric_by_premise(df, scenario_name, metric_label, output_path):
     ax.set_xticklabels(present_types, rotation=45, ha='right')
     ax.margins(y=0.15)
     
-    if len(wall_types) > 1 or wall_types[0] != 'All':
-        ax.legend(title='Wall Type')
+    # --- LEGEND UPDATE ---
+    handles, labels = ax.get_legend_handles_labels()
+    p5_p95_patch = Patch(facecolor='grey', alpha=0.2, label='p5 - p95 Range')
+    
+    if handles:
+        handles.append(p5_p95_patch)
+        ax.legend(handles=handles, title='Wall Type')
+    # ---------------------
         
     ax.grid(axis='y', alpha=0.3)
     plt.tight_layout()
@@ -277,12 +295,20 @@ def plot_co2_comparison(stats_dict, scenario_name, output_base):
             ax.plot(x_vals, y_vals, label=label, color=cfg['color'], linestyle=cfg['style'], marker='o')
             ax.fill_between(x_vals, y_p5, y_p95, color=cfg['color'], alpha=0.1, linewidth=0)
 
-        
         ax.set_xlabel('Gas Usage Decile')
         ax.set_ylabel('CO2 Reduction (Tons)')
         ax.set_xticks(deciles)
         ax.set_xticklabels([int(d) for d in deciles])
-        ax.legend()
+        
+        # --- LEGEND UPDATE ---
+        handles, labels = ax.get_legend_handles_labels()
+        p5_p95_patch = Patch(facecolor='grey', alpha=0.1, label='p5 - p95 Range')
+        
+        if handles:
+            handles.append(p5_p95_patch)
+            ax.legend(handles=handles)
+        # ---------------------
+        
         ax.grid(True, alpha=0.3)
         
         safe_w_type = w_type.replace(' ', '_').replace('/', '_')
@@ -310,7 +336,6 @@ def safe_load(filepath, headers=None):
 def run_pipeline():
     print(f"Scanning: {LOG_DIR}")
     files = glob.glob(LOG_DIR)
-    files=files[0:5]
     print(f"Found {len(files)} files.")
     
     headers = None
