@@ -193,12 +193,15 @@ def plot_counts_by_age_band(df, output_dir):
         # Apply consistent Y-limit
         ax.set_ylim(0, global_max_y)
         # This adds commas (e.g. 10,000) to the Y axis
-        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}')) # <--- ADDED FORMATTER HERE
+        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}'))
         
+        # Add total count labels on top of each bar
+        bar_totals = plot_data.sum(axis=1)  # Sum across all insulation types for each decile
+        for i, (idx, total) in enumerate(bar_totals.items()):
+            ax.text(i, total, f'{int(total):,}', 
+                   ha='center', va='bottom', fontsize=9, )
         
-        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}')) # <--- ADDED FORMATTER HERE
-        
-        plt.xlabel('Gas Consumption Decile)')
+        plt.xlabel('Gas Consumption Decile')
         plt.ylabel('Count')
         plt.xticks(rotation=0)
         plt.legend(title='Insulation Type',  loc='best')
@@ -264,7 +267,13 @@ def plot_counts_by_premise_decile(df, output_dir):
         # Apply consistent Y-limit
         ax.set_ylim(0, global_max_y)
         # This adds commas (e.g. 10,000) to the Y axis
-        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}')) # <--- ADDED FORMATTER HERE
+        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}'))
+        
+        # Add total count labels on top of each bar
+        bar_totals = plot_data.sum(axis=1)  # Sum across conservation areas for each decile
+        for i, (idx, total) in enumerate(bar_totals.items()):
+            ax.text(i, total, f'{int(total):,}', 
+                   ha='center', va='bottom', fontsize=9, )
         
         plt.xlabel('Gas Consumption Decile')
         plt.ylabel('Count')
@@ -286,7 +295,7 @@ def plot_counts_by_premise_decile(df, output_dir):
 
 def run_loading_pipeline():
     files = glob.glob(INPUT_PATTERN)
-    files=files[0:3]
+    
     if not files:
         print(f"No files found matching pattern: {INPUT_PATTERN}")
         return

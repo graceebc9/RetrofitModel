@@ -27,11 +27,11 @@ RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')  )
 if is_hpc:
     # Update this path if necessary to match your actual data location
     if not is_epc:
-        LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE'
+        LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE'
     else:
-        LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/v8_logs_with_epc'
+        LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/v9_logs_with_epc'
         # Use the file you confirmed works as the Source of Truth for headers
-    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/120_log_file.csv'
+    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/120_log_file.csv'
 else: 
     if is_epc:
         LOG_DIR='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/epc_merge'
@@ -177,7 +177,7 @@ def add_sigma_columns(df_out, scenarios, sigma=1):
                 
                 # Define new column name (e.g. wall_installation_capex_1sigma)
                 # Note: We use {sigma}sigma in the name to be descriptive
-                sigma_str = f"{sigma}".replace('.', 'p') if sigma % 1 != 0 else int(sigma)
+                sigma_str = str(float(sigma))
                 new_col_name = f"{sc}_{metric}_p50_{sigma_str}sigma"
                 
                 new_columns[new_col_name] = mean_vals + (sigma * std_vals)
@@ -292,7 +292,7 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
     # B. AGGREGATE
     # -------------------------------------------------------------
     try:
-        
+        print('starting agg') 
         agg_df = pool_epistemic_runs_robust(clean_df, SCENARIO_LIST, id_col='upn')
         
         # --- Identify buildings that already have loft insulation ---
@@ -302,7 +302,8 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
         
         agg_df= add_sigma_columns(agg_df, SCENARIO_LIST, sigma=SIGMA_VAL)
         print('done sgima add')
-        print(agg_df.columns.tolist() )
+        print(agg_df.columns.tolist() ) 
+        
         all_interventions = []
 
         # -------------------------------------------------------------
@@ -310,7 +311,7 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
         # -------------------------------------------------------------
                           
         for scn in SCENARIO_LIST:
- 
+            print(scn) 
             wdf = apply_physical_filters_for_optimisation(agg_df, scn )
             # --- CONSTRAINT CHECK ---
             is_loft_scenario = 'loft' in scn.lower()
@@ -319,7 +320,7 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
             # 2. Extract
             sub_df = wdf[COLS_KEEP].copy()
             sub_df['intervention'] = scn
-            sub_df['capex_per_net_ton'] = wdf[f'{scn}_capex_p50_1sigma']
+            sub_df['capex_per_net_ton'] = wdf[f'{scn}_capex_p50_{float(RISK_PENALTY_SIGMA)}sigma']
             sub_df['total_co2_saved'] = wdf[f'{scn}_total_energy_abs_co2_ton_samples_{scn}_p50_mean']
             sub_df['total_capex'] = wdf[f'{scn}_cost_{scn}_p50_mean'] 
             
@@ -336,7 +337,7 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
                 mask_valid = mask_valid & mask_allowed
 
             clean_df = sub_df[mask_valid].copy()
-            
+            print('clean is here') 
             if not clean_df.empty:
                 all_interventions.append(clean_df)
 
@@ -344,11 +345,13 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
         # E. SELECT BEST
         # -------------------------------------------------------------
         if all_interventions:
+            print('all interventions') 
             combined_df = pd.concat(all_interventions, ignore_index=True)
             combined_df.sort_values(by='capex_per_net_ton', ascending=True, inplace=True)
             best_only_df = combined_df.drop_duplicates(subset=['upn'], keep='first')
             
             output_path = os.path.join(output_dir, f"best_intervention_{filename}_loft_{LOFT_INSULATION_EXISTING_PERCENT}.csv")
+            print('Saving ott' ) 
             best_only_df.to_csv(output_path, index=False)
         else:
             logging.warning(f"No valid interventions found for {filename}")
@@ -357,6 +360,7 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
         gc.collect()
 
     except Exception as e:
+        print(e) 
         log_error_to_file(filepath, f"Processing Error (Post-Load): {e}")
         return
 
