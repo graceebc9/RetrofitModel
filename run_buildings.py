@@ -1,28 +1,20 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch  # Added for custom legend
+from matplotlib.patches import Patch
 import os
 import glob
 import gc
 import csv
-from src.utils import is_running_on_hpc 
-
+from src.utils import is_running_on_hpc
+from tqdm import tqdm
 # ==============================================================================
 # 1. CONFIGURATION & PATHS
 # ==============================================================================
 
-SCENARIOS = [
-    'joint_heat_loft_decay',
-    'joint_heat_wall_decay',
-    'wall_installation',
-    'join_heat_ins_decay',
-    'heat_pump_only',
-    'loft_installation'
-]
+ 
+SCENARIOS = [ 'wall_installation',  'heat_pump_only', 'loft_installation'] 
 
-# Column Patterns
-# {sc} will be replaced by the scenario name
 METRIC_PATTERNS = {
     'cost': {
         'pattern': '{sc}_cost_{sc}_mean', 
@@ -46,7 +38,7 @@ METRIC_PATTERNS = {
     }
 }
 
-OUTPUT_BASE = '3_stock_results/buildings/'
+OUTPUT_BASE = '3_stock_results/buildings_test/'
 os.makedirs(OUTPUT_BASE, exist_ok=True)
 
 is_hpc = is_running_on_hpc() 
@@ -68,17 +60,8 @@ TYPOLOGIES = [
     'Linked and step linked premises',
 ]
 
-SCENARIO_DISPLAY_NAMES = {
-    'loft_installation': 'Loft Installation',
-    'wall_installation': 'Wall Insulation',
-    'joint_heat_loft_decay': 'HP + Loft (Decay)',
-    'joint_heat_wall_decay': 'HP + Wall (Decay)',
-    'join_heat_ins_decay': 'HP + All Insulation (Decay)',
-    'heat_pump_only': 'Heat Pump Only',
-}
-
 # ==============================================================================
-# 2. THE GROUPED ACCUMULATOR CLASS (GENERIC)
+# 2. THE GROUPED ACCUMULATOR CLASS
 # ==============================================================================
 class GroupedStatsAccumulator:
     def __init__(self, scenario_name, metric_key, target_col):
@@ -114,12 +97,18 @@ class GroupedStatsAccumulator:
         return self.data
 
 # ==============================================================================
-# 3. HELPER: AGGREGATE RAW DATA & CALCULATE STATS
+# 3. HELPER: AGGREGATE RAW DATA
 # ==============================================================================
 def compute_grouped_stats(raw_data_dict, group_indices, col_names):
+    """
+    Flattens the raw dictionary keys based on the indices requested.
+    e.g. if key is (Decile, Premise, Wall) and we want Decile only,
+    we pass group_indices=[0].
+    """
     merged_data = {}
     
     for key_tuple, pairs in raw_data_dict.items():
+        # Extract only the parts of the key we want (e.g., just Decile)
         new_key = tuple(key_tuple[i] for i in group_indices)
         if new_key not in merged_data:
             merged_data[new_key] = []
@@ -132,17 +121,13 @@ def compute_grouped_stats(raw_data_dict, group_indices, col_names):
             
         vals, upns = zip(*pairs)
         arr = np.array(vals)
-        median_val = np.median(arr)
-        p5 = np.percentile(arr, 5)
-        p95 = np.percentile(arr, 95)
-        unique_count = len(set(upns))
         
         row_dict = dict(zip(col_names, key))
         row_dict.update({
-            'median_val': median_val,
-            'p5': p5,
-            'p95': p95,
-            'count': unique_count
+            'median_val': np.median(arr),
+            'p5': np.percentile(arr, 5),
+            'p95': np.percentile(arr, 95),
+            'count': len(set(upns))
         })
         rows.append(row_dict)
         
@@ -151,6 +136,8 @@ def compute_grouped_stats(raw_data_dict, group_indices, col_names):
 # ==============================================================================
 # 4. PLOTTING FUNCTIONS
 # ==============================================================================
+
+# --- A. Standard Single-Metric Plots ---
 def plot_metric_by_decile(df, scenario_name, metric_label, output_path):
     if df.empty: return
     
@@ -167,40 +154,25 @@ def plot_metric_by_decile(df, scenario_name, metric_label, output_path):
         subset = df[df['inferred_insulation_type'] == w_type]
         subset = subset.set_index('decile_numeric').reindex(deciles).reset_index()
         
-        x_vals = subset['decile_numeric']
-        y_vals = subset['median_val']
-        y_p5 = subset['p5']
-        y_p95 = subset['p95']
-        
-        ax.plot(x_vals, y_vals, label=w_type, color=colors[i], marker='o', linewidth=2)
-        ax.fill_between(x_vals, y_p5, y_p95, color=colors[i], alpha=0.2, linewidth=0)
+        ax.plot(subset['decile_numeric'], subset['median_val'], 
+                label=w_type, color=colors[i], marker='o', linewidth=2)
+        ax.fill_between(subset['decile_numeric'], subset['p5'], subset['p95'], 
+                        color=colors[i], alpha=0.2, linewidth=0)
 
     ax.set_xlabel('Gas Usage Decile')
     ax.set_ylabel(f'Median {metric_label}')
     
     ax.set_xticks(deciles)
-    ax.set_xticklabels([int(d) for d in deciles])
     
-    # --- LEGEND UPDATE ---
-    # Get existing handles and labels
     handles, labels = ax.get_legend_handles_labels()
-    
-    # Create a proxy artist for the shaded area
-    # We use gray to represent a generic shaded region
-    p5_p95_patch = Patch(facecolor='grey', alpha=0.2, label='p5 - p95 Range')
-    
-    # Only add legend if there is data
     if handles:
-        handles.append(p5_p95_patch)
+        handles.append(Patch(facecolor='grey', alpha=0.2, label='p5 - p95 Range'))
         ax.legend(handles=handles, title='Wall Type')
-    # ---------------------
         
     ax.grid(axis='y', alpha=0.3)
-    ax.grid(axis='x', alpha=0.1)
     plt.tight_layout()
     plt.savefig(output_path, dpi=300)
     plt.close()
-    print(f"Saved: {output_path}")
 
 def plot_metric_by_premise(df, scenario_name, metric_label, output_path):
     if df.empty: return
@@ -219,104 +191,126 @@ def plot_metric_by_premise(df, scenario_name, metric_label, output_path):
         subset = df[df['inferred_insulation_type'] == w_type]
         subset = subset.set_index('premise_type').reindex(present_types).reset_index()
         
-        y_vals = subset['median_val']
-        y_p5 = subset['p5']
-        y_p95 = subset['p95']
-        
-        ax.plot(x_indices, y_vals, label=w_type, color=colors[i], marker='o', linewidth=2)
-        ax.fill_between(x_indices, y_p5, y_p95, color=colors[i], alpha=0.15, linewidth=0)
+        ax.plot(x_indices, subset['median_val'], label=w_type, color=colors[i], marker='o')
+        ax.fill_between(x_indices, subset['p5'], subset['p95'], color=colors[i], alpha=0.15, linewidth=0)
 
     ax.set_xlabel('Premise Type')
     ax.set_ylabel(f'Median {metric_label}')
-    
     ax.set_xticks(x_indices)
     ax.set_xticklabels(present_types, rotation=45, ha='right')
-    ax.margins(y=0.15)
     
-    # --- LEGEND UPDATE ---
     handles, labels = ax.get_legend_handles_labels()
-    p5_p95_patch = Patch(facecolor='grey', alpha=0.2, label='p5 - p95 Range')
-    
     if handles:
-        handles.append(p5_p95_patch)
+        handles.append(Patch(facecolor='grey', alpha=0.2, label='p5 - p95 Range'))
         ax.legend(handles=handles, title='Wall Type')
-    # ---------------------
         
     ax.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.savefig(output_path, dpi=300)
     plt.close()
-    print(f"Saved: {output_path}")
 
-def plot_co2_comparison(stats_dict, scenario_name, output_base):
+# --- B. NEW Comparison Plots (Net vs Gas vs Elec) ---
+
+def plot_co2_compare_decile_x(stats_dict, scenario_name, output_base):
     """
-    Plots Net, Gas, and Elec CO2 on the same chart (Decile view).
-    Generates one plot per Wall Type (or just one if 'All').
+    X-Axis: Gas Decile.
+    Series: Net CO2, Gas CO2, Elec CO2.
     """
-    # 1. Check if we have data for all three
-    for m in ['net_co2', 'gas_co2', 'elec_co2']:
-        if m not in stats_dict:
-            return
-
-    # 2. Get the dataframes
-    df_net = stats_dict['net_co2'].copy()
-    df_gas = stats_dict['gas_co2'].copy()
-    df_elec = stats_dict['elec_co2'].copy()
-
-    # 3. Align and Prepare
-    for df in [df_net, df_gas, df_elec]:
-        df['decile_numeric'] = pd.to_numeric(df['avg_gas_percentile'], errors='coerce')
-
-    # Get unique wall types present in Net (assuming others match)
-    wall_types = sorted(df_net['inferred_insulation_type'].unique())
-    deciles = sorted(df_net['decile_numeric'].dropna().unique())
-
-    # Map for colors/labels
     metrics_cfg = {
-        'Net CO2': {'df': df_net, 'color': 'black', 'style': '-'},
-        'Gas CO2': {'df': df_gas, 'color': 'red', 'style': '--'},
-        'Elec CO2': {'df': df_elec, 'color': 'blue', 'style': '--'}
+        'net_co2':  {'label': 'Net CO2',  'color': 'black', 'style': '-'},
+        'gas_co2':  {'label': 'Gas CO2',  'color': 'blue',   'style': '--'},
+        'elec_co2': {'label': 'Elec CO2', 'color': 'red',  'style': ':'}
     }
-
-    # 4. Generate one plot per wall type
-    for w_type in wall_types:
-        fig, ax = plt.subplots(figsize=(12, 7))
+    
+    fig, ax = plt.subplots(figsize=(12, 7))
+    has_data = False
+    
+    for m_key, cfg in metrics_cfg.items():
+        if m_key not in stats_dict: continue
+        df = stats_dict[m_key]
+        if df.empty: continue
+        has_data = True
         
-        for label, cfg in metrics_cfg.items():
-            df_curr = cfg['df']
-            subset = df_curr[df_curr['inferred_insulation_type'] == w_type]
-            subset = subset.set_index('decile_numeric').reindex(deciles).reset_index()
+        df['decile_numeric'] = pd.to_numeric(df['avg_gas_percentile'], errors='coerce')
+        df = df.sort_values('decile_numeric')
+        
+        ax.plot(df['decile_numeric'], df['median_val'], 
+                label=cfg['label'], color=cfg['color'], linestyle=cfg['style'], marker='o')
+        ax.fill_between(df['decile_numeric'], df['p5'], df['p95'], 
+                        color=cfg['color'], alpha=0.1, linewidth=0)
 
-            x_vals = subset['decile_numeric']
-            y_vals = subset['median_val']
-            y_p5 = subset['p5']
-            y_p95 = subset['p95']
-
-            ax.plot(x_vals, y_vals, label=label, color=cfg['color'], linestyle=cfg['style'], marker='o')
-            ax.fill_between(x_vals, y_p5, y_p95, color=cfg['color'], alpha=0.1, linewidth=0)
-
+    if has_data:
+        
         ax.set_xlabel('Gas Usage Decile')
-        ax.set_ylabel('CO2 Reduction (Tons)')
-        ax.set_xticks(deciles)
-        ax.set_xticklabels([int(d) for d in deciles])
+        ax.set_ylabel('Median CO2 Removal (Tons/5 years)')
+        ax.legend()
         
-        # --- LEGEND UPDATE ---
         handles, labels = ax.get_legend_handles_labels()
-        p5_p95_patch = Patch(facecolor='grey', alpha=0.1, label='p5 - p95 Range')
-        
         if handles:
-            handles.append(p5_p95_patch)
-            ax.legend(handles=handles)
-        # ---------------------
+            handles.append(Patch(facecolor='grey', alpha=0.2, label='p5 - p95 Range'))
+            ax.legend(handles=handles, title='Wall Type')
         
         ax.grid(True, alpha=0.3)
         
-        safe_w_type = w_type.replace(' ', '_').replace('/', '_')
-        out_name = f'{scenario_name}_CO2_COMPARE_{safe_w_type}.png'
+        out_name = f'{scenario_name}_COMPARE_X_Decile.png'
         plt.tight_layout()
         plt.savefig(os.path.join(output_base, out_name), dpi=300)
-        plt.close()
-        print(f"Saved Comparison: {out_name}")
+        print(f"Saved: {out_name}")
+    plt.close()
+
+def plot_co2_compare_premise_x(stats_dict, scenario_name, output_base):
+    """
+    X-Axis: Premise Type.
+    Series: Net CO2, Gas CO2, Elec CO2.
+    """
+    metrics_cfg = {
+        'net_co2':  {'label': 'Net CO2',  'color': 'black', 'style': '-'},
+        'gas_co2':  {'label': 'Gas CO2',  'color': 'blue',   'style': '--'},
+        'elec_co2': {'label': 'Elec CO2', 'color': 'red', 'style': ':'}
+    }
+    
+    fig, ax = plt.subplots(figsize=(14, 8))
+    has_data = False
+    
+    # Use global typologies to ensure consistent X-axis order
+    x_map = {t: i for i, t in enumerate(TYPOLOGIES)}
+    
+    for m_key, cfg in metrics_cfg.items():
+        if m_key not in stats_dict: continue
+        df = stats_dict[m_key]
+        if df.empty: continue
+        has_data = True
+        
+        # Categorical sort
+        df['premise_type'] = pd.Categorical(df['premise_type'], categories=TYPOLOGIES, ordered=True)
+        df = df.sort_values('premise_type').dropna(subset=['premise_type'])
+        
+        # Map premise strings to integer indices for plotting lines
+        x_vals = [x_map[t] for t in df['premise_type']]
+        
+        ax.plot(x_vals, df['median_val'], 
+                label=cfg['label'], color=cfg['color'], linestyle=cfg['style'], marker='s')
+        ax.fill_between(x_vals, df['p5'], df['p95'], 
+                        color=cfg['color'], alpha=0.1, linewidth=0)
+
+    if has_data:
+        
+        ax.set_ylabel('Median CO2 Removal (Tons/5 years)')
+        ax.set_xticks(range(len(TYPOLOGIES)))
+        ax.set_xticklabels(TYPOLOGIES, rotation=45, ha='right')
+        ax.legend()
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            handles.append(Patch(facecolor='grey', alpha=0.2, label='p5 - p95 Range'))
+            ax.legend(handles=handles, title='Wall Type')
+        ax.grid(True, alpha=0.3)
+        ax.margins(x=0.05)
+        
+        out_name = f'{scenario_name}_COMPARE_X_Premise.png'
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_base, out_name), dpi=300)
+        print(f"Saved: {out_name}")
+    plt.close()
 
 # ==============================================================================
 # 5. LOADING HELPER
@@ -336,6 +330,7 @@ def safe_load(filepath, headers=None):
 def run_pipeline():
     print(f"Scanning: {LOG_DIR}")
     files = glob.glob(LOG_DIR)
+    
     print(f"Found {len(files)} files.")
     
     headers = None
@@ -346,14 +341,13 @@ def run_pipeline():
         except:
             print("Warning: Could not read headers.")
 
-    # Initialize accumulators: (scenario, metric_key) -> Accumulator
+    # Initialize accumulators
     accumulators = {}
     for scn in SCENARIOS:
         for m_key, m_cfg in METRIC_PATTERNS.items():
-            # Dynamic column name generation
             col_name = m_cfg['pattern'].format(sc=scn)
             accumulators[(scn, m_key)] = GroupedStatsAccumulator(scn, m_key, col_name)
-    
+    print('Loading raw data') 
     # 1. COLLECT RAW DATA
     for i, file_path in enumerate(files):
         if i % 10 == 0: print(f"Processing file {i}/{len(files)}...")
@@ -361,12 +355,12 @@ def run_pipeline():
         df = safe_load(file_path, headers)
         if df.empty: continue
         
+        # Ensure required columns exist
         if not set(GROUP_COLS).issubset(df.columns):
             continue
             
         df = df[df['premise_type'].isin(TYPOLOGIES)]
         
-        # Update all accumulators
         for acc in accumulators.values():
             acc.update(df)
         
@@ -375,67 +369,65 @@ def run_pipeline():
 
     print("\nAccumulation complete. Generating outputs...")
 
-    # 2. CALCULATE STATS AND GENERATE PLOTS
-    # We will group results by scenario to allow for the Comparison Plot at the end of each scenario loop
+    # 2. GENERATE PLOTS
     for scn in SCENARIOS:
         print(f"\n=== Processing Scenario: {scn} ===")
         
-        # Store calculated stats for this scenario here to use in the combined plot later
-        # Key: metric_key (e.g. 'net_co2'), Value: DataFrame (Decile aggregated)
-        scenario_decile_stats = {} 
+        # Containers for the Comparison Plots
+        # These will store simplified dataframes (flattened wall types)
+        decile_compare_collection = {}
+        premise_compare_collection = {}
 
-        # Loop through metrics: Cost, Net CO2, Gas CO2, Elec CO2
         for m_key, m_cfg in METRIC_PATTERNS.items():
             acc = accumulators.get((scn, m_key))
             if not acc: continue
             
             raw_data = acc.get_raw_data()
-            if not raw_data:
-                if m_key == 'cost': print(f"  No data for {m_key}")
-                continue
-                
+            if not raw_data: continue
+            
+            # Identify if this scenario has specific wall types (requires index 2)
             is_wall_scenario = 'wall' in scn
             
-            # --- A. Decile Plot ---
-            idx_decile = [0, 2] if is_wall_scenario else [0]
-            cols_decile = ['avg_gas_percentile', 'inferred_insulation_type'] if is_wall_scenario else ['avg_gas_percentile']
+            # --- A. DECILE PROCESSING ---
+            # 1. Standard Plot (Splits by Wall Type if applicable)
+            idx_std = [0, 2] if is_wall_scenario else [0]
+            cols_std = ['avg_gas_percentile', 'inferred_insulation_type'] if is_wall_scenario else ['avg_gas_percentile']
+            df_std = compute_grouped_stats(raw_data, idx_std, cols_std)
+            if not is_wall_scenario: df_std['inferred_insulation_type'] = 'All'
             
-            df_decile = compute_grouped_stats(raw_data, idx_decile, cols_decile)
-            if not is_wall_scenario: df_decile['inferred_insulation_type'] = 'All'
-            
-            # Save CSV
-            df_decile.to_csv(os.path.join(OUTPUT_BASE, f'{scn}_{m_key}_stats_decile.csv'), index=False)
-            
-            # Plot
             plot_metric_by_decile(
-                df_decile, scn, m_cfg['label'],
+                df_std, scn, m_cfg['label'],
                 os.path.join(OUTPUT_BASE, f'{scn}_{m_key}_decile.png')
             )
             
-            # Store for combined plot
-            scenario_decile_stats[m_key] = df_decile
+            # 2. Comparison Prep (Flatten Wall Types -> One line per metric)
+            # We strictly group by Decile [0] only
+            df_compare_dec = compute_grouped_stats(raw_data, [0], ['avg_gas_percentile'])
+            decile_compare_collection[m_key] = df_compare_dec
 
-            # --- B. Premise Plot ---
-            idx_premise = [1, 2] if is_wall_scenario else [1]
-            cols_premise = ['premise_type', 'inferred_insulation_type'] if is_wall_scenario else ['premise_type']
-            
-            df_premise = compute_grouped_stats(raw_data, idx_premise, cols_premise)
-            if not is_wall_scenario: df_premise['inferred_insulation_type'] = 'All'
+            # --- B. PREMISE PROCESSING ---
+            # 1. Standard Plot
+            idx_std = [1, 2] if is_wall_scenario else [1]
+            cols_std = ['premise_type', 'inferred_insulation_type'] if is_wall_scenario else ['premise_type']
+            df_std = compute_grouped_stats(raw_data, idx_std, cols_std)
+            if not is_wall_scenario: df_std['inferred_insulation_type'] = 'All'
 
-            # Save CSV
-            df_premise.to_csv(os.path.join(OUTPUT_BASE, f'{scn}_{m_key}_stats_premise.csv'), index=False)
-            
-            # Plot
             plot_metric_by_premise(
-                df_premise, scn, m_cfg['label'],
+                df_std, scn, m_cfg['label'],
                 os.path.join(OUTPUT_BASE, f'{scn}_{m_key}_premise.png')
             )
+            
+            # 2. Comparison Prep (Flatten Wall Types)
+            # We strictly group by Premise [1] only
+            df_compare_prem = compute_grouped_stats(raw_data, [1], ['premise_type'])
+            premise_compare_collection[m_key] = df_compare_prem
 
-        # --- C. GENERATE COMBINED CO2 PLOT ---
-        # Only if we have the necessary data for this scenario
-        print(f"  Generating CO2 Comparison Plot for {scn}...")
-        plot_co2_comparison(scenario_decile_stats, scn, OUTPUT_BASE)
-    
+        # --- C. EXECUTE COMPARISON PLOTS ---
+        # Generate the two requested comparison plots for this scenario
+        print(f"  Generating Comparison Plots for {scn}...")
+        plot_co2_compare_decile_x(decile_compare_collection, scn, OUTPUT_BASE)
+        plot_co2_compare_premise_x(premise_compare_collection, scn, OUTPUT_BASE)
+        
     print("\nDone. All scenario outputs saved.")
 
 if __name__ == "__main__":
