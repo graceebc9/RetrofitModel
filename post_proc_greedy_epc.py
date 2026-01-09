@@ -71,6 +71,7 @@ def aggregate_scenario_results(greedy_runs_folder, budgets, loft_probs, equity_f
                     try:
                         df_opt = pd.read_csv(selected_path)
                         df_epc = pd.read_csv(epc_random_path)
+                        print(df_opt.columns.tolist() ) 
 
                         row = {
                             'budget_raw': budget,
@@ -212,48 +213,7 @@ def create_boxplot(df, output_dir):
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"✓ Saved: {filepath}")
-
-
-# def create_loft_comparison(df, output_dir):
-#     """Create loft probability comparison plot with unified symbols in legend."""
-#     fig, ax = plt.subplots(figsize=(12, 8))
-
-#     budgets = sorted(df['budget_m'].unique())
-#     colors = plt.cm.viridis(np.linspace(0.2, 0.95, len(budgets)))
-
-#     for idx, budget in enumerate(budgets):
-#         budget_int = int(budget)
-
-#         # Loft 0.95
-#         loft_95 = df[(df['budget_m'] == budget) & (df['loft_prob'] == 0.95)].sort_values('equity_factor')
-#         marker_95, ls_95 = get_loft_style(0.95)
-#         ax.plot(loft_95['equity_factor'], loft_95['improvement_pct'],
-#                 marker=marker_95, linewidth=2.5, markersize=8,
-#                 color=colors[idx], linestyle=ls_95,
-#                 label=f'£{budget_int}M (Loft 0.95 ●)', alpha=0.9)
-
-#         # Loft 0.65
-#         loft_65 = df[(df['budget_m'] == budget) & (df['loft_prob'] == 0.65)].sort_values('equity_factor')
-#         marker_65, ls_65 = get_loft_style(0.65)
-#         ax.plot(loft_65['equity_factor'], loft_65['improvement_pct'],
-#                 marker=marker_65, linewidth=2.5, markersize=8,
-#                 color=colors[idx], linestyle=ls_65,
-#                 label=f'£{budget_int}M (Loft 0.65 ▲)', alpha=0.9)
-
-#     ax.set_xlabel(EQUITY_LABEL, fontsize=14, fontweight='bold')
-#     ax.set_ylabel(CO2_LABEL_PCT, fontsize=14, fontweight='bold')
-#     ax.legend(fontsize=10, ncol=2, loc='best', framealpha=0.95)
-#     ax.grid(True, alpha=0.3)
-#     ax.axhline(y=0, color='red', linestyle='--', alpha=0.3, linewidth=2)
-#     ax.tick_params(labelsize=12)
-
-#     plt.tight_layout()
-#     filepath = os.path.join(output_dir, 'loft_comparison.png')
-#     plt.savefig(filepath, dpi=300, bbox_inches='tight')
-#     plt.close()
-#     print(f"✓ Saved: {filepath}")
-
-
+ 
 
 def create_loft_comparison(df, output_dir):
     """Create loft probability comparison plot with unified symbols in legend."""
@@ -355,7 +315,6 @@ def create_pareto_frontier(df, output_dir, annotated=True):
     plt.close()
     print(f"✓ Saved: {filepath}")
 
-
 def create_cost_benefit_analysis(df, output_dir):
     """Create cost-benefit analysis scatter plot with CO2 in kilotonnes."""
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -367,7 +326,13 @@ def create_cost_benefit_analysis(df, output_dir):
     colors_rg = ['red', 'yellow', 'green']
     cmap_rg = LinearSegmentedColormap.from_list('red_green', colors_rg, N=100)
 
-    for loft in sorted(df['loft_prob'].unique()):
+    # Create offsets for each loft_prob to improve readability
+    unique_lofts = sorted(df['loft_prob'].unique())
+    n_lofts = len(unique_lofts)
+    offset_range = (df['budget_m'].max() - df['budget_m'].min()) * 0.02  # 2% of x-range
+    offsets = {loft: (i - (n_lofts - 1) / 2) * offset_range for i, loft in enumerate(unique_lofts)}
+
+    for loft in unique_lofts:
         subset = df_kt[df_kt['loft_prob'] == loft].copy()
         marker, _ = get_loft_style(loft)
         label = f'Loft Prob: {loft}'
@@ -375,10 +340,13 @@ def create_cost_benefit_analysis(df, output_dir):
         equity_norm = (subset['equity_factor'] - df['equity_factor'].min()) / \
                       (df['equity_factor'].max() - df['equity_factor'].min())
 
-        scatter = ax.scatter(subset['budget_m'], subset['co2_improvement_kt'],
+        # Apply horizontal offset
+        x_values = subset['budget_m'] + offsets[loft]
+
+        scatter = ax.scatter(x_values, subset['co2_improvement_kt'],
                              c=equity_norm, s=200, alpha=0.6,
                              cmap=cmap_rg, marker=marker, edgecolors='black',
-                              linewidth=1,
+                             linewidth=1,
                              label=label, vmin=0, vmax=1)
 
     cbar = plt.colorbar(scatter, ax=ax)
@@ -406,6 +374,110 @@ def create_cost_benefit_analysis(df, output_dir):
     print(f"✓ Saved: {filepath}")
 
 
+# def create_cost_benefit_analysis(df, output_dir):
+#     """Create cost-benefit analysis scatter plot with CO2 in kilotonnes."""
+#     fig, ax = plt.subplots(figsize=(10, 6))
+
+#     # Convert to kilotonnes
+#     df_kt = df.copy()
+#     df_kt['co2_improvement_kt'] = df_kt['co2_improvement'] / 1000
+
+#     colors_rg = ['red', 'yellow', 'green']
+#     cmap_rg = LinearSegmentedColormap.from_list('red_green', colors_rg, N=100)
+
+#     for loft in sorted(df['loft_prob'].unique()):
+#         subset = df_kt[df_kt['loft_prob'] == loft].copy()
+#         marker, _ = get_loft_style(loft)
+#         label = f'Loft Prob: {loft}'
+
+#         equity_norm = (subset['equity_factor'] - df['equity_factor'].min()) / \
+#                       (df['equity_factor'].max() - df['equity_factor'].min())
+
+#         scatter = ax.scatter(subset['budget_m'], subset['co2_improvement_kt'],
+#                              c=equity_norm, s=200, alpha=0.6,
+#                              cmap=cmap_rg, marker=marker, edgecolors='black',
+#                               linewidth=1,
+#                              label=label, vmin=0, vmax=1)
+
+#     cbar = plt.colorbar(scatter, ax=ax)
+#     cbar.set_label(f'{EQUITY_LABEL}', fontsize=12, fontweight='bold')
+#     equity_values = sorted(df['equity_factor'].unique())
+#     equity_norm_ticks = (np.array(equity_values) - df['equity_factor'].min()) / \
+#                         (df['equity_factor'].max() - df['equity_factor'].min())
+#     cbar.set_ticks(equity_norm_ticks)
+#     cbar.set_ticklabels([f'{v:.1f}' for v in equity_values])
+#     cbar.ax.tick_params(labelsize=11)
+
+#     ax.set_xlabel(BUDGET_LABEL, fontsize=14, fontweight='bold')
+#     ax.set_ylabel(f'Total {CO2_LABEL_KT}', fontsize=14, fontweight='bold')
+#     ax.legend(loc='best', fontsize=12)
+#     ax.grid(True, alpha=0.3)
+#     ax.tick_params(labelsize=12)
+
+#     # Format x-axis as integers
+#     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{int(x)}'))
+
+#     plt.tight_layout()
+#     filepath = os.path.join(output_dir, 'cost_benefit_analysis.png')
+#     plt.savefig(filepath, dpi=300, bbox_inches='tight')
+#     plt.close()
+#     print(f"✓ Saved: {filepath}")
+
+
+def create_cost_benefit_analysis_pct(df, output_dir):
+    """Create cost-benefit analysis scatter plot with improvement percentage."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    colors_rg = ['red', 'yellow', 'green']
+    cmap_rg = LinearSegmentedColormap.from_list('red_green', colors_rg, N=100)
+
+    # Create offsets for each loft_prob to improve readability
+    unique_lofts = sorted(df['loft_prob'].unique())
+    n_lofts = len(unique_lofts)
+    offset_range = (df['budget_m'].max() - df['budget_m'].min()) * 0.02  # 2% of x-range
+    offsets = {loft: (i - (n_lofts - 1) / 2) * offset_range for i, loft in enumerate(unique_lofts)}
+
+    for loft in unique_lofts:
+        subset = df[df['loft_prob'] == loft].copy()
+        marker, _ = get_loft_style(loft)
+        label = f'Loft Prob: {loft}'
+
+        equity_norm = (subset['equity_factor'] - df['equity_factor'].min()) / \
+                      (df['equity_factor'].max() - df['equity_factor'].min())
+
+        # Apply horizontal offset
+        x_values = subset['budget_m'] + offsets[loft]
+
+        scatter = ax.scatter(x_values, subset['improvement_pct'],
+                             c=equity_norm, s=200, alpha=0.6,
+                             cmap=cmap_rg, marker=marker, edgecolors='black',
+                             linewidth=1,
+                             label=label, vmin=0, vmax=1)
+
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label(f'{EQUITY_LABEL}', fontsize=12, fontweight='bold')
+    equity_values = sorted(df['equity_factor'].unique())
+    equity_norm_ticks = (np.array(equity_values) - df['equity_factor'].min()) / \
+                        (df['equity_factor'].max() - df['equity_factor'].min())
+    cbar.set_ticks(equity_norm_ticks)
+    cbar.set_ticklabels([f'{v:.1f}' for v in equity_values])
+    cbar.ax.tick_params(labelsize=11)
+    ax.axhline(y=0, color='white', linestyle='-', alpha=0, linewidth=0.1)
+    ax.set_xlabel(BUDGET_LABEL, fontsize=14, fontweight='bold')
+    ax.set_ylabel('CO₂ Improvement (%)', fontsize=14, fontweight='bold')
+    ax.legend(loc='best', fontsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.tick_params(labelsize=12)
+
+    # Format x-axis as integers
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{int(x)}'))
+
+    plt.tight_layout()
+    filepath = os.path.join(output_dir, 'cost_benefit_analysis_pct.png')
+    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"✓ Saved: {filepath}")
+
 def main():
     # =========================================================================
     # CONFIGURATION
@@ -416,7 +488,7 @@ def main():
     OUTPUT_DIR = '/Volumes/T9/2025_10_RetrofitModel/4_gredy_epc/meta_summary'
 
     greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', SETTING_NAME)
-    budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
+    budgets = [1_000_000,25_000_000, 50_000_000, 100_000_000, 200_000_000, 500_000_000]
     loft_probs = [0.95, 0.65]
     equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4]
 
@@ -467,7 +539,7 @@ def main():
 
     # Figure 9: Cost-benefit analysis
     create_cost_benefit_analysis(df, OUTPUT_DIR)
-
+    create_cost_benefit_analysis_pct(df, OUTPUT_DIR)
     # =========================================================================
     # SUMMARY
     # =========================================================================

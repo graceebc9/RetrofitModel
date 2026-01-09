@@ -85,15 +85,19 @@ def main():
     if running_locally:
         BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
         
-        
         setting_name = 'lcoal'
         # run_greedy_runs=True  
         # budgets = [1_000_000, 10_000_000, 100_000_000]
         budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000] 
         budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000,  100_000_000]
+        budgets = [ 1_000_000, 25_000_000, 50_000_000, 80_000_000,  100_000_000, 200_000_000]
+        # budgets= [200_000_000]
+        budgets = [ 500_000_000]
+        # budgets=[25_000_000]
         # budgets = [  50_000_000,80_000_000]
         loft_probs = [0.95, 0.65 ]
-        # loft_probs = [0.65, 0.95]
+        # loft_probs = [0.0, 1.0]
+        
         
         
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2,1.4 ]
@@ -147,13 +151,7 @@ def main():
             print(number ) 
         except:
             number= None 
-    
 
-    # YEARS = 5
-    # N_SIMULATIONS = 5000
- 
-    # GAS_CARBON_FACTOR=0.18      
-    # ELEC_CARBON_FACTOR=0.19338  
     
     input_files = glob.glob(INPUT_FILES_PATH)
     number=None
@@ -166,6 +164,7 @@ def main():
     print("\n" + "="*80)
     print("GREEDY ALGORITHM ANALYSIS - UPDATED FOR NEW COLUMN FORMAT")
     print("="*80)
+
     if run_greedy_runs: 
         for prob_loft in loft_probs:
             files_to_use =  [x for x in input_files if f'loft_{prob_loft}' in x ]
@@ -178,14 +177,68 @@ def main():
                 res_df = load_data_simple(files_to_use, number )
             else:
                 res_df = load_data_simple(files_to_use )
-            print('res dsf shap0e: ' )
+            res_df=res_df.drop_duplicates()
+            print('res df shape: ' )
             print(res_df.shape)
             print('num upns')
             print(len(res_df.upn.unique() )  ) 
             print("\nLoading personas...")
             personas = load_personas( ) 
+            personas= personas.drop_duplicates()
+
+            # === VALIDATION CHECKS ===
+            print("\n=== PRE-MERGE VALIDATION ===")
+            print(f"res_df rows: {len(res_df)}")
+            print(f"personas rows: {len(personas)}")
+
+            # Check for duplicate upn in res_df
+            res_dupes = res_df['upn'].duplicated().sum()
+            print(f"\nDuplicate upn in resdf: {res_dupes}")
+            if res_dupes > 0:
+                print("Examples of duplicate upns in resdf :")
+                dupe_postcodes = res_df[res_df['upn'].duplicated(keep=False)]['upn'].value_counts().head()
+                print(dupe_postcodes)
+
+            if res_dupes > 0:
+                dupe_counts = res_df[res_df['upn'].duplicated(keep=False)]['upn'].value_counts()
+                print(f"\nUPNs with most duplicates:")
+                print(dupe_counts.head())
+                
+                max_dupes_per_upn = dupe_counts.max()
+                print(f"\nMax duplicates for a single UPN: {max_dupes_per_upn}")
+                
+                if res_dupes < 50:
+                    res_df = res_df.drop_duplicates(subset='upn', keep='first')
+                    print(f"✓ Deduplicated - kept first occurrence")
+
+            # Check for duplicate postcodes in personas
+            personas_dupes = personas['postcode'].duplicated().sum()
+            print(f"\nDuplicate postcodes in personas: {personas_dupes}")
+            if personas_dupes > 0:
+                print("Examples of duplicate postcodes in personas :")
+                dupe_postcodes = personas[personas['postcode'].duplicated(keep=False)]['postcode'].value_counts().head()
+                print(dupe_postcodes)
+
+            # Check overlap
+            common_postcodes = set(res_df['postcode']) & set(personas['postcode'])
+            print(f"\nPostcodes in common: {len(common_postcodes)}")
+            print(f"Unique postcodes in res_df: {res_df['postcode'].nunique()}")
+            print(f"Unique postcodes in personas: {personas['postcode'].nunique()}")
+
+
             df = res_df.merge(personas, on='postcode', how='inner')
             print(f"After persona merge: {len(df)} rows")
+
+            print("\n=== POST-MERGE VALIDATION ===")
+            print(f"After persona merge: {len(df)} rows")
+            print(f"Row increase: {len(df) - len(res_df)} (+{((len(df) / len(res_df)) - 1) * 100:.1f}%)")
+            print(f"Unique UPNs after merge: {df['upn'].nunique()}")
+
+            # Check if any UPNs got duplicated
+            if df['upn'].nunique() < len(df):
+                print(f"\n⚠️ WARNING: UPNs were duplicated! {len(df) - df['upn'].nunique()} duplicate rows")
+                print("UPNs with multiple rows:")
+                print(df['upn'].value_counts().head(10))
     
             print("\nFiltering data...")
             # Filter in steps to avoid large boolean array
@@ -320,9 +373,10 @@ def main():
     print("\n" + "="*80)
     print("Start post process ") 
     print("="*80)
-    post_proc_meta=True  
-    post_proc_epc=False 
-
+    post_proc_meta=False  
+    post_proc_epc=True  
+    meta_epc=False  
+    print('Part 3 ')
     if post_proc_meta: 
         for LOFT_VALUE in loft_probs:
             if number:
@@ -332,7 +386,7 @@ def main():
 
             # Ensure output directory exists
             os.makedirs(OUTPUT_PATH, exist_ok=True)
-            post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH)
+            post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH, RISK_PENALTY_SIGMA=RISK_PENALTY_SIGMA)
         
     if post_proc_epc:
         if epc_run:
@@ -347,5 +401,16 @@ def main():
     print("ALL ANALYSES COMPLETE!")
     print("="*80)
 
-if __name__ == "__main__":
-    main()
+    from src.metaGreedyVis import run_full_analysis_pipeline,  aggregate_scenario_results , plot_meta_comparisons , plot_targeting_heatmap
+    
+    if meta_epc:
+        meta_results = []
+        # meta_df = aggregate_scenario_results(greedy_runs_folder, budgets, loft_probs, equity_factors)
+        op_dir = f'{BASE_DIR}/meta_epc' 
+        # plot_meta_comparisons(meta_df, output_dir=op_dir)
+        print('starting analysis')
+    
+    # run_full_analysis_pipeline(greedy_runs_folder, budgets, loft_probs, equity_factors)
+
+
+main() 
