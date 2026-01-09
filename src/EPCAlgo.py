@@ -10,6 +10,7 @@ from typing import Tuple
 
 
 allowed_personas = ['lower middle', 'struggling',  'deprived']
+allowed_personas = ['high_deprived']
 
 def select_epc_algo(df_knapsack: pd.DataFrame, 
                          budget: float, 
@@ -34,6 +35,7 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
     df_epc_filtered = df_knapsack[df_knapsack[epc_col].isin(target_epcs)]
     if df_epc_filtered.empty:
         print('None in epc range')
+        logger.info('None in EPC range')
         raise Exception('None in epc range')
     
     # Filter 2: Personas (ensure input personas are stripped of trailing spaces just in case)
@@ -50,6 +52,7 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
              logger.warning(f"⚠️ ALL candidates filtered out! Check EPC values (found: {df_knapsack[epc_col].unique()}) and Personas.")
 
     if df_filtered.empty:
+        logger.info('Filtered df is empty')
         return pd.DataFrame(), budget
 
     df_filtered = df_knapsack[
@@ -65,7 +68,7 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
     
     # Get unique UPRNs and shuffle them randomly
     unique_uprns = df_filtered[uprn_col].unique()
-    unique_uprns = unique_uprns.to_numpy() 
+    # unique_uprns = unique_uprns.to_numpy() 
     np.random.shuffle(unique_uprns)
     
     selected_rows = []
@@ -112,13 +115,13 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
     if selected_rows:
         selected_df = pd.DataFrame(selected_rows)
     else:
+        print('erorr there are no rows? ')
+        logger.info('There are no rows? ')
         selected_df = pd.DataFrame()
     
     # Log the results
     if logger:
         if not selected_df.empty:
-            # This 'total_ton_co2_saved' column name is hardcoded based on
-            # the context of the main script (RANK_COL_CO2_SAVED)
             total_co2 = selected_df[carbon_col].sum()
             
             logger.info("\n✅ Selection Complete:")
