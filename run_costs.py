@@ -32,7 +32,7 @@ except ImportError:
 TODAY = datetime.datetime.now().strftime("%Y_%m_%d")
 
 is_hpc = is_running_on_hpc()
-is_epc = False   
+is_epc = False    
 
 OUTPUT_DIR = f'1_summary_results_{TODAY}/'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -56,7 +56,7 @@ SCENARIO_DISPLAY_NAMES = {
     'heat_pump_only': 'Heat Pump Only',
 }
 
-# --- Path Configuration ---
+# --- Path config ---
 if is_hpc:
     if not is_epc:
         LOG_FILE_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/*csv'
@@ -75,14 +75,15 @@ METRICS_INFO = {
     'Cost':   {'pattern': '{sc}_cost_{sc}_{stat}', 'ylabel': 'Cost (£)'}
 }
 
+# UPDATED: Labels now reflect Millions and kTONS
 VARIANCE_METRICS = {
     'Total_Cost': {
         'col_pattern': '{sc}_cost_{sc}_p50', 
-        'ylabel': 'Total Cost (£)'
+        'ylabel': 'Total Cost (£M)'
     },
     'Total_Carbon_Removed': {
         'col_pattern': '{sc}_total_energy_abs_co2_ton_samples_{sc}_p50', 
-        'ylabel': 'Total Carbon Removed (Tons)'
+        'ylabel': 'Total Carbon Removed (kTons)'
     }
 }
 
@@ -246,6 +247,14 @@ def generate_variance_plots(variance_records, output_dir):
         df = pd.DataFrame(records)
         df_total = df.groupby(['scenario', 'epistemic_run_id'])['value'].sum().reset_index()
         
+        # --- UNIT CONVERSION LOGIC ---
+        if v_name == 'Total_Cost':
+            # Convert to Millions
+            df_total['value'] = df_total['value'] / 1_000_000
+        elif v_name == 'Total_Carbon_Removed':
+            # Convert to KTONS (Thousands of Tons)
+            df_total['value'] = df_total['value'] / 1_000
+
         # Add clean names for the CSV export
         df_total['Scenario_Display'] = df_total['scenario'].map(SCENARIO_DISPLAY_NAMES).fillna(df_total['scenario'])
 
@@ -275,7 +284,8 @@ def generate_variance_plots(variance_records, output_dir):
         plt.xticks(ticks=range(len(SCENARIOS)), labels=clean_labels, rotation=45, ha='right')
 
         ax = plt.gca()
-        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x):,}'))
+        # Changed formatter to show decimal places since we are now in Millions/KTONS
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:,.0f}'))
         
         plt.ylim(bottom=0) 
         plt.grid(True, axis='y', linestyle='--', alpha=0.6)
@@ -297,6 +307,14 @@ def generate_variance_bar_plots(variance_records, output_dir):
             
         df = pd.DataFrame(records)
         df_total = df.groupby(['scenario', 'epistemic_run_id'])['value'].sum().reset_index()
+
+        # --- UNIT CONVERSION LOGIC ---
+        if v_name == 'Total_Cost':
+            # Convert to Millions
+            df_total['value'] = df_total['value'] / 1_000_000
+        elif v_name == 'Total_Carbon_Removed':
+            # Convert to KTONS (Thousands of Tons)
+            df_total['value'] = df_total['value'] / 1_000
         
         # Added 'count'
         summary = df_total.groupby('scenario')['value'].agg(['mean', 'std', 'count']).reindex(SCENARIOS)
@@ -338,7 +356,8 @@ def generate_variance_bar_plots(variance_records, output_dir):
         plt.xticks(ticks=range(len(scenarios_present)), labels=clean_labels, rotation=45, ha='right')
         
         ax = plt.gca()
-        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x):,}'))
+        # Changed formatter to show decimal places since we are now in Millions/KTONS
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:,.2f}'))
         
         plt.grid(axis='y', linestyle='--', alpha=0.5)
         plt.tight_layout()

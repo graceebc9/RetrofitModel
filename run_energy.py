@@ -36,7 +36,7 @@ CO2_METRIC_PATTERNS = {
     }
 }
 
-OUTPUT_BASE = '3_stock_results/epistemic'
+OUTPUT_BASE = '3_stock_results/epistemic_full'
 os.makedirs(OUTPUT_BASE, exist_ok=True)
 
 # Determine environment and paths
@@ -204,7 +204,7 @@ def plot_stats_by_decile(df, scenario_name, metric_name, y_label, output_path):
 
     ax.set_xlabel('Gas Usage Decile')
     ax.set_ylabel(f'Median {y_label}')
-    ax.set_title(f'{clean_name} - {metric_name}')
+    
     ax.set_xticks(x_pos)
     ax.set_xticklabels([int(d) for d in deciles])
     
@@ -251,7 +251,7 @@ def plot_stats_by_premise_type(df, scenario_name, metric_name, y_label, output_p
 
     ax.set_xlabel('Premise Type')
     ax.set_ylabel(f'Median {y_label}')
-    ax.set_title(f'{clean_name} - {metric_name}')
+    
     ax.set_xticks(x_pos)
     ax.set_xticklabels(present_types, rotation=45, ha='right')
     ax.margins(y=0.15)
@@ -283,7 +283,6 @@ def safe_load(filepath, headers=None):
 def run_pipeline():
     print(f"Scanning: {LOG_DIR}")
     files = glob.glob(LOG_DIR)
-    
     print(f"Found {len(files)} files.")
     
     headers = None

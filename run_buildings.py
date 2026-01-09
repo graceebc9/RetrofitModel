@@ -221,10 +221,15 @@ def compute_grouped_stats(raw_data_dict, group_indices, col_names):
     return pd.DataFrame(rows)
 
 # ==============================================================================
-# 7. PLOTTING FUNCTIONS (unchanged)
+# 7. PLOTTING FUNCTIONS (with skip-if-exists check)
 # ==============================================================================
 
 def plot_metric_by_decile(df, scenario_name, metric_label, output_path):
+    # Skip if plot already exists
+    if os.path.exists(output_path):
+        print(f"  [SKIP] Plot already exists: {os.path.basename(output_path)}")
+        return
+    
     if df.empty:
         return
 
@@ -259,9 +264,15 @@ def plot_metric_by_decile(df, scenario_name, metric_label, output_path):
     plt.tight_layout()
     plt.savefig(output_path, dpi=300)
     plt.close()
+    print(f"  Saved: {os.path.basename(output_path)}")
 
 
 def plot_metric_by_premise(df, scenario_name, metric_label, output_path):
+    # Skip if plot already exists
+    if os.path.exists(output_path):
+        print(f"  [SKIP] Plot already exists: {os.path.basename(output_path)}")
+        return
+    
     if df.empty:
         return
 
@@ -296,10 +307,19 @@ def plot_metric_by_premise(df, scenario_name, metric_label, output_path):
     plt.tight_layout()
     plt.savefig(output_path, dpi=300)
     plt.close()
+    print(f"  Saved: {os.path.basename(output_path)}")
 
 
 def plot_co2_compare_decile_x(stats_dict, scenario_name, output_base):
     """X-Axis: Gas Decile. Series: Net CO2, Gas CO2, Elec CO2."""
+    out_name = f'{scenario_name}_COMPARE_X_Decile.png'
+    output_path = os.path.join(output_base, out_name)
+    
+    # Skip if plot already exists
+    if os.path.exists(output_path):
+        print(f"  [SKIP] Plot already exists: {out_name}")
+        return
+    
     metrics_cfg = {
         'net_co2': {'label': 'Net CO2', 'color': 'black', 'style': '-'},
         'gas_co2': {'label': 'Gas CO2', 'color': 'blue', 'style': '--'},
@@ -337,15 +357,22 @@ def plot_co2_compare_decile_x(stats_dict, scenario_name, output_base):
 
         ax.grid(True, alpha=0.3)
 
-        out_name = f'{scenario_name}_COMPARE_X_Decile.png'
         plt.tight_layout()
-        plt.savefig(os.path.join(output_base, out_name), dpi=300)
-        print(f"Saved: {out_name}")
+        plt.savefig(output_path, dpi=300)
+        print(f"  Saved: {out_name}")
     plt.close()
 
 
 def plot_co2_compare_premise_x(stats_dict, scenario_name, output_base):
     """X-Axis: Premise Type. Series: Net CO2, Gas CO2, Elec CO2."""
+    out_name = f'{scenario_name}_COMPARE_X_Premise.png'
+    output_path = os.path.join(output_base, out_name)
+    
+    # Skip if plot already exists
+    if os.path.exists(output_path):
+        print(f"  [SKIP] Plot already exists: {out_name}")
+        return
+    
     metrics_cfg = {
         'net_co2': {'label': 'Net CO2', 'color': 'black', 'style': '-'},
         'gas_co2': {'label': 'Gas CO2', 'color': 'blue', 'style': '--'},
@@ -387,10 +414,9 @@ def plot_co2_compare_premise_x(stats_dict, scenario_name, output_base):
         ax.grid(True, alpha=0.3)
         ax.margins(x=0.05)
 
-        out_name = f'{scenario_name}_COMPARE_X_Premise.png'
         plt.tight_layout()
-        plt.savefig(os.path.join(output_base, out_name), dpi=300)
-        print(f"Saved: {out_name}")
+        plt.savefig(output_path, dpi=300)
+        print(f"  Saved: {out_name}")
     plt.close()
 
 # ==============================================================================
