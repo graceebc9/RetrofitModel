@@ -1,15 +1,20 @@
-"""
-Module: sensitivity_test_simple.py
 
-Simplified sensitivity analysis for epistemic factors.
-- Loads first batch only
-- Tests 3 scenarios: wall_installation, loft_installation, heat_pump_only
-- Auto-detects numeric output columns for variance comparison
+"""
+Module: sensitivity_test_fixed.py
+
+Corrected sensitivity analysis for epistemic factors.
+
+KEY FIX: Uses the SAME baseline LHS sample for all runs, only overwriting 
+the fixed factor for each test. This isolates the effect of each factor properly.
+
+Previous bug: Generated new LHS samples for each run, making comparisons invalid.
 
 Usage:
-    python sensitivity_test_simple.py
+    python sensitivity_test_fixed.py
+    python sensitivity_test_fixed.py --all
+    python sensitivity_test_fixed.py --n-postcodes 5
 """
-
+import argparse
 import os
 import sys
 import logging
@@ -31,7 +36,7 @@ logger = logging.getLogger(__name__)
 # ========================================
 
 # Test configuration
-N_EPISTEMIC_RUNS = 5
+N_EPISTEMIC_RUNS = 20
 RANDOM_SEED_OUTER = 42
 SCENARIOS = ['wall_installation', 'loft_installation', 'heat_pump_only']
 
@@ -51,29 +56,24 @@ TEST_ONSUD_PATH = 'batches/NE/onsud_10.csv'
 # Output directory
 OUTPUT_DIR = '5_sensitivity_results'
 
-# ========================================
-# IMPORTS (after path setup)
-# ========================================
+ 
+# Key metrics for sensitivity ranking
+KEY_METRICS = [
+    # Cost metrics
+    'wall_installation_cost_wall_installation_mean',
+    'loft_installation_cost_loft_installation_mean',
+    'heat_pump_only_cost_heat_pump_only_mean',
+    # Energy/CO2 metrics
+    'wall_installation_total_energy_abs_co2_ton_samples_wall_installation_mean',
+    'loft_installation_total_energy_abs_co2_ton_samples_loft_installation_mean',
+    'heat_pump_only_total_energy_abs_co2_ton_samples_heat_pump_only_mean',
+    # Gas percentage savings (if available)
+    'wall_installation_gas_perc_wall_installation_mean',
+    'loft_installation_gas_perc_loft_installation_mean',
+    'heat_pump_only_gas_perc_heat_pump_only_mean',
+]
 
-# Add project root to path if needed
-root_dir = Path(__file__).resolve().parent
-sys.path.insert(0, str(root_dir))
-
-from src.RetrofitEpistemic import generate_epistemic_scenarios_lhs, FACTOR_DEFAULTS
-from src.RetrofitScenarioGenerator2DMC import RetrofitScenarioGenerator2DMC
-from src.RetrofitModel2D import RetrofitModel2D
-from src.RetrofitConfig import RetrofitConfig
-from src.postcode_utils import load_ids_from_file, load_onsud_data, find_data_pc_joint
-from src.conservation import load_conservation_shapefile
-from src.RetrofitDownscale import load_scaled_gas_elec
-from src.pre_process_buildings import pre_process_building_data
-from src.retrofit_calc2D import get_conservation_area
-
-
-# ========================================
-# FACTOR DEFAULTS (central values)
-# ========================================
-
+# Central/default values for each factor
 FACTOR_DEFAULTS = {
     'time_scale_bias': 1.0,
     'decile_misclassification_bias': 0.0,
@@ -90,21 +90,114 @@ FACTOR_DEFAULTS = {
     'area_based_choice': 'mode',
 }
 
+# ========================================
+# IMPORTS (after config)
+# ========================================
+
+root_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(root_dir))
+
+from src.RetrofitEpistemic import generate_epistemic_scenarios_lhs
+from src.RetrofitScenarioGenerator2DMC import RetrofitScenarioGenerator2DMC
+from src.RetrofitModel2D import RetrofitModel2D
+from src.RetrofitConfig import RetrofitConfig
+from src.postcode_utils import load_ids_from_file, load_onsud_data, find_data_pc_joint
+from src.conservation import load_conservation_shapefile
+from src.RetrofitDownscale import load_scaled_gas_elec
+from src.pre_process_buildings import pre_process_building_data
+from src.retrofit_calc2D import get_conservation_area
+
 
 # ========================================
-# HELPER FUNCTIONS
+# ARGUMENT PARSING
 # ========================================
 
-def create_fixed_sampler(fixed_factors: Dict[str, Any]) -> Callable:
-    """Create sampler with specific factors fixed."""
-    def fixed_sampler(n_runs: int) -> pd.DataFrame:
-        return generate_epistemic_scenarios_lhs(n_runs, fixed_factors=fixed_factors)
-    return fixed_sampler
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Epistemic factor sensitivity analysis (corrected)')
+    parser.add_argument(
+        '--batch', 
+        type=str, 
+        default='batches/NE/batch_10.txt',
+        help='Path to batch file (e.g., batches/NE/batch_10.txt)'
+    )
+    parser.add_argument(
+        '--output', 
+        type=str, 
+        default='sensitivity_results',
+        help='Base output directory for results'
+    )
+    parser.add_argument(
+        '--n-postcodes',
+        type=int,
+        default=-1,
+        help='Number of postcodes to process from batch (default: 1, use -1 for all)'
+    )
+    parser.add_argument(
+        '--all',
+        action='store_true',
+        help='Process all postcodes in batch (equivalent to --n-postcodes -1)'
+    )
+    parser.add_argument(
+        '--n-epistemic',
+        type=int,
+        default=3,
+        help='Number of epistemic runs (default: 5)'
+    )
+    args = parser.parse_args()
+    
+    # Handle --all flag
+    if args.all:
+        args.n_postcodes = -1
+    
+    return args
 
 
-def load_test_data():
+# ========================================
+# LOGGING SETUP
+# ========================================
+
+def setup_logging_for_batch(output_dir: str, batch_label: str, timestamp: str) -> logging.Logger:
+    """Setup logging to both console and file."""
+    
+    logger = logging.getLogger(f'sensitivity_test_{batch_label}')
+    logger.setLevel(logging.DEBUG)
+    
+    # Clear existing handlers
+    logger.handlers = []
+    
+    # Console handler (INFO level)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(console_format)
+    logger.addHandler(console_handler)
+    
+    # File handler (DEBUG level)
+    log_file = os.path.join(output_dir, f'sensitivity_log_{batch_label}_{timestamp}.log')
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)
+    file_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
+    file_handler.setFormatter(file_format)
+    logger.addHandler(file_handler)
+    
+    return logger
+
+
+# ========================================
+# DATA LOADING
+# ========================================
+
+def load_test_data(batch_path: str, n_postcodes: int, logger: logging.Logger):
     """Load all required data for testing."""
-    logger.info("Loading test data...")
+    logger.info(f"Loading test data for batch: {batch_path}")
+    
+    # Derive ONSUD path from batch path
+    batch_dir = os.path.dirname(batch_path)
+    batch_num = os.path.basename(batch_path).replace('batch_', '').replace('.txt', '')
+    onsud_path = os.path.join(batch_dir, f'onsud_{batch_num}.csv')
+    
+    logger.info(f"Using ONSUD path: {onsud_path}")
     
     # Conservation areas
     conservation_data = load_conservation_shapefile(
@@ -112,7 +205,7 @@ def load_test_data():
     )
     
     # ONSUD data
-    onsud_data = load_onsud_data(TEST_ONSUD_PATH, PC_SHP_PATH)
+    onsud_data = load_onsud_data(onsud_path, PC_SHP_PATH)
     
     # Scaled gas/elec
     scaled_gas_elec_data = load_scaled_gas_elec()
@@ -120,9 +213,13 @@ def load_test_data():
     # Gas deciles
     gas_deciles = pd.read_csv(f'{root_dir}/src/global_avs/neb_unfil_final_gas_deciles.csv')
     
-    # Postcodes - just first one
-    postcodes = load_ids_from_file(TEST_BATCH_PATH) 
-    logger.info(f"Testing with postcode: {postcodes}")
+    # Postcodes
+    all_postcodes = load_ids_from_file(batch_path)
+    if n_postcodes == -1:
+        postcodes = all_postcodes
+    else:
+        postcodes = all_postcodes[:n_postcodes]
+    logger.info(f"Testing with {len(postcodes)} postcode(s): {postcodes[:5]}{'...' if len(postcodes) > 5 else ''}")
     
     return {
         'conservation_data': conservation_data,
@@ -130,10 +227,15 @@ def load_test_data():
         'scaled_gas_elec_data': scaled_gas_elec_data,
         'gas_deciles': gas_deciles,
         'postcodes': postcodes,
+        'batch_path': batch_path,
     }
 
 
-def prepare_building_data(pc: str, data: dict) -> Optional[pd.DataFrame]:
+# ========================================
+# BUILDING DATA PREPARATION
+# ========================================
+
+def prepare_building_data(pc: str, data: dict, logger: logging.Logger) -> Optional[pd.DataFrame]:
     """Prepare building data for a single postcode."""
     
     energy_columns = [
@@ -173,20 +275,45 @@ def prepare_building_data(pc: str, data: dict) -> Optional[pd.DataFrame]:
             logger.warning(f"Missing energy column: {col}")
             return None
     
+    building_data['postcode'] = pc
     return building_data
 
 
-def run_model_with_sampler(
+# ========================================
+# MODEL RUNNER (with fixed epistemic df)
+# ========================================
+
+def create_sampler_from_df(epistemic_df: pd.DataFrame) -> Callable:
+    """
+    Create a sampler function that returns a pre-defined DataFrame.
+    This ensures the SAME epistemic scenarios are used across runs.
+    """
+    def fixed_sampler(n_runs: int) -> pd.DataFrame:
+        # Ignore n_runs, return the pre-defined df
+        return epistemic_df.copy()
+    return fixed_sampler
+
+
+def run_model_with_epistemic_df(
     building_data: pd.DataFrame,
     retrofit_config: RetrofitConfig,
-    epistemic_sampler: Callable,
+    epistemic_df: pd.DataFrame,
+    n_epistemic_runs: int,
+    logger: logging.Logger,
     region: str = 'NE',
 ) -> Optional[pd.DataFrame]:
-    """Run model with a specific epistemic sampler."""
+    """
+    Run model with a specific epistemic DataFrame.
+    
+    KEY: Uses a pre-defined epistemic_df instead of generating new samples.
+    """
+    
+    # Create sampler that returns the fixed df
+    fixed_sampler = create_sampler_from_df(epistemic_df)
     
     scenario_generator = RetrofitScenarioGenerator2DMC(
-        n_epistemic_runs=N_EPISTEMIC_RUNS,
-        epistemic_sampler=epistemic_sampler
+        n_epistemic_runs=n_epistemic_runs,
+        epistemic_sampler=fixed_sampler
     )
     
     RetrofitModel2D.retrofit_config = retrofit_config
@@ -206,33 +333,36 @@ def run_model_with_sampler(
     return results
 
 
-def identify_output_metrics(df: pd.DataFrame) -> List[str]:
+# ========================================
+# METRICS
+# ========================================
+
+def identify_output_metrics(df: pd.DataFrame, logger: logging.Logger) -> List[str]:
     """Identify key output metrics based on known column patterns."""
-    
-    # Known metric patterns:
-    # - {sc}_capex_per_net_ton_co2_{sc}_{stat}
-    # - {sc}_total_energy_abs_co2_ton_samples_{sc}_{stat}
-    # - {sc}_cost_{sc}_{stat}
     
     metric_cols = []
     
     for scenario in SCENARIOS:
-        # Focus on 'mean' stats for variance comparison
         patterns = [
-            f'{scenario}_capex_per_net_ton_co2_{scenario}_mean',
-            f'{scenario}_total_energy_abs_co2_ton_samples_{scenario}_mean',
+            # Cost
             f'{scenario}_cost_{scenario}_mean',
-            # Also include std to see uncertainty propagation
-            f'{scenario}_capex_per_net_ton_co2_{scenario}_std',
-            f'{scenario}_total_energy_abs_co2_ton_samples_{scenario}_std',
             f'{scenario}_cost_{scenario}_std',
+            # Energy/CO2
+            f'{scenario}_total_energy_abs_co2_ton_samples_{scenario}_mean',
+            f'{scenario}_total_energy_abs_co2_ton_samples_{scenario}_std',
+            # CAPEX per tCO2
+            f'{scenario}_capex_per_net_ton_co2_{scenario}_mean',
+            f'{scenario}_capex_per_net_ton_co2_{scenario}_std',
+            # Gas percentage savings
+            f'{scenario}_gas_perc_{scenario}_mean',
+            f'{scenario}_gas_perc_{scenario}_std',
         ]
         
         for pattern in patterns:
             if pattern in df.columns:
                 metric_cols.append(pattern)
     
-    # If no matches, fall back to auto-detection
+    # Fallback to auto-detection
     if not metric_cols:
         logger.warning("No known metric patterns found, falling back to auto-detection")
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -246,14 +376,6 @@ def identify_output_metrics(df: pd.DataFrame) -> List[str]:
     return metric_cols
 
 
-# Key metrics for sensitivity ranking (one per scenario)
-KEY_METRICS = [
-    'wall_installation_cost_wall_installation_mean',
-    'loft_installation_cost_loft_installation_mean',
-    'heat_pump_only_cost_heat_pump_only_mean',
-]
-
-
 def compute_variance_summary(df: pd.DataFrame, metric_cols: List[str]) -> Dict[str, float]:
     """Compute variance metrics for output columns."""
     summary = {}
@@ -262,32 +384,67 @@ def compute_variance_summary(df: pd.DataFrame, metric_cols: List[str]) -> Dict[s
         if col in df.columns:
             summary[f'{col}__var'] = df[col].var()
             summary[f'{col}__std'] = df[col].std()
-            summary[f'{col}__cv'] = df[col].std() / df[col].mean() if df[col].mean() != 0 else np.nan
+            summary[f'{col}__cv'] = df[col].std() / abs(df[col].mean()) if df[col].mean() != 0 else np.nan
     
     return summary
 
 
 # ========================================
-# MAIN SENSITIVITY TEST
+# MAIN SENSITIVITY TEST (CORRECTED)
 # ========================================
 
-def run_sensitivity_test():
-    """Run sensitivity analysis: baseline + each factor fixed."""
+def run_sensitivity_test(
+    batch_path: str,
+    output_base_dir: str,
+    n_postcodes: int,
+    n_epistemic_runs: int = 5,
+):
+    """
+    Run sensitivity analysis with CORRECTED methodology.
     
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    KEY FIX: Generate ONE baseline LHS sample, then for each factor test,
+    use the SAME sample with only that factor overwritten.
+    """
+    
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    batch_label = os.path.basename(batch_path).replace('.txt', '')
+    
+    # Setup output directory
+    output_dir = os.path.join(output_base_dir, f'{batch_label}_{timestamp}')
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Setup logging
+    logger = setup_logging_for_batch(output_dir, batch_label, timestamp)
+    
+    logger.info("=" * 70)
+    logger.info("EPISTEMIC FACTOR SENSITIVITY ANALYSIS (CORRECTED METHODOLOGY)")
+    logger.info("=" * 70)
+    logger.info(f"Batch: {batch_path}")
+    logger.info(f"N epistemic runs: {n_epistemic_runs}")
+    logger.info(f"N postcodes: {n_postcodes if n_postcodes != -1 else 'all'}")
+    logger.info(f"Output directory: {output_dir}")
+    logger.info("")
+    logger.info("METHODOLOGY: Same baseline LHS sample used for all runs.")
+    logger.info("Each factor test overwrites ONLY that factor in the baseline sample.")
+    logger.info("=" * 70)
     
     # Load data
-    data = load_test_data()
-    pc = data['postcodes'][0]
+    data = load_test_data(batch_path, n_postcodes, logger)
     
-    # Prepare building data (do this once)
-    building_data = prepare_building_data(pc, data)
-    if building_data is None:
-        logger.error("Failed to prepare building data")
-        return
+    # Prepare building data for all postcodes
+    logger.info("Preparing building data...")
+    all_building_data = []
+    for pc in data['postcodes']:
+        bd = prepare_building_data(pc, data, logger)
+        if bd is not None:
+            all_building_data.append(bd)
     
-    logger.info(f"Building data shape: {building_data.shape}")
+    if not all_building_data:
+        logger.error("No valid building data found")
+        return None, None
+    
+    combined_building_data = pd.concat(all_building_data, ignore_index=True)
+    logger.info(f"Combined building data shape: {combined_building_data.shape}")
     
     # Retrofit config
     retrofit_config = RetrofitConfig(
@@ -299,52 +456,77 @@ def run_sensitivity_test():
         }
     )
     
-    results_summary = []
-    metric_cols = None  # Will be detected from first run
+    # =========================================================
+    # KEY FIX: Generate ONE baseline epistemic sample
+    # =========================================================
+    logger.info("Generating baseline epistemic sample (used for ALL runs)...")
+    np.random.seed(RANDOM_SEED_OUTER)
+    baseline_epistemic_df = generate_epistemic_scenarios_lhs(n_epistemic_runs)
     
-    # === BASELINE ===
+    # Save baseline epistemic scenarios for reference
+    baseline_epistemic_df.to_csv(f'{output_dir}/baseline_epistemic_scenarios.csv', index=False)
+    logger.info(f"Baseline epistemic scenarios:\n{baseline_epistemic_df.to_string()}")
+    
+    results_summary = []
+    metric_cols = None
+    
+    # =========================================================
+    # BASELINE RUN
+    # =========================================================
     logger.info("=" * 60)
     logger.info("Running BASELINE (all factors vary)")
     logger.info("=" * 60)
     
-    baseline_df = run_model_with_sampler(
-        building_data=building_data,
+    baseline_df = run_model_with_epistemic_df(
+        building_data=combined_building_data,
         retrofit_config=retrofit_config,
-        epistemic_sampler=generate_epistemic_scenarios_lhs,
+        epistemic_df=baseline_epistemic_df,
+        n_epistemic_runs=n_epistemic_runs,
+        logger=logger,
     )
     
     if baseline_df is not None:
-        baseline_df.to_csv(f'{OUTPUT_DIR}/baseline_{timestamp}.csv', index=False)
+        baseline_df.to_csv(f'{output_dir}/baseline_results.csv', index=False)
         
-        # Identify metrics from baseline
-        metric_cols = identify_output_metrics(baseline_df)
+        # Identify metrics
+        metric_cols = identify_output_metrics(baseline_df, logger)
         logger.info(f"Detected {len(metric_cols)} output metrics")
-        logger.info(f"Sample metrics: {metric_cols[:10]}")
+        logger.debug(f"Metrics: {metric_cols}")
         
         baseline_summary = compute_variance_summary(baseline_df, metric_cols)
         baseline_summary['configuration'] = 'baseline'
         baseline_summary['fixed_factor'] = None
         results_summary.append(baseline_summary)
+        
+        logger.info(f"Baseline complete: {len(baseline_df)} rows")
     else:
         logger.error("Baseline run failed")
-        return
+        return None, None
     
-    # === FIXED FACTOR RUNS ===
+    # =========================================================
+    # FIXED FACTOR RUNS (using SAME baseline sample)
+    # =========================================================
     for factor, default_value in FACTOR_DEFAULTS.items():
         logger.info("=" * 60)
         logger.info(f"Running with {factor} FIXED to {default_value}")
         logger.info("=" * 60)
         
-        fixed_sampler = create_fixed_sampler({factor: default_value})
+        # KEY: Copy baseline and overwrite ONLY this factor
+        fixed_epistemic_df = baseline_epistemic_df.copy()
+        fixed_epistemic_df[factor] = default_value
         
-        fixed_df = run_model_with_sampler(
-            building_data=building_data,
+        logger.debug(f"Fixed epistemic df:\n{fixed_epistemic_df[[factor]].to_string()}")
+        
+        fixed_df = run_model_with_epistemic_df(
+            building_data=combined_building_data,
             retrofit_config=retrofit_config,
-            epistemic_sampler=fixed_sampler,
+            epistemic_df=fixed_epistemic_df,
+            n_epistemic_runs=n_epistemic_runs,
+            logger=logger,
         )
         
         if fixed_df is not None:
-            fixed_df.to_csv(f'{OUTPUT_DIR}/fixed_{factor}_{timestamp}.csv', index=False)
+            fixed_df.to_csv(f'{output_dir}/fixed_{factor}_results.csv', index=False)
             
             fixed_summary = compute_variance_summary(fixed_df, metric_cols)
             fixed_summary['configuration'] = f'fixed_{factor}'
@@ -355,29 +537,27 @@ def run_sensitivity_test():
         else:
             logger.warning(f"Failed: {factor}")
     
-    # === COMPILE SUMMARY ===
+    # =========================================================
+    # COMPILE SUMMARY
+    # =========================================================
     summary_df = pd.DataFrame(results_summary)
-    summary_df.to_csv(f'{OUTPUT_DIR}/sensitivity_summary_{timestamp}.csv', index=False)
+    summary_df.to_csv(f'{output_dir}/sensitivity_summary.csv', index=False)
     
-    # === COMPUTE SENSITIVITY RANKING ===
-    logger.info("=" * 60)
-    logger.info("SENSITIVITY RANKING")
-    logger.info("=" * 60)
-    
-    # Rank by each key metric
+    # =========================================================
+    # COMPUTE SENSITIVITY RANKING
+    # =========================================================
     all_rankings = []
     
     for key_metric in KEY_METRICS:
         var_col = f'{key_metric}__var'
         
         if var_col not in summary_df.columns:
-            logger.warning(f"Metric not found: {key_metric}")
             continue
         
         baseline_var = summary_df[summary_df['configuration'] == 'baseline'][var_col].values[0]
         
-        if baseline_var == 0:
-            logger.warning(f"Baseline variance is 0 for {key_metric}")
+        if baseline_var == 0 or np.isnan(baseline_var):
+            logger.warning(f"Baseline variance is 0 or NaN for {key_metric}")
             continue
         
         for _, row in summary_df[summary_df['configuration'] != 'baseline'].iterrows():
@@ -396,13 +576,19 @@ def run_sensitivity_test():
             })
     
     ranking_df = pd.DataFrame(all_rankings)
-    ranking_df.to_csv(f'{OUTPUT_DIR}/sensitivity_ranking_{timestamp}.csv', index=False)
+    ranking_df.to_csv(f'{output_dir}/sensitivity_ranking.csv', index=False)
     
-    # Print summary for each metric
-    print("\n" + "=" * 70)
-    print("SENSITIVITY RANKING BY METRIC")
-    print("=" * 70)
-    print("Higher % = factor contributes more to output uncertainty\n")
+    # =========================================================
+    # OUTPUT RESULTS
+    # =========================================================
+    output_lines = []
+    
+    output_lines.append("\n" + "=" * 70)
+    output_lines.append(f"SENSITIVITY RANKING BY METRIC (Batch: {batch_label})")
+    output_lines.append("=" * 70)
+    output_lines.append("Higher % = factor contributes more to output uncertainty")
+    output_lines.append("(Negative values should NOT occur with corrected methodology)")
+    output_lines.append("")
     
     for key_metric in KEY_METRICS:
         metric_ranking = ranking_df[ranking_df['metric'] == key_metric].sort_values(
@@ -412,33 +598,70 @@ def run_sensitivity_test():
         if metric_ranking.empty:
             continue
         
-        # Extract scenario name for cleaner display
-        scenario = key_metric.split('_cost_')[0] if '_cost_' in key_metric else key_metric
+        # Extract scenario and metric type
+        if '_cost_' in key_metric:
+            scenario = key_metric.split('_cost_')[0]
+            metric_type = 'cost'
+        elif '_total_energy_abs_co2_ton_samples_' in key_metric:
+            scenario = key_metric.split('_total_energy_abs_co2_ton_samples_')[0]
+            metric_type = 'energy/CO2'
+        elif '_gas_perc_' in key_metric:
+            scenario = key_metric.split('_gas_perc_')[0]
+            metric_type = 'gas %'
+        else:
+            scenario = key_metric
+            metric_type = ''
         
-        print(f"\n{scenario.upper()} (cost)")
-        print("-" * 50)
-        print(f"{'Factor':<45} {'Var Reduction %':>12}")
-        print("-" * 50)
+        output_lines.append(f"\n{scenario.upper()} ({metric_type})")
+        output_lines.append("-" * 50)
+        output_lines.append(f"{'Factor':<45} {'Var Reduction %':>12}")
+        output_lines.append("-" * 50)
         
-        for _, row in metric_ranking.head(10).iterrows():
-            print(f"{row['factor']:<45} {row['var_reduction_pct']:>11.1f}%")
+        for _, row in metric_ranking.head(13).iterrows():
+            pct = row['var_reduction_pct']
+            flag = " ⚠️" if pct < 0 else ""
+            output_lines.append(f"{row['factor']:<45} {pct:>11.1f}%{flag}")
     
-    # Also create a summary: average ranking across all metrics
-    avg_ranking = ranking_df.groupby('factor')['var_reduction_pct'].mean().sort_values(ascending=False)
+    # Average ranking
+    if not ranking_df.empty:
+        avg_ranking = ranking_df.groupby('factor')['var_reduction_pct'].mean().sort_values(ascending=False)
+        
+        output_lines.append("\n" + "=" * 70)
+        output_lines.append("AVERAGE SENSITIVITY ACROSS ALL METRICS")
+        output_lines.append("=" * 70)
+        output_lines.append(f"{'Factor':<45} {'Avg Var Reduction %':>12}")
+        output_lines.append("-" * 57)
+        for factor, pct in avg_ranking.items():
+            flag = " ⚠️" if pct < 0 else ""
+            output_lines.append(f"{factor:<45} {pct:>11.1f}%{flag}")
+        
+        avg_ranking.to_csv(f'{output_dir}/sensitivity_avg_ranking.csv')
     
-    print("\n" + "=" * 70)
-    print("AVERAGE SENSITIVITY ACROSS ALL METRICS")
-    print("=" * 70)
-    print(f"{'Factor':<45} {'Avg Var Reduction %':>12}")
-    print("-" * 57)
-    for factor, pct in avg_ranking.items():
-        print(f"{factor:<45} {pct:>11.1f}%")
+    # Print and log
+    for line in output_lines:
+        print(line)
+        logger.info(line)
     
-    avg_ranking.to_csv(f'{OUTPUT_DIR}/sensitivity_avg_ranking_{timestamp}.csv')
+    logger.info(f"\nAll results saved to: {output_dir}/")
     
-    logger.info(f"\nResults saved to {OUTPUT_DIR}/")
     return summary_df, ranking_df
 
 
+# ========================================
+# ENTRY POINT
+# ========================================
+
 if __name__ == "__main__":
-    run_sensitivity_test()
+    args = parse_args()
+    
+    print(f"Running sensitivity test (CORRECTED) for batch: {args.batch}")
+    print(f"Output directory: {args.output}")
+    print(f"N postcodes: {args.n_postcodes if args.n_postcodes != -1 else 'all'}")
+    print(f"N epistemic runs: {args.n_epistemic}")
+    
+    run_sensitivity_test(
+        batch_path=args.batch,
+        output_base_dir=args.output,
+        n_postcodes=args.n_postcodes,
+        n_epistemic_runs=args.n_epistemic,
+    )

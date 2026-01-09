@@ -77,10 +77,10 @@ def main():
         epc_run = False  
         if epc_run:
             INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/2_optimized_priorities_epc/processed_best_only/*'
-            BASE_DIR='/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/v8/NE/epc'
+            BASE_DIR='/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/v9/NE/epc'
         else:
             INPUT_FILES_PATH=f'/Users/gracecolverd/RetrofitModel/2_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*.csv'
-            BASE_DIR='/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/v8/NE/all_domestic'
+            BASE_DIR='/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/v9/NE/all_domestic'
 
     else:
         BASE_DIR = os.getenv('BASE_DIR')
@@ -99,13 +99,13 @@ def main():
         
         if epc_run:
             INPUT_FILES_PATH=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities_epc/risk_sigma_{sigma_value}/processed_best_only/*'
-            BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v8/NE/epc/risk_sigma_{sigma_value}'
+            BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/epc/risk_sigma_{sigma_value}'
         else:
             INPUT_FILES_PATH=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities/risk_sigma_{sigma_value}/processed_best_only/*'
-            BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v8/NE/all_domestic/risk_sigma_{sigma_value}'
+            BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/all_domestic/risk_sigma_{sigma_value}'
 
         print(f'Starting {INPUT_FILES_PATH}') 
-        setting_name = 'v8'
+        setting_name = 'v9'
         run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
         
         if run_g_yn == 'N':
@@ -115,12 +115,15 @@ def main():
 
         budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
         
-        loft_probs = [ 0.65] 
+        loft_probs = [0.95,  0.65] 
         
-        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.4, 1.6, 1.8 ,2  ]
+
         
-        equity_factor=float(os.getenv('EQUITY_FACTOR'))
-        equity_factors = [equity_factor]
+        try:
+            equity_factor=float(os.getenv('EQUITY_FACTOR'))
+            equity_factors = [equity_factor]
+        except:
+            equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.4, 1.6, 1.8 ,2  ]
         
         number = os.getenv("NUMBER")
         
