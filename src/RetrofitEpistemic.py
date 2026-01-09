@@ -23,7 +23,11 @@ def generate_epistemic_scenarios_lhs(N_epistemic_runs: int) -> pd.DataFrame:
     ts_samples = truncnorm.ppf(lhs_samples_uniform[:, 0], a=a_ts, b=b_ts, loc=1.0, scale=0.05)
 
     # Factor 2: Decile Misclassification Bias (beta_DEC) - Normal: loc=0.0, scale=0.02
-    decile_samples = norm.ppf(lhs_samples_uniform[:, 1], loc=0.0, scale=0.02)
+    # decile_samples = norm.ppf(lhs_samples_uniform[:, 1], loc=0.0, scale=0.02)
+    # Factor 2: Decile Misclassification Bias (beta_DEC) 
+    # Truncated Normal: loc=0.0, scale=0.02, bounds [-0.05, 0.05]
+    a_dec, b_dec = (-0.05 - 0.0) / 0.02, (0.05 - 0.0) / 0.02  # ±2.5σ
+    decile_samples = truncnorm.ppf(lhs_samples_uniform[:, 1], a=a_dec, b=b_dec, loc=0.0, scale=0.02)
 
     # Factor 3: Solid Wall Internal Improvement (beta_SWI) - Truncated Normal: loc=0.1, scale=0.01, bounds [0.08, 0.12]
     a_swi, b_swi = (0.08 - 0.1) / 0.01, (0.12 - 0.1) / 0.01
