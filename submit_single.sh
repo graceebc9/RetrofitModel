@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A CULLEN-SL3-CPU
 #SBATCH -p icelake
-#SBATCH --time=03:45:00
+#SBATCH --time=02:45:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=NONE

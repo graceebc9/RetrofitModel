@@ -15,17 +15,17 @@ import matplotlib.ticker as mtick
 
 # Update these paths for your environment
 SCENARIO_NAME = 'stock_summary'      # Just for folder naming
-INPUT_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/*csv'
-OUTPUT_BASE_DIR = '2_stock_results/stock_summary/'
-ERROR_LOG_FILE = '2_stock_results/stock_summary/processing_errors.txt'
+INPUT_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/*csv'
+OUTPUT_BASE_DIR = '2_stock_results/stock_summary_new/'
+ERROR_LOG_FILE = '2_stock_results/stock_summary_new/processing_errors.txt'
 
 # HPC / Local path toggles
 is_hpc = is_running_on_hpc() 
 if is_hpc:
-    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/intermediate_data_2D/retrofit_scenario/v8/NE/130_log_file.csv'
+    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/130_log_file.csv'
 else:
     # Example local path
-    INPUT_PATTERN = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/all/NE/*csv'
+    INPUT_PATTERN = '/Users/gracecolverd/RetrofitModel/1_intermediate_data_2D/retrofit_scenario/all/NE/*csv'
     REFERENCE_FILE = None
 
 # Predefined order for consistency
@@ -41,16 +41,10 @@ TYPOLOGIES = [
 # ==============================================================================
 # 2. HELPER: SAFE LOAD
 # ==============================================================================
-
-
 # ==============================================================================
-# 3. STOCK ACCUMULATOR (Counts Only)
+# 3. ROBUST STOCK ACCUMULATOR
 # ==============================================================================
 class StockCountAccumulator:
-    """
-    Reads chunks of building data, DEDUPLICATES based on 'upn' (per file), 
-    and counts occurrences by Age Band, Premise Type, Decile, etc.
-    """
     def __init__(self):
         self.group_keys = [
             'premise_age_bucketed', 
@@ -60,64 +54,69 @@ class StockCountAccumulator:
             'conservation_area_bool'
         ]
         self.data_store = []
+        # --- DATA QUALITY TRACKER ---
+        self.dq_report = {
+            'processed_successfully': 0,
+            'empty_files': 0,
+            'missing_grouping_cols': 0,
+            'missing_upn': 0,
+            'load_errors': 0
+        }
 
     def process_file(self, file_path, headers=None):
         try:
             df = safe_load(file_path, headers, ERROR_LOG_FILE)
             
-            if df.empty: return
-
-            # --- 1. LOCAL DEDUPLICATION ---
-            # We only care about duplicates inside THIS specific file
-            initial_count = len(df)
-            if 'upn' in df.columns:
-                df.drop_duplicates(subset=['upn'], keep='first', inplace=True)
-            else:
-                print(f"Warning: 'upn' column missing in {os.path.basename(file_path)}")
-
-            unique_count = len(df)
-            
-            # --- 2. LOGGING ---
-            # Log the count for this specific file as requested
-            dropped = initial_count - unique_count
-            print(f"  -> {os.path.basename(file_path)}: {unique_count} unique UPNs (dropped {dropped} duplicates)")
-
-            # --- 3. FILTERING ---
-            # Filter valid typologies if column exists
-            if 'premise_type' in df.columns:
-                df = df[df['premise_type'].isin(TYPOLOGIES)]
-            
-            # Ensure required columns exist for grouping
-            current_keys = [k for k in self.group_keys if k in df.columns]
-            if not current_keys:
+            if df is None or df.empty:
+                self.dq_report['empty_files'] += 1
                 return
 
-            # --- 4. AGGREGATION ---
-            # Count occurrences (size) and store
+            # 1. Column Verification
+            current_keys = [k for k in self.group_keys if k in df.columns]
+            if not current_keys:
+                self.dq_report['missing_grouping_cols'] += 1
+                return
+
+            if 'upn' not in df.columns:
+                self.dq_report['missing_upn'] += 1
+                # We continue, but log the warning
+            else:
+                df.drop_duplicates(subset=['upn'], keep='first', inplace=True)
+
+            # 2. Aggregation with named output
             grouped = df.groupby(current_keys).size().reset_index(name='count')
-            self.data_store.append(grouped)
             
-            # Cleanup to save memory
+            if not grouped.empty:
+                self.data_store.append(grouped)
+                self.dq_report['processed_successfully'] += 1
+            
             del df
             gc.collect()
             
         except Exception as e:
-            print(f"Error processing {file_path}: {e}")
+            self.dq_report['load_errors'] += 1
+            print(f"Error processing {os.path.basename(file_path)}: {e}")
 
     def finalize(self):
-        print("Finalizing aggregation...")
+        print("\n" + "="*30)
+        print("DATA QUALITY SUMMARY")
+        print("="*30)
+        for reason, count in self.dq_report.items():
+            print(f"{reason.replace('_', ' ').title()}: {count}")
+        print("="*30 + "\n")
+
         if not self.data_store:
             return pd.DataFrame()
             
-        # Concatenate all chunk counts
         full_df = pd.concat(self.data_store, ignore_index=True)
-        
-        # Sum the counts across chunks
         keys_present = [k for k in self.group_keys if k in full_df.columns]
         
-        final_df = full_df.groupby(keys_present)['count'].sum().reset_index()
-        
-        return final_df
+        # Final safety check before sum
+        if 'count' not in full_df.columns:
+            return pd.DataFrame()
+
+        return full_df.groupby(keys_present)['count'].sum().reset_index()
+
 
 # ==============================================================================
 # 4. PLOTTING FUNCTIONS
@@ -189,20 +188,23 @@ def plot_counts_by_age_band(df, output_dir):
 
         # Plot
         fig, ax = plt.subplots(figsize=(12, 8))
-        plot_data.plot(kind='bar', stacked=True, ax=ax, color=current_colors, alpha=0.9, width=0.8)
+        plot_data.plot(kind='bar', stacked=True, ax=ax, color=current_colors, alpha=0.9, width=0.8, edgecolor='black')
         
         # Apply consistent Y-limit
         ax.set_ylim(0, global_max_y)
         # This adds commas (e.g. 10,000) to the Y axis
-        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}')) # <--- ADDED FORMATTER HERE
+        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}'))
         
+        # Add total count labels on top of each bar
+        bar_totals = plot_data.sum(axis=1)  # Sum across all insulation types for each decile
+        for i, (idx, total) in enumerate(bar_totals.items()):
+            ax.text(i, total, f'{int(total):,}', 
+                   ha='center', va='bottom', fontsize=9, )
         
-        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}')) # <--- ADDED FORMATTER HERE
-        
-        plt.xlabel('Gas Consumption Decile)')
+        plt.xlabel('Gas Consumption Decile')
         plt.ylabel('Count')
         plt.xticks(rotation=0)
-        plt.legend(title='Insulation Type', bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.legend(title='Insulation Type',  loc='best')
         plt.grid(axis='y', alpha=0.3)
         plt.tight_layout()
         
@@ -258,19 +260,25 @@ def plot_counts_by_premise_decile(df, output_dir):
             continue
 
         # Plot
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(12, 8))
         # Use a distinct colormap for conservation status (e.g., 'Paired' or specific colors)
-        plot_data.plot(kind='bar', stacked=True, ax=ax, colormap='Paired', alpha=0.9, width=0.8)
+        plot_data.plot(kind='bar', stacked=True, ax=ax, colormap='Paired', alpha=0.9, width=0.8, edgecolor='black')
         
         # Apply consistent Y-limit
         ax.set_ylim(0, global_max_y)
         # This adds commas (e.g. 10,000) to the Y axis
-        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}')) # <--- ADDED FORMATTER HERE
+        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}'))
+        
+        # Add total count labels on top of each bar
+        bar_totals = plot_data.sum(axis=1)  # Sum across conservation areas for each decile
+        for i, (idx, total) in enumerate(bar_totals.items()):
+            ax.text(i, total, f'{int(total):,}', 
+                   ha='center', va='bottom', fontsize=9, )
         
         plt.xlabel('Gas Consumption Decile')
         plt.ylabel('Count')
         plt.xticks(rotation=0)
-        plt.legend(title='Conservation Area', bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.legend(title='Conservation Area', loc='best')
         plt.grid(axis='y', alpha=0.3)
         plt.tight_layout()
         
@@ -280,53 +288,54 @@ def plot_counts_by_premise_decile(df, output_dir):
         plt.savefig(os.path.join(decile_dir, filename), dpi=300)
         plt.close()
 
+
 # ==============================================================================
-# 5. MAIN PIPELINE
+# 5. MAIN PIPELINE (ROBUST VERSION)
 # ==============================================================================
 
 def run_loading_pipeline():
     files = glob.glob(INPUT_PATTERN)
-    print(f"Found {len(files)} files.")
-    #files=files[0:5]
     
-    # 1. Get Headers if needed (HPC fix)
+    if not files:
+        print(f"No files found matching pattern: {INPUT_PATTERN}")
+        return
+
+    print(f"Found {len(files)} files. Starting processing...")
+    
     headers = None
     if is_hpc and REFERENCE_FILE:
         try:
             with open(REFERENCE_FILE, 'r') as f:
                 headers = next(csv.reader(f))
-            print("Loaded headers from reference file.")
         except Exception as e:
-            print(f"Warning: Could not read headers: {e}")
+            print(f"Warning: Reference file error: {e}")
 
-    # 2. Initialize Accumulator
     accumulator = StockCountAccumulator()
     
-    # 3. Process Files
     for i, f in enumerate(files):
-        if i % 10 == 0: print(f"Processing {i}/{len(files)}: {os.path.basename(f)}")
+        if i % 10 == 0: 
+            print(f"Processing {i}/{len(files)}: {os.path.basename(f)}")
         accumulator.process_file(f, headers)
         
-    # 4. Get Aggregated DataFrame
+    # Finalize returns the safe, aggregated dataframe
     df_counts = accumulator.finalize()
     
-    print(f"Aggregation Complete. Shape: {df_counts.shape}")
-    print(f"Total Buildings Counted: {df_counts['count'].sum():,}")
-    
-    # 5. Generate Plots
-    if not df_counts.empty:
-        os.makedirs(OUTPUT_BASE_DIR, exist_ok=True)
+    # --- ROBUST CHECK FOR KEYERROR ---
+    if df_counts is not None and not df_counts.empty and 'count' in df_counts.columns:
+        print(f"Aggregation Complete. Final Shape: {df_counts.shape}")
         
-        # Save raw counts csv
+        total_buildings = df_counts['count'].sum()
+        print(f"Total Unique Buildings Counted: {total_buildings:,}")
+        
+        # Save and Plot
+        os.makedirs(OUTPUT_BASE_DIR, exist_ok=True)
         df_counts.to_csv(os.path.join(OUTPUT_BASE_DIR, 'raw_stock_counts.csv'), index=False)
         
-        # Run specific plotting logic
+        print("Generating plots...")
         plot_counts_by_age_band(df_counts, OUTPUT_BASE_DIR)
         plot_counts_by_premise_decile(df_counts, OUTPUT_BASE_DIR)
-        
-        print(f"\nAll outputs saved to: {OUTPUT_BASE_DIR}")
     else:
-        print("DataFrame is empty. Check input paths.")
+        print("CRITICAL: No data survived the quality checks. Skipping plotting.")
 
 if __name__ == "__main__":
     run_loading_pipeline()

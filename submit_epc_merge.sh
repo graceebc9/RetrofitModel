@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH -A CULLEN-SL3-CPU
 #SBATCH -p icelake
-#SBATCH --time=00:45:00
+#SBATCH --time=01:45:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=NONE
-#SBATCH --mem=20G
+#SBATCH --mem=40G
 #SBATCH --output=epc_logs/rmodel_%A_%a.out
 #SBATCH --error=epc_logs/rmodel_%A_%a.err
  

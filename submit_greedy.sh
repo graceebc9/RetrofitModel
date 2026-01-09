@@ -25,6 +25,8 @@ conda activate /home/gb669/.conda/envs/ag3
 export SLURM_SUBMIT_DIR='/home/gb669/rds/hpc-work/energy_map/RetrofitModel'
 cd $SLURM_SUBMIT_DIR
 export EPC_YN='Y'
+export LOFT=1
+export SIGMA=1
 
 
 export RUN_GREEDY_RUNS_YN='Y'
