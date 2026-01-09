@@ -1,6 +1,7 @@
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import glob
 import os
 from scipy.stats import kruskal
@@ -27,13 +28,18 @@ COL_EPC = 'CURRENT_ENERGY_RATING'
 persona_order = ['low_deprived', 'med_deprived', 'high_deprived']
 
 # Define specific colors for each persona to ensure consistency across all plots
-# Blue, Orange, Red standard palette (matplotlib defaults)
 PERSONA_COLORS = {
-    'low_deprived': '#1f77b4',  # Blue
-    'med_deprived': '#ff7f0e',  # Orange
-    'high_deprived': '#d62728'  # Red
+    'low_deprived': '#009E73',  # Blue
+    'med_deprived': '#E69F00',  # Orange
+    'high_deprived': '#D55E00'  # Red
 }
 
+
+# colors = {
+#     'green': '#009E73',   # Bluish green
+#     'orange': '#E69F00',  # Orange
+#     'red': '#D55E00'      # Vermillion/red-orange
+# }
 def process_portfolio_data():
     """
     1. Loads all log files.
@@ -140,17 +146,14 @@ def perform_statistical_tests(df):
     H_stat, p_value = kruskal(*groups)
 
     # 2. Calculate Effect Size (Eta-squared)
-    # Formula: eta^2 = (H - k + 1) / (n - k)
-    # where H = H-statistic, k = number of groups, n = total observations
     n = len(stats_df)
     k = len(groups)
     
     if n > k:
         eta_squared = (H_stat - k + 1) / (n - k)
     else:
-        eta_squared = 0 # Edge case
+        eta_squared = 0 
         
-    # Clamp negative values to 0 (can happen if H < k-1 due to sampling)
     eta_squared = max(0, eta_squared)
 
     # Interpretation
@@ -180,7 +183,6 @@ def perform_statistical_tests(df):
     else:
         print("\nCONCLUSION: No significant difference found (p >= 0.05).")
     
-    # Save stats to text file
     with open(os.path.join(OUTPUT_DIR, 'statistical_results.txt'), 'w') as f:
         f.write("Kruskal-Wallis Test Results\n")
         f.write("===========================\n")
@@ -209,9 +211,10 @@ def generate_plots(df):
     plt.figure(figsize=(12, 8))
     heatmap_data_counts = pd.crosstab(plot_df[COL_PERSONA], plot_df[COL_EPC])
     heatmap_data_counts = heatmap_data_counts[valid_epc]
-    # Reindex rows to match standard persona order
     heatmap_data_counts = heatmap_data_counts.reindex(persona_order)
-    sns.heatmap(heatmap_data_counts, annot=True, fmt='d', cmap='YlGnBu', linewidths=.5)
+    
+    # Updated: fmt=',d' for comma separators
+    sns.heatmap(heatmap_data_counts, annot=True, fmt=',d', cmap='YlGnBu', linewidths=.5)
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, 'portfolio_heatmap_counts.png'), dpi=300)
     plt.close()
@@ -226,9 +229,13 @@ def generate_plots(df):
     plt.savefig(os.path.join(OUTPUT_DIR, 'portfolio_heatmap_percentage.png'), dpi=300)
     plt.close()
 
-    # 3. Gas Histogram (Hue is EPC, not Persona - keeping 'viridis')
+    # 3. Gas Histogram (Hue is EPC)
     plt.figure(figsize=(10, 6))
-    sns.histplot(data=plot_df, x=COL_GAS, kde=True, bins=30, hue=COL_EPC, hue_order=valid_epc, multiple="stack", palette="viridis", edgecolor=".3", linewidth=.5)
+    ax = sns.histplot(data=plot_df, x=COL_GAS, kde=True, bins=30, hue=COL_EPC, hue_order=valid_epc, multiple="stack", palette="viridis", edgecolor=".3", linewidth=.5)
+    
+    # Updated: Format Y-axis with commas
+    ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
+    
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, 'portfolio_gas_histogram.png'), dpi=300)
     plt.close()
@@ -240,7 +247,7 @@ def generate_plots(df):
         x=COL_PERSONA, 
         y=COL_GAS, 
         order=persona_order, 
-        palette=PERSONA_COLORS  # <--- Applied Consistent Palette
+        palette=PERSONA_COLORS 
     )
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
@@ -248,7 +255,6 @@ def generate_plots(df):
     plt.close()
 
     # 5. Stacked Bar (EPC distribution within Persona)
-    # Colors represent EPCs here, so standard EPC coloring (RdYlGn_r) is appropriate.
     props = pd.crosstab(plot_df[COL_PERSONA], plot_df[COL_EPC], normalize='index') * 100
     props = props[valid_epc]
     props = props.reindex(persona_order)
@@ -259,7 +265,7 @@ def generate_plots(df):
     plt.savefig(os.path.join(OUTPUT_DIR, 'portfolio_epc_stacked_bar.png'), dpi=300)
     plt.close()
 
-    # 6. Gas vs EPC Boxplot (No Persona split, just EPC)
+    # 6. Gas vs EPC Boxplot
     plt.figure(figsize=(10, 6))
     sns.boxplot(data=plot_df, x=COL_EPC, y=COL_GAS, order=valid_epc, palette="RdYlGn_r")
     plt.title('Gas Consumption Decile vs EPC Rating', fontsize=14, fontweight='bold')
@@ -276,7 +282,7 @@ def generate_plots(df):
         hue=COL_PERSONA,
         order=valid_epc, 
         hue_order=persona_order,
-        palette=PERSONA_COLORS  # <--- Applied Consistent Palette
+        palette=PERSONA_COLORS 
     )
     plt.xlabel('EPC Rating', fontsize=12)
     plt.ylim(-1, 11)
@@ -289,8 +295,6 @@ def generate_plots(df):
     print("Visualization Complete. Plots saved to output directory.")
 
  
- 
-
 def analyze_interactions(df):
     """
     Focuses on the interaction between Socio-Persona and EPC Rating.
@@ -304,7 +308,7 @@ def analyze_interactions(df):
     valid_epc = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
     plot_df = plot_df[plot_df[COL_EPC].isin(valid_epc)]
 
-    # Create Simplified EPC Groups for cleaner Interaction Plots
+    # Create Simplified EPC Groups
     def group_epc(rating):
         if rating in ['A', 'B', 'C']: return 'Efficient (A-C)'
         if rating in ['D', 'E']: return 'Average (D-E)'
@@ -325,7 +329,6 @@ def analyze_interactions(df):
     # ---------------------------------------------
     plt.figure(figsize=(12, 8))
     
-    # Pivot table: Rows=Persona, Cols=EPC, Values=Median Gas
     pivot_median = pd.pivot_table(
         plot_df, 
         values=COL_GAS, 
@@ -350,7 +353,6 @@ def analyze_interactions(df):
     # ---------------------------------------------
     plt.figure(figsize=(14, 8))
     
-    # Note: Hue is EPC Group here, not Persona. We color by EPC group to see the spread.
     sns.pointplot(
         data=plot_df, 
         x=COL_PERSONA, 
@@ -377,9 +379,7 @@ def analyze_interactions(df):
     print("\n--- Median Gas Percentile Matrix ---")
     print(pivot_median)
     
-    # Save table
     pivot_median.to_csv(os.path.join(OUTPUT_DIR, 'stats_median_gas_matrix.csv'))
-
     print("\nVisualization Complete. 'interaction_heatmap_median_gas.png' is the key chart.")
 
 
@@ -401,7 +401,7 @@ def generate_distribution_plots(df):
     plot_df = plot_df[plot_df[COL_EPC].isin(valid_epc)]
     
     # ---------------------------------------------
-    # PLOT 1: Distribution of Socio-Personas (Count) -- UPDATED COLOURS
+    # PLOT 1: Distribution of Socio-Personas (Count) -- UPDATED COLOURS & FORMATTING
     # ---------------------------------------------
     plt.figure(figsize=(10, 6))
     persona_counts = plot_df[COL_PERSONA].value_counts().reindex(persona_order)
@@ -409,12 +409,17 @@ def generate_distribution_plots(df):
     ax = sns.barplot(
         x=persona_counts.index, 
         y=persona_counts.values, 
-        palette=PERSONA_COLORS # <--- Applied Consistent Palette
+        palette=PERSONA_COLORS ,
+         edgecolor='black', 
     )
     plt.xlabel('Socio Persona', fontsize=12)
     plt.ylabel('Count', fontsize=12)
     plt.xticks(rotation=45, ha='right')
     
+    # Updated: Format Y-axis with commas
+    ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
+
+    # Labels already have commas in previous version, keeping them:
     for i, v in enumerate(persona_counts.values):
         ax.text(i, v + max(persona_counts.values)*0.01, f'{v:,}', 
                 ha='center', va='bottom', fontsize=10)
@@ -424,13 +429,16 @@ def generate_distribution_plots(df):
     plt.close()
     
     # ---------------------------------------------
-    # PLOT 2: Distribution of EPC Ratings (Count)
+    # PLOT 2: Distribution of EPC Ratings (Count) -- UPDATED FORMATTING
     # ---------------------------------------------
     plt.figure(figsize=(10, 6))
     epc_counts = plot_df[COL_EPC].value_counts().reindex(valid_epc)
-    ax = sns.barplot(x=epc_counts.index, y=epc_counts.values, palette='RdYlGn_r')
+    ax = sns.barplot(x=epc_counts.index, y=epc_counts.values, palette='RdYlGn_r',  edgecolor='black', )
     plt.xlabel('EPC Rating', fontsize=12)
     plt.ylabel('Count', fontsize=12)
+
+    # Updated: Format Y-axis with commas
+    ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
     
     for i, v in enumerate(epc_counts.values):
         ax.text(i, v + max(epc_counts.values)*0.01, f'{v:,}', 
@@ -442,25 +450,22 @@ def generate_distribution_plots(df):
 
    
     # ---------------------------------------------
-    # PLOT 2b: Distribution of EPC Ratings (Grouped by Persona) -- UPDATED COLOURS
+    # PLOT 2b: Distribution of EPC Ratings (Grouped by Persona) -- UPDATED COLOURS & FORMATTING
     # ---------------------------------------------
     plt.figure(figsize=(12, 6))
 
-    # Create crosstab: rows=EPC, columns=Persona
     epc_persona_counts = pd.crosstab(plot_df[COL_EPC], plot_df[COL_PERSONA])
     epc_persona_counts = epc_persona_counts.reindex(valid_epc)
-    epc_persona_counts = epc_persona_counts[persona_order]  # Ensure columns are in order
+    epc_persona_counts = epc_persona_counts[persona_order] 
 
-    # Grouped bar plot - Need to map colors to columns
-    # We extract the colors in the order of the columns (which we just forced to be persona_order)
     colors = [PERSONA_COLORS[p] for p in epc_persona_counts.columns]
 
     ax = epc_persona_counts.plot(
         kind='bar', 
         figsize=(12, 6), 
-        color=colors, # <--- Applied Consistent Palette
+        color=colors, 
         edgecolor='black', 
-        alpha=0.8, 
+        # alpha=0.8, 
         width=0.8
     )
 
@@ -468,24 +473,30 @@ def generate_distribution_plots(df):
     plt.ylabel('Count', fontsize=12)
     plt.legend(title='Socio Persona', loc='upper right')
     plt.xticks(rotation=0)
+    
+    # Updated: Format Y-axis with commas
+    ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
 
+    # Updated: Format bar labels with commas
     for container in ax.containers:
-        ax.bar_label(container, fmt='%d', padding=3, fontsize=9)
+        # Create labels with comma formatting
+        labels = [f'{rect.get_height():,.0f}' for rect in container]
+        ax.bar_label(container, labels=labels, padding=3, fontsize=9)
 
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, 'dist_epc_counts_grouped.png'), dpi=300)
     plt.close()
 
-    # Save the data table
     epc_persona_counts.to_csv(os.path.join(OUTPUT_DIR, 'dist_epc_persona_counts_table.csv'))
     print(f"Saved EPC × Persona counts table to: dist_epc_persona_counts_table.csv")
 
     # ---------------------------------------------
-    # PLOT 3: Overall Gas Percentile Distribution
+    # PLOT 3: Overall Gas Percentile Distribution -- UPDATED FORMATTING
     # ---------------------------------------------
     plt.figure(figsize=(12, 6))
-    sns.histplot(data=plot_df, x=COL_GAS, kde=True, bins=50, 
+    ax = sns.histplot(data=plot_df, x=COL_GAS, kde=True, bins=50, 
                  color='steelblue', edgecolor='black', alpha=0.7)
+    
     plt.axvline(plot_df[COL_GAS].median(), color='red', linestyle='--', 
                 linewidth=2, label=f'Median: {plot_df[COL_GAS].median():.2f}')
     plt.axvline(plot_df[COL_GAS].mean(), color='orange', linestyle='--', 
@@ -493,6 +504,10 @@ def generate_distribution_plots(df):
     plt.xlabel('Gas Usage Decile', fontsize=12)
     plt.ylabel('Frequency', fontsize=12)
     plt.legend()
+    
+    # Updated: Format Y-axis with commas
+    ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
+
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, 'dist_gas_percentile_overall.png'), dpi=300)
     plt.close()
@@ -509,7 +524,8 @@ def generate_distribution_plots(df):
                 x=COL_GAS, 
                 label=persona, 
                 linewidth=2, 
-                color=PERSONA_COLORS[persona] # <--- Applied Consistent Palette
+                 
+                color=PERSONA_COLORS[persona] 
             )
     
     plt.xlabel('Gas Consumption Decile', fontsize=12)
@@ -536,14 +552,15 @@ def generate_distribution_plots(df):
     plt.close()
     
     # ---------------------------------------------
-    # PLOT 6: Sample Size Matrix (Persona × EPC)
+    # PLOT 6: Sample Size Matrix (Persona × EPC) -- UPDATED FORMATTING
     # ---------------------------------------------
     plt.figure(figsize=(12, 8))
     sample_sizes = pd.crosstab(plot_df[COL_PERSONA], plot_df[COL_EPC])
     sample_sizes = sample_sizes[valid_epc]
     sample_sizes = sample_sizes.reindex(persona_order)
     
-    sns.heatmap(sample_sizes, annot=True, fmt='d', cmap='Purples', 
+    # Updated: fmt=',d' for comma separators
+    sns.heatmap(sample_sizes, annot=True, fmt=',d', cmap='Purples', 
                 linewidths=.5, cbar_kws={'label': 'Sample Size'})
     plt.xlabel('EPC Rating', fontsize=12)
     plt.ylabel('Socio Persona', fontsize=12)

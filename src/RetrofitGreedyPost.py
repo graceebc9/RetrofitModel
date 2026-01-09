@@ -100,6 +100,7 @@ def load_data(budgets, equity_weights, loft_val, base_path):
     equity_df = pd.DataFrame()
     if equity_dfs:
         equity_df = pd.concat(equity_dfs, ignore_index=True)
+        equity_df= equity_df.drop_duplicates() 
         print(f"\n✓ Combined {len(equity_dfs)} equity tracking files")
         print(f"  Total equity tracking records: {len(equity_df):,}")
     else:
@@ -108,6 +109,7 @@ def load_data(budgets, equity_weights, loft_val, base_path):
     results_df = pd.DataFrame()
     if results_dfs:
         results_df = pd.concat(results_dfs, ignore_index=True)
+        results_df=results_df.drop_duplicates() 
         print(f"✓ Combined {len(results_dfs)} results files")
         print(f"  Total results records: {len(results_df):,}")
     else:
@@ -218,7 +220,7 @@ def aggregate_equity(df, group_cols=['scenario']):
 # 4. MAIN EXECUTION
 # ==============================================================================
 
-def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH ):
+def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH, RISK_PENALTY_SIGMA ):
     """
     Main function to run the data loading, aggregation, and plotting.
     """
@@ -246,8 +248,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     results_df.to_csv('testresults.csv')
     # --- 3. Merge & Format ---
     comparison_df = results_agg.merge(equity_agg, on='scenario', how='left')
-    print('comparison_df')
-    print(comparison_df.columns.tolist())
+
     # Fix: Create scenario map with correct keys (matching the 'scenario' col)
     scenario_map = {
         f'budget_{b}_equity_{e}': f'${b/1e6:.0f}M, Equity={e}'
@@ -270,6 +271,16 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
             ['sort_equity', 'sort_budget']
         ).drop(columns=['sort_equity', 'sort_budget'])
     else:
+        # Check what's in sort_keys
+        print("Sort keys:")
+        print(sort_keys)
+
+        # Check which ones are NaN
+        print("\nNaN values:")
+        print(sort_keys.isna())
+
+        # See how many are missing
+        print(f"\nTotal NaN count: {sort_keys.isna().sum()}")
         print("Warning: Could not sort dataframe. Scenario map mismatch.")
 
     # --- 4. Print Summary ---
@@ -301,15 +312,15 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
 
     # --- 5. Plot Results ---
     print(f"--- Generating plots in: {OUTPUT_PATH} ---")
-    scenario_colors = plot_greedy_compairosn_main(comparison_df, output_dir=OUTPUT_PATH, y_axis_zero=True , loft_val=LOFT_VALUE)
+    scenario_colors = plot_greedy_compairosn_main(comparison_df, output_dir=OUTPUT_PATH, y_axis_zero=True , loft_val=LOFT_VALUE, sigma_val=RISK_PENALTY_SIGMA)
 
          
     plot_carbon_by_persona(results_df, scenario_colors, 
-                           os.path.join(OUTPUT_PATH, "12_carbon_per_persona.png") 
+                           os.path.join(OUTPUT_PATH, f"12_carbon_per_persona_loft_{LOFT_VALUE}_sigma_{RISK_PENALTY_SIGMA}.png") 
                            , y_axis_zero=True)
 
     plot_metric_by_group(results_df, scenario_colors, 
-                         filename=os.path.join(OUTPUT_PATH, "12b_carbon_metapersona.png")  , 
+                         filename=os.path.join(OUTPUT_PATH, f"12b_carbon_metapersona__loft_{LOFT_VALUE}_sigma_{RISK_PENALTY_SIGMA}.png")  , 
                          value_col='total_co2_saved' ,
                          metric_stat='sum',
                          group_col='meta_socio_persona',
@@ -319,7 +330,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
                          y_axis_zero=True)
 
     plot_metric_by_group(results_df, scenario_colors, 
-                         filename=os.path.join(OUTPUT_PATH, "13_cost_per_Ton_per_persona.png")  , 
+                         filename=os.path.join(OUTPUT_PATH, f"13_cost_per_Ton_per_persona_loft_{LOFT_VALUE}_sigma_{RISK_PENALTY_SIGMA}.png")  , 
                          value_col='capex_per_net_ton',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
@@ -328,7 +339,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
                          y_axis_zero=True)
     
     plot_metric_by_group(results_df, scenario_colors, 
-                         filename=os.path.join(OUTPUT_PATH, "14_cost_per_intervention_prr_persona.png")  , 
+                         filename=os.path.join(OUTPUT_PATH, f"14_cost_per_intervention_prr_persona__loft_{LOFT_VALUE}_sigma_{RISK_PENALTY_SIGMA}.png")  , 
                          value_col='total_capex',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
@@ -337,7 +348,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
                          y_axis_zero=True)
     
     plot_count_by_group(results_df, scenario_colors, 
-                        filename=os.path.join(OUTPUT_PATH, "15_counts_persona.png"), 
+                        filename=os.path.join(OUTPUT_PATH, f"15_counts_persona__loft_{LOFT_VALUE}_sigma_{RISK_PENALTY_SIGMA}.png"), 
                        group_col='meta_socio_persona',
                        xlabel='Socio-economic Persona',
                        ylabel='Number of Projects',
