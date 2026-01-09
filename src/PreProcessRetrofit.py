@@ -129,7 +129,7 @@ class PreProcessRetrofit:
         
         return pd.DataFrame(results)
     
-    def determine_inferred_insulation(self, conservation_bool, inferred_wall_type, prob_external):
+    def determine_inferred_insulation(self, conservation_bool, inferred_wall_type, prob_external, random_seed=None):
         """ 
         if in conservation area, and wall type is solid -> internal wall insulation 
         cavity wall -> cavity wall insulation 
@@ -154,8 +154,12 @@ class PreProcessRetrofit:
         # For non-conservation solid walls, sample for external vs internal
         n_non_cons_solid = non_conservation_solid.sum()
         if n_non_cons_solid > 0:
-            prob_external = prob_external
-            random_samples = np.random.random(n_non_cons_solid)
+            if random_seed is not None:
+                rng = np.random.default_rng(random_seed)
+                random_samples = rng.random(n_non_cons_solid)
+            else:
+                random_samples = np.random.random(n_non_cons_solid)
+            
             is_external = random_samples < prob_external
             
             result[non_conservation_solid] = np.where(
@@ -204,7 +208,7 @@ def vectorized_process_buildings(result_df: pd.DataFrame,
     # Step 1: Determine wall types (vectorized)
     logger.debug("Determining wall types...")
     result_df['inferred_wall_type'] = analyzer.determine_wall_types_vectorized(age_bands, random_seed)
-    result_df['inferred_insulation_type'] = analyzer.determine_inferred_insulation(conservation_bool, result_df['inferred_wall_type'], prob_external=prob_external  )
+    result_df['inferred_insulation_type'] = analyzer.determine_inferred_insulation(conservation_bool, result_df['inferred_wall_type'], prob_external=prob_external ,  random_seed=random_seed )
 
     # Step 2: Check existing wall insulation (vectorized)
     logger.debug("Checking existing wall insulation...")

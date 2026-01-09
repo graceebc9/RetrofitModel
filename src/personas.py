@@ -32,9 +32,11 @@ def load_personas():
 
     try:
         path = '/home/gb669/rds/hpc-work/energy_map/uk_postcode_clustering/3_single_runs/regional/NE/fuel_poverty_clustering_vars13_kn9/filt_domestic_samples/clusters_res_df.csv'
+        
         personas = pd.read_csv(path)
     except:
         path = '/Volumes/T9/2025_10_RetrofitModel/3-personas/clusters_res_df (1).csv'    
+        path ='/Users/gracecolverd/RetrofitModel/clusters_res_df (2).csv'
         personas = pd.read_csv(path)
     print('Personas loaded')
     personas['meta_socio_persona'] = personas['cluster'].map(mapping)

@@ -51,9 +51,11 @@ def main():
     # Configuration
     running_locally = not is_running_on_hpc()
     if running_locally:
-        BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy_epc'
+        # BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy_epc'
+        BASE_DIR = '/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/epc'
         # INPUT_FILES_PATH = '/Users/gracecolverd/Downloads/all/*.csv'
-        INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/test/new_log_epc/*.csv'
+        # INPUT_FILES_PATH='/Users/gracecolverd/RetrofitModel/test/new_log_epc/*.csv'
+        INPUT_FILES_PATH= '/Users/gracecolverd/Downloads/risk_sigma1_epc__processed_best_only/*csv'
         scenario_list = ['joint_heat_loft_decay','joint_heat_wall_decay','wall_installation', 'join_heat_ins_decay', 'heat_pump_only', 'loft_installation']
         run_greedy_runs=True   
         budgets = [1_000_000, 10_000_000, 100_000_000]
