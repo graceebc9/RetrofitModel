@@ -117,6 +117,7 @@ class RetrofitModel2D:
             # If provided, ensure it uses the epistemic factors
             self.energy_config.solid_wall_internal_improvement_factor = int_factor
             self.energy_config.solid_wall_external_improvement_factor = ext_factor
+            self.energy_config.__post_init__()  # re instatntiatue with factors 
             
         # Initialize cost estimator with custom configs if provided (original logic)
         if self.custom_intervention_configs is not None:
@@ -391,25 +392,31 @@ class RetrofitModel2D:
             # chekc if cost or energy cost 2 area ll nan 
             logger.debug(f'nan check cost: {np.isnan(np.sum(total_cost_samples)) }') 
             logger.debug(f'nan check energy : {np.isnan(np.sum(final_total_energy_abs_co2_ton_samples)) }') 
-            # capex_per_ton =  total_cost_samples.mean() / final_total_energy_abs_co2_ton_samples.mean() 
+            
             capex_per_ton = self.bootstrap_ratio(capex= total_cost_samples ,  carbon = final_total_energy_abs_co2_ton_samples )
             # ---  6. Define BASE arrays to get stats for ---
             base_sample_arrays = {
                 f"cost_{scenario_name}": total_cost_samples,
                 f"gas_saving_perc_{scenario_name}": final_gas_perc_samples,
                 f"elec_saving_perc_{scenario_name}": final_elec_perc_samples,
-                # f"gas_saving_abs_kwh_{scenario_name}": final_gas_abs_kwh_samples,
-                # f"elec_saving_abs_kwh_{scenario_name}": final_elec_abs_kwh_samples,
-                # f"total_energy_saving_abs_kwh_{scenario_name}": final_total_energy_abs_kwh_samples,
+                
                 f"gas_abs_ton_co2_samples_{scenario_name}": final_gas_abs_ton_co2_samples, 
                 f"elec_abs_ton_co2_samples_{scenario_name}": final_elec_abs_ton_co2_samples, 
                 f"total_energy_abs_co2_ton_samples_{scenario_name}": final_total_energy_abs_co2_ton_samples, 
-                # f"capex_per_net_ton_co2_{scenario_name}" : capex_per_ton, 
+                
             }
 
         except Exception as e:
             logger.error(f"Error in joint sampling for scenario {scenario_name} (intervention: {joint_intervention}): {e}")
             base_sample_arrays = {f"cost_{scenario_name}": np.array([np.nan])} # Dummy
+            # 2. MISSING FALLBACK 
+            capex_per_ton = {
+                'ratio_mean': np.nan, 'ratio_std': np.nan, 
+                'ratio_p50': np.nan, 'ratio_p95': np.nan, 'ratio_p05': np.nan
+            }
+
+            # 3. MISSING FALLBACK (Add this to prevent failure rate check crash)
+            final_total_energy_abs_co2_ton_samples = np.full(self.n_samples, np.nan)
 
         # --- 7. Calculate Statistics on BASE Sample Arrays ---
         for prefix, samples in base_sample_arrays.items():
