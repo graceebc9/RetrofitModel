@@ -82,7 +82,14 @@ def update_listed_type(df):
 
 def fill_unknown_remise_types(df):
     # Get the most common premise_type (first mode if multiple)
-    mode_value = df['premise_type'].mode()[0] if not df['premise_type'].mode().empty else None
+    mode_series = df['premise_type'].mode()
+    
+    if len(mode_series) > 0:
+        # Extract the scalar value from the Series
+        mode_value = mode_series[0]
+    else:
+        # If all values are NaN or no mode exists, use a sensible default
+        mode_value = 'Unknown'
     
     # Fill missing values with the mode
     df['premise_type_filled'] = df['premise_type'].fillna(mode_value)
