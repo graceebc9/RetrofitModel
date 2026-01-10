@@ -117,6 +117,8 @@ class RetrofitModel2D:
             # If provided, ensure it uses the epistemic factors
             self.energy_config.solid_wall_internal_improvement_factor = int_factor
             self.energy_config.solid_wall_external_improvement_factor = ext_factor
+            self.energy_config.__post_init__()  # re instatntiatue with factors 
+            logger.debug(f"Updated RetrofitEnergy config with Epistemic wall factors: internal {int_factor} and external {ext_factor}")
             
         # Initialize cost estimator with custom configs if provided (original logic)
         if self.custom_intervention_configs is not None:

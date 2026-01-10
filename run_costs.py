@@ -112,7 +112,7 @@ def collect_data(file_pattern):
         sys.exit(1)
 
     print(f"Found {len(log_files)} files. Collecting data...")
-
+ 
     for i, file_path in enumerate(log_files):
         if i % 10 == 0:
             print(f"Processing file {i+1}/{len(log_files)}...")
@@ -365,6 +365,88 @@ def generate_variance_bar_plots(variance_records, output_dir):
         plt.savefig(os.path.join(output_dir, f"Variance_Runs_Bar_{v_name}.png"), dpi=300)
         plt.close()
 
+def generate_variance_range_plots_range(variance_records, output_dir):
+    """
+    Generates Bar plots showing the Mean Global Total with P5-P95 Confidence Intervals.
+    This quantifies the 'range' of likely outcomes across epistemic runs.
+    """
+    print(f"Generating Variance Range plots (Mean with P5-P95 intervals)...")
+    
+    for v_name, records in variance_records.items():
+        if not records:
+            continue
+            
+        df = pd.DataFrame(records)
+        # 1. Aggregate to get one total per run
+        df_total = df.groupby(['scenario', 'epistemic_run_id'])['value'].sum().reset_index()
+
+        # 2. Unit Conversion
+        if v_name == 'Total_Cost':
+            df_total['value'] = df_total['value'] / 1_000_000  # Millions
+        elif v_name == 'Total_Carbon_Removed':
+            df_total['value'] = df_total['value'] / 1_000      # kTons
+        
+        # 3. Calculate Statistics: Mean, P5, P95
+        # We use a custom aggregation function
+        summary = df_total.groupby('scenario')['value'].agg(
+            mean='mean',
+            p5=lambda x: np.percentile(x, 5),
+            p95=lambda x: np.percentile(x, 95),
+            count='count'
+        ).reindex(SCENARIOS)
+        
+        summary = summary.dropna()
+
+        if summary.empty:
+            continue
+            
+        # 4. Save Summary Table (Crucial for verifying the numbers)
+        summary_export = summary.copy()
+        summary_export['Scenario_Display'] = [SCENARIO_DISPLAY_NAMES.get(x, x) for x in summary_export.index]
+        
+        csv_name = f"Variance_Stats_Range_P5_P95_{v_name}.csv"
+        summary_export.to_csv(os.path.join(output_dir, csv_name))
+        print(f"Saved Table: {csv_name}")
+
+        # 5. Prepare Error Bars for Matplotlib
+        # Matplotlib requires error bars to be relative lengths (distance from mean), not absolute coordinates.
+        # shape: [2, N] -> [[lower_errors], [upper_errors]]
+        lower_error = summary['mean'] - summary['p5']
+        upper_error = summary['p95'] - summary['mean']
+        asymmetric_error = [lower_error, upper_error]
+
+        # 6. Plotting
+        scenarios_present = summary.index.tolist()
+        means = summary['mean']
+        
+        plt.figure(figsize=(10, 6))
+        
+        # Bar plot
+        plt.bar(scenarios_present, means, yerr=asymmetric_error, 
+                capsize=5, color='mediumseagreen', alpha=0.7, edgecolor='black',
+                error_kw={'elinewidth': 1.5, 'capthick': 1.5}) # Thicker error bars for visibility
+        
+        # Optional: Overlay individual runs as faint dots to show density
+        # (Uncomment the lines below if you want to see the dots too)
+        # sns.stripplot(x='scenario', y='value', data=df_total, 
+        #               order=scenarios_present, color='black', alpha=0.3, jitter=True, size=3)
+
+        info = VARIANCE_METRICS[v_name]
+        plt.ylabel(info['ylabel'], fontweight='bold')
+        plt.xlabel('Scenario', fontweight='bold')
+        
+        clean_labels = [SCENARIO_DISPLAY_NAMES.get(sc, sc) for sc in scenarios_present]
+        plt.xticks(ticks=range(len(scenarios_present)), labels=clean_labels, rotation=45, ha='right')
+        
+        ax = plt.gca()
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:,.2f}'))
+        
+        plt.grid(axis='y', linestyle='--', alpha=0.5)
+        plt.tight_layout()
+        
+        plt.savefig(os.path.join(output_dir, f"Variance_Runs_Range_P5P95_{v_name}.png"), dpi=300)
+        plt.close()
+
 def main():
     print(f"========================================")
     print(f"Retrofit Analysis - {TODAY}")
@@ -374,10 +456,12 @@ def main():
     print(f"----------------------------------------")
 
     summary_data, variance_data = collect_data(LOG_FILE_PATTERN)
+    generate_variance_range_plots_range(variance_data, OUTPUT_DIR)
     
-    generate_median_plots(summary_data, OUTPUT_DIR)
-    generate_variance_plots(variance_data, OUTPUT_DIR)
-    generate_variance_bar_plots(variance_data, OUTPUT_DIR)
+    #generate_median_plots(summary_data, OUTPUT_DIR)
+    #generate_variance_plots(variance_data, OUTPUT_DIR)
+    #generate_variance_bar_plots(variance_data, OUTPUT_DIR)
+    
     
     print("\nProcessing Complete.")
 
