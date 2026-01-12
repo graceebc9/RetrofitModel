@@ -12,6 +12,7 @@ import os
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib as mpl 
 import seaborn as sns
 import numpy as np
 import matplotlib.cm as cm
@@ -40,7 +41,7 @@ PALETTE = {
     CAVITY_WALL: '#2ca02c',          # Green
 }
 
-THRESHOLDS = [800, 1500, 3000]
+THRESHOLDS = [800, 1500, 2200]
 
 # MAPPING: Matches CSV data labels -> Script keys
 CATEGORY_MAP = {
@@ -234,10 +235,10 @@ def plot_cost_efficiency_curve(df: pd.DataFrame, output_path: str) -> None:
 
     # Thresholds
     for thr in THRESHOLDS:
-        ax.axhline(thr, color='gray', linestyle='--', alpha=0.5)
+        ax.axhline(thr, color='green', linestyle='--', alpha=0.5)
         ax.text(min_x, thr + 50, f'£{thr}/tCO2', color='gray', fontsize=9)
 
-    ax.set_title("Cost Efficiency: Improvement Factor vs Cost per tCO2", fontsize=16)
+    
     ax.set_xlabel("Improvement Factor", fontsize=14)
     ax.set_ylabel("Median £ / tCO2 (5-Year)", fontsize=14)
     ax.legend()
@@ -282,7 +283,7 @@ def plot_viability_percentage(df: pd.DataFrame, output_path: str) -> None:
             label='Solid Wall (External)'
         )
 
-    ax.set_title("Market Viability (< £2000/tCO2)", fontsize=16)
+    
     ax.set_xlabel("Improvement Factor", fontsize=14)
     ax.set_ylabel("% Viable", fontsize=14)
     ax.set_ylim(0, 100)
@@ -317,7 +318,7 @@ def plot_gas_stratification(df: pd.DataFrame, output_path: str) -> None:
             marker='o', label=decile, color=colors[i], linewidth=2
         )
 
-    ax.set_title("Gas Impact: Solid Wall (External) Efficiency", fontsize=16)
+    
     ax.set_xlabel("External Wall Improvement Factor", fontsize=14)
     ax.set_ylabel("Median £ / tCO2 (5-Year)", fontsize=14)
     ax.legend(title="Gas Decile")
@@ -351,7 +352,7 @@ def plot_premise_stratification(df: pd.DataFrame, output_path: str) -> None:
             marker='o', label=premise
         )
 
-    ax.set_title("Form Factor: Solid Wall (Internal) Efficiency", fontsize=16)
+    
     ax.set_xlabel("Internal Wall Improvement Factor", fontsize=14)
     ax.set_ylabel("Median £ / tCO2 (5-Year)", fontsize=14)
     ax.legend(title="Premise Type")
@@ -536,15 +537,16 @@ def plot_intersection_grid(
         # Only show y-label on leftmost plots
         if i % cols == 0:
             ax.set_ylabel("Median £/tCO2")
+            ax.get_xaxis().set_major_formatter(mpl.ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
         
         ax.grid(True, alpha=0.3)
 
         # Add threshold lines
-        for thr in [1000, 2000, 3000]:
+        for thr in [800, 1500, 2200]:
             if thr <= shared_ylim[1]:
-                ax.axhline(thr, color='gray', linestyle=':', alpha=0.5, linewidth=1)
+                ax.axhline(thr, color='green', linestyle=':', alpha=0.5, linewidth=1)
                 # Add threshold label only on first subplot
-                if i == 0:
+                if i == 0 or i == 3:
                     ax.text(ax.get_xlim()[0], thr + (shared_ylim[1] * 0.02), 
                             f'£{thr}', color='gray', fontsize=8, va='bottom')
 
@@ -561,13 +563,13 @@ def plot_intersection_grid(
     fig.legend(
         handles, labels,
         loc='upper center',
-        bbox_to_anchor=(0.5, 1.02),
+        bbox_to_anchor=(0.5, 1.1),
         ncol=len(gas_labels),
         title="Gas Consumption Decile",
         fontsize=10
     )
 
-    plt.suptitle(title, fontsize=16, fontweight='bold', y=1.06)
+
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
@@ -722,7 +724,7 @@ def plot_intersection_combined_heatmap(df: pd.DataFrame, output_path: str) -> No
             linewidths=0.5
         )
         
-        ax.set_title(f"{title}\n(at factor ≈ {mid_factor:.2f})", fontsize=12, fontweight='bold')
+        
         ax.set_xlabel("Gas Consumption Decile")
         ax.set_ylabel("Building Type")
 
