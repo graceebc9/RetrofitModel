@@ -41,7 +41,7 @@ PALETTE = {
     CAVITY_WALL: '#2ca02c',          # Green
 }
 
-THRESHOLDS = [800, 1500, 2200]
+THRESHOLDS = [800, 1500, 2000]
 
 # MAPPING: Matches CSV data labels -> Script keys
 CATEGORY_MAP = {
@@ -542,7 +542,7 @@ def plot_intersection_grid(
         ax.grid(True, alpha=0.3)
 
         # Add threshold lines
-        for thr in [800, 1500, 2200]:
+        for thr in [800, 1500, 2000]:
             if thr <= shared_ylim[1]:
                 ax.axhline(thr, color='green', linestyle=':', alpha=0.5, linewidth=1)
                 # Add threshold label only on first subplot
@@ -654,6 +654,184 @@ def calculate_shared_ylim_for_intersections(
     y_max = y_max * 1.1  # Add 10% padding
     
     return (y_min, y_max)
+
+#========================================================
+# NEW: THRESHOLD SUMMARY LOGGING
+# =========================================================
+
+def generate_threshold_summary(
+    df: pd.DataFrame,
+    output_path: str,
+    thresholds: List[int] = [2000, 1500, 800]
+) -> None:
+    """
+    Generate a text summary of buildings below each threshold,
+    broken down by premise type and gas decile for both internal and external insulation.
+    
+    Args:
+        df: Detailed results dataframe
+        output_path: Directory to save the summary file
+        thresholds: List of cost thresholds to evaluate (default: [2000, 1500, 800])
+    """
+    if df is None or COST_METRIC not in df.columns:
+        print("Cannot generate summary: No detailed data available")
+        return
+    
+    summary_lines = []
+    summary_lines.append("=" * 80)
+    summary_lines.append("WALL INSULATION COST EFFICIENCY SUMMARY")
+    summary_lines.append(f"Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    summary_lines.append("=" * 80)
+    summary_lines.append("")
+    
+    configs = [
+        (SWEEP_INTERNAL, SOLID_WALL_INTERNAL, 'INTERNAL WALL INSULATION'),
+        (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'EXTERNAL WALL INSULATION'),
+    ]
+    
+    for sweep_type, building_cat, section_title in configs:
+        subset = filter_sweep(df, sweep_type, building_cat)
+        
+        if subset.empty:
+            summary_lines.append(f"\n{'#' * 60}")
+            summary_lines.append(f"# {section_title}")
+            summary_lines.append(f"{'#' * 60}")
+            summary_lines.append("No data available for this insulation type.")
+            continue
+        
+        # Create gas bins and clean premise types
+        subset = subset.copy()
+        subset['gas_bin'] = pd.cut(
+            subset['avg_gas_percentile'],
+            bins=GAS_BINS,
+            labels=GAS_LABELS
+        )
+        subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
+        
+        # Section header
+        summary_lines.append(f"\n{'#' * 60}")
+        summary_lines.append(f"# {section_title}")
+        summary_lines.append(f"{'#' * 60}")
+        summary_lines.append(f"Total buildings in dataset: {len(subset):,}")
+        summary_lines.append(f"Len og dataset : {len(df)}")
+        summary_lines.append(f"{df.columns.tolist()}")
+        summary_lines.append(f"{df.sweep_type.unique()}")
+        sweep_type
+        
+        summary_lines.append("")
+        
+        # Get unique premise types sorted
+        premise_types = sorted(subset['Premise Type'].unique())
+        
+        for premise in premise_types:
+            premise_data = subset[subset['Premise Type'] == premise]
+            premise_total = len(premise_data)
+            
+            if premise_total == 0:
+                continue
+            
+            summary_lines.append("-" * 60)
+            summary_lines.append(f"PREMISE TYPE: {premise}")
+            summary_lines.append(f"Total buildings: {premise_total:,}")
+            summary_lines.append("-" * 60)
+            
+            # Overall threshold summary for this premise type
+            summary_lines.append("\n  OVERALL THRESHOLD SUMMARY:")
+            for threshold in thresholds:
+                below = (premise_data[COST_METRIC] < threshold).sum()
+                pct = (below / premise_total) * 100
+                summary_lines.append(f"    Below £{threshold}/tCO2: {below:,} ({pct:.1f}%)")
+            
+            # Gas decile breakdown
+            summary_lines.append("\n  BREAKDOWN BY GAS CONSUMPTION DECILE:")
+            summary_lines.append("")
+            
+            # Header for the table
+            header = f"    {'Gas Decile':<15} | {'Count':>8} | "
+            header += " | ".join([f"<£{t}".rjust(10) for t in thresholds])
+            summary_lines.append(header)
+            summary_lines.append("    " + "-" * (len(header) - 4))
+            
+            gas_bins_in_data = [g for g in GAS_LABELS if g in premise_data['gas_bin'].unique()]
+            
+            for gas_bin in gas_bins_in_data:
+                gas_data = premise_data[premise_data['gas_bin'] == gas_bin]
+                gas_count = len(gas_data)
+                
+                if gas_count == 0:
+                    continue
+                
+                row = f"    {gas_bin:<15} | {gas_count:>8} | "
+                
+                threshold_parts = []
+                for threshold in thresholds:
+                    below = (gas_data[COST_METRIC] < threshold).sum()
+                    pct = (below / gas_count) * 100
+                    threshold_parts.append(f"{below:>4} ({pct:>4.1f}%)")
+                
+                row += " | ".join(threshold_parts)
+                summary_lines.append(row)
+            
+            # Decile distribution within this premise type
+            summary_lines.append("\n  GAS DECILE DISTRIBUTION:")
+            for gas_bin in gas_bins_in_data:
+                gas_count = len(premise_data[premise_data['gas_bin'] == gas_bin])
+                pct_of_premise = (gas_count / premise_total) * 100
+                summary_lines.append(f"    {gas_bin:<15}: {gas_count:>6,} buildings ({pct_of_premise:>5.1f}% of {premise})")
+            
+            summary_lines.append("")
+        
+        # Overall summary table for this insulation type
+        summary_lines.append("\n" + "=" * 60)
+        summary_lines.append(f"SUMMARY TABLE: {section_title}")
+        summary_lines.append("=" * 60)
+        
+        # Create summary table
+        summary_lines.append("")
+        header = f"{'Premise Type':<20} | {'Total':>8} | "
+        header += " | ".join([f"<£{t}".rjust(12) for t in thresholds])
+        summary_lines.append(header)
+        summary_lines.append("-" * len(header))
+        
+        for premise in premise_types:
+            premise_data = subset[subset['Premise Type'] == premise]
+            premise_total = len(premise_data)
+            
+            if premise_total == 0:
+                continue
+            
+            row = f"{premise[:20]:<20} | {premise_total:>8} | "
+            
+            threshold_parts = []
+            for threshold in thresholds:
+                below = (premise_data[COST_METRIC] < threshold).sum()
+                pct = (below / premise_total) * 100
+                threshold_parts.append(f"{below:>5} ({pct:>4.1f}%)")
+            
+            row += " | ".join(threshold_parts)
+            summary_lines.append(row)
+        
+        # Total row
+        total_count = len(subset)
+        row = f"{'TOTAL':<20} | {total_count:>8} | "
+        threshold_parts = []
+        for threshold in thresholds:
+            below = (subset[COST_METRIC] < threshold).sum()
+            pct = (below / total_count) * 100
+            threshold_parts.append(f"{below:>5} ({pct:>4.1f}%)")
+        row += " | ".join(threshold_parts)
+        summary_lines.append("-" * len(header))
+        summary_lines.append(row)
+        summary_lines.append("")
+    
+    # Write to file
+    output_file = os.path.join(output_path, 'threshold_summary.txt')
+    with open(output_file, 'w') as f:
+        f.write('\n'.join(summary_lines))
+    
+    print(f"Saved threshold summary to: {output_file}")
+
+
 
 
 def plot_intersection_combined_heatmap(df: pd.DataFrame, output_path: str) -> None:
@@ -857,9 +1035,13 @@ def main():
         plot_intersection_external(data['detailed'], output_dir, shared_ylim=shared_ylim, min_sample_size=min_samples)
         plot_intersection_combined_heatmap(data['detailed'], output_dir)
         plot_viability_matrix(data['detailed'], output_dir)
+        print("\nGenerating threshold summary...")
+        generate_threshold_summary(data['detailed'], output_dir)
     else:
         print("Skipping intersection plots: detailed parquet not available")
 
+ 
+    
     print("\n" + "=" * 50)
     print("Visualization complete.")
     print(f"Plots saved to: {output_dir}")
