@@ -1,11 +1,16 @@
 """
-Module: visualise_wall_results_expanded.py
-Purpose: Visualise the outputs from wall_improvement_sweep_v3.py
-Updates:
-1. Expanded intersection plots: separate plots for internal and external factors
-2. Each plot shows premise types with gas decile breakdown
-3. Refactored with helper functions to reduce code duplication
-4. Added constants for magic strings
+Module: visualise_wall_results_v4.py
+Purpose: Visualise the outputs from wall_improvement_sweep_v4.py
+
+Key update: Correct epistemic aggregation
+- Per building: mean(p50) + n_std * std(p50) across epistemic runs
+- Then aggregate across buildings for summary stats
+
+Updates from v3:
+1. Changed metric from _mean to _p50
+2. Added compute_building_conservative_estimate() to collapse epistemic runs
+3. All aggregations now properly collapse per-building first
+4. Added n_std parameter for conservative estimate tuning
 """
 
 import os
@@ -41,7 +46,7 @@ PALETTE = {
     CAVITY_WALL: '#2ca02c',          # Green
 }
 
-THRESHOLDS = [800, 1500, 2000]
+THRESHOLDS = [800, 1500, 2200]
 
 # MAPPING: Matches CSV data labels -> Script keys
 CATEGORY_MAP = {
@@ -51,8 +56,11 @@ CATEGORY_MAP = {
     'solid_wall_external': SOLID_WALL_EXTERNAL,
 }
 
-# Metric column name
-COST_METRIC = 'wall_installation_capex_per_net_ton_co2_wall_installation_mean'
+# Metric column name - NOW USING P50
+COST_METRIC = 'wall_installation_capex_per_net_ton_co2_wall_installation_p50'
+
+# Epistemic aggregation parameter
+N_STD_CONSERVATIVE = 1.0  # mean + N_STD * std for conservative estimate
 
 # Gas bin configuration
 GAS_BINS = [-0.1, 2, 4, 6, 8, 10.1]
@@ -63,14 +71,105 @@ MIN_SAMPLE_SIZE = 20
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Visualise Wall Sweep Results')
+    parser = argparse.ArgumentParser(description='Visualise Wall Sweep Results v4')
     parser.add_argument('--input-dir', type=str, required=True,
                         help='Path to the sweep output directory')
     parser.add_argument('--output-dir', type=str, default=None,
                         help='Directory to save plots')
     parser.add_argument('--min-samples', type=int, default=MIN_SAMPLE_SIZE,
                         help=f'Minimum sample size per bin for intersection plots (default: {MIN_SAMPLE_SIZE})')
+    parser.add_argument('--n-std', type=float, default=N_STD_CONSERVATIVE,
+                        help=f'Number of std devs for conservative estimate (default: {N_STD_CONSERVATIVE})')
     return parser.parse_args()
+
+
+# ==========================================
+# EPISTEMIC AGGREGATION
+# ==========================================
+
+def compute_building_conservative_estimate(
+    df: pd.DataFrame, 
+    metric_col: str = COST_METRIC,
+    building_id: str = 'upn',
+    n_std: float = N_STD_CONSERVATIVE,
+) -> pd.DataFrame:
+    """
+    Collapse epistemic runs per building: mean(p50) + n_std * std(p50).
+    Returns one row per building with the conservative estimate.
+    
+    Args:
+        df: DataFrame with multiple rows per building (one per epistemic run)
+        metric_col: The p50 metric column
+        building_id: Column identifying unique buildings
+        n_std: Number of std devs to add for conservative estimate
+    
+    Returns:
+        DataFrame with one row per building, metric_col replaced with conservative estimate
+    """
+    if df.empty:
+        return df
+    
+    # Columns to preserve (take first value since constant per building within a sweep)
+    preserve_cols = ['building_category', 'sweep_type', 'internal_factor', 'external_factor',
+                     'premise_type_filled', 'avg_gas_percentile', 'inferred_wall_type', 
+                     'inferred_insulation_type', 'postcode', 'region']
+    
+    # Filter to columns that exist
+    preserve_cols = [c for c in preserve_cols if c in df.columns]
+    
+    # Group by building AND sweep parameters (factor values define different sweep points)
+    group_cols = [building_id]
+    if 'internal_factor' in df.columns:
+        group_cols.append('internal_factor')
+    if 'external_factor' in df.columns:
+        group_cols.append('external_factor')
+    if 'sweep_type' in df.columns:
+        group_cols.append('sweep_type')
+    
+    grouped = df.groupby(group_cols)
+    
+    # Compute mean and std of metric across epistemic runs
+    agg_dict = {
+        metric_col: ['mean', 'std', 'count'],
+    }
+    
+    # Add first-value aggregation for preserved columns
+    for col in preserve_cols:
+        if col not in group_cols:
+            agg_dict[col] = 'first'
+    
+    result = grouped.agg(agg_dict)
+    
+    # Flatten column names
+    result.columns = ['_'.join(col).strip('_') if isinstance(col, tuple) else col 
+                      for col in result.columns]
+    
+    # Compute conservative estimate
+    mean_col = f'{metric_col}_mean'
+    std_col = f'{metric_col}_std'
+    count_col = f'{metric_col}_count'
+    
+    result[std_col] = result[std_col].fillna(0)
+    result[metric_col] = result[mean_col] + n_std * result[std_col]
+    
+    # Keep epistemic stats for reference
+    result['epistemic_mean'] = result[mean_col]
+    result['epistemic_std'] = result[std_col]
+    result['epistemic_n'] = result[count_col]
+    
+    # Clean up intermediate columns
+    result = result.drop(columns=[mean_col, std_col, count_col], errors='ignore')
+    
+    # Flatten preserved column names (remove '_first' suffix)
+    for col in preserve_cols:
+        if col not in group_cols:
+            old_name = f'{col}_first'
+            if old_name in result.columns:
+                result = result.rename(columns={old_name: col})
+    
+    result = result.reset_index()
+    
+    return result
 
 
 # ==========================================
@@ -134,7 +233,7 @@ def get_gas_colors(n_bins: int) -> np.ndarray:
     return cm.YlOrRd(np.linspace(0.3, 1, n_bins))
 
 
-def load_data(input_dir: str) -> Dict[str, Optional[pd.DataFrame]]:
+def load_data(input_dir: str, n_std: float = N_STD_CONSERVATIVE) -> Dict[str, Optional[pd.DataFrame]]:
     """Loads CSV summaries AND the detailed parquet if available."""
     data = {}
 
@@ -166,9 +265,9 @@ def load_data(input_dir: str) -> Dict[str, Optional[pd.DataFrame]]:
         try:
             # Define columns we need
             required_cols = [
-                'building_category', 'sweep_type', 'internal_factor', 'external_factor',
+                'upn', 'building_category', 'sweep_type', 'internal_factor', 'external_factor',
                 'premise_type_filled', 'avg_gas_percentile', COST_METRIC,
-                'inferred_wall_type', 'inferred_insulation_type'
+                'inferred_wall_type', 'inferred_insulation_type', 'epistemic_run_id'
             ]
             
             # Try loading only required columns first
@@ -183,14 +282,31 @@ def load_data(input_dir: str) -> Dict[str, Optional[pd.DataFrame]]:
                 df_full['building_category'] = df_full.apply(create_building_category_if_missing, axis=1)
             df_full['building_category'] = df_full['building_category'].replace(CATEGORY_MAP)
             
-            data['detailed'] = df_full
-            print(f"Loaded detailed parquet: {len(df_full)} rows")
+            # Count raw rows before collapsing
+            n_raw = len(df_full)
+            n_epistemic = df_full['epistemic_run_id'].nunique() if 'epistemic_run_id' in df_full.columns else 'unknown'
+            
+            # COLLAPSE EPISTEMIC RUNS
+            print(f"  Raw rows: {n_raw:,} (buildings × {n_epistemic} epistemic runs)")
+            print(f"  Collapsing epistemic runs with n_std={n_std}...")
+            
+            df_collapsed = compute_building_conservative_estimate(df_full, n_std=n_std)
+            
+            print(f"  Collapsed to: {len(df_collapsed):,} building-factor combinations")
+            
+            data['detailed'] = df_collapsed
+            data['detailed_raw'] = df_full  # Keep raw for epistemic sensitivity analysis
+            
         except Exception as e:
             print(f"Failed to load parquet: {e}")
+            import traceback
+            traceback.print_exc()
             data['detailed'] = None
+            data['detailed_raw'] = None
     else:
         print("Detailed parquet not found. Intersection plots will be skipped.")
         data['detailed'] = None
+        data['detailed_raw'] = None
 
     return data
 
@@ -199,7 +315,7 @@ def load_data(input_dir: str) -> Dict[str, Optional[pd.DataFrame]]:
 # BASIC PLOTTING FUNCTIONS
 # =========================================================
 
-def plot_cost_efficiency_curve(df: pd.DataFrame, output_path: str) -> None:
+def plot_cost_efficiency_curve(df: pd.DataFrame, output_path: str, n_std: float = N_STD_CONSERVATIVE) -> None:
     """Plot 1: Cost efficiency curves for internal vs external insulation."""
     if df is None:
         return
@@ -238,9 +354,9 @@ def plot_cost_efficiency_curve(df: pd.DataFrame, output_path: str) -> None:
         ax.axhline(thr, color='green', linestyle='--', alpha=0.5)
         ax.text(min_x, thr + 50, f'£{thr}/tCO2', color='gray', fontsize=9)
 
-    
     ax.set_xlabel("Improvement Factor", fontsize=14)
     ax.set_ylabel("Median £ / tCO2 (5-Year)", fontsize=14)
+    
     ax.legend()
 
     plt.tight_layout()
@@ -249,7 +365,7 @@ def plot_cost_efficiency_curve(df: pd.DataFrame, output_path: str) -> None:
     print("Saved Plot 1: Cost Efficiency Curve")
 
 
-def plot_viability_percentage(df: pd.DataFrame, output_path: str) -> None:
+def plot_viability_percentage(df: pd.DataFrame, output_path: str, n_std: float = N_STD_CONSERVATIVE) -> None:
     """Plot 2: Percentage of properties viable at £2000/tCO2 threshold."""
     if df is None:
         return
@@ -283,9 +399,9 @@ def plot_viability_percentage(df: pd.DataFrame, output_path: str) -> None:
             label='Solid Wall (External)'
         )
 
-    
     ax.set_xlabel("Improvement Factor", fontsize=14)
-    ax.set_ylabel("% Viable", fontsize=14)
+    ax.set_ylabel("% Viable (< £2000/tCO2)", fontsize=14)
+    
     ax.set_ylim(0, 100)
     ax.legend()
 
@@ -318,10 +434,9 @@ def plot_gas_stratification(df: pd.DataFrame, output_path: str) -> None:
             marker='o', label=decile, color=colors[i], linewidth=2
         )
 
-    
     ax.set_xlabel("External Wall Improvement Factor", fontsize=14)
     ax.set_ylabel("Median £ / tCO2 (5-Year)", fontsize=14)
-    ax.legend(title="Gas Decile")
+    
 
     plt.tight_layout()
     plt.savefig(os.path.join(output_path, '3_gas_decile_impact.png'), dpi=300)
@@ -352,7 +467,6 @@ def plot_premise_stratification(df: pd.DataFrame, output_path: str) -> None:
             marker='o', label=premise
         )
 
-    
     ax.set_xlabel("Internal Wall Improvement Factor", fontsize=14)
     ax.set_ylabel("Median £ / tCO2 (5-Year)", fontsize=14)
     ax.legend(title="Premise Type")
@@ -375,16 +489,11 @@ def prepare_intersection_data(
 ) -> Tuple[Optional[pd.DataFrame], str]:
     """
     Prepare data for intersection plots.
+    
+    NOTE: df should already be collapsed (one row per building-factor combination)
+    from compute_building_conservative_estimate().
+    
     Returns aggregated data and the factor column name.
-    
-    Args:
-        df: Detailed results dataframe
-        sweep_type: 'internal' or 'external'
-        building_category: Building category to filter on
-        min_sample_size: Minimum number of buildings required per bin (default from MIN_SAMPLE_SIZE)
-    
-    Returns:
-        Tuple of (aggregated dataframe, factor column name)
     """
     if df is None or COST_METRIC not in df.columns:
         return None, ''
@@ -397,6 +506,7 @@ def prepare_intersection_data(
     factor_col = get_factor_column(sweep_type)
 
     # Create gas bins
+    subset = subset.copy()
     subset['gas_bin'] = pd.cut(
         subset['avg_gas_percentile'],
         bins=GAS_BINS,
@@ -407,9 +517,11 @@ def prepare_intersection_data(
     subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
 
     # Aggregate: Group by Factor, Premise, Gas Bin -> Median AND Count
+    # Now each row represents one building (epistemic already collapsed)
     agg = subset.groupby([factor_col, 'Premise Type', 'gas_bin']).agg(
         median_cost=(COST_METRIC, 'median'),
-        sample_count=(COST_METRIC, 'count')
+        mean_cost=(COST_METRIC, 'mean'),
+        sample_count=(COST_METRIC, 'count')  # This is now actual building count
     ).reset_index()
 
     # Filter out bins with insufficient sample size
@@ -419,7 +531,7 @@ def prepare_intersection_data(
     
     if before_count > after_count:
         filtered_count = before_count - after_count
-        print(f"  Filtered {filtered_count} bins with < {min_sample_size} samples "
+        print(f"  Filtered {filtered_count} bins with < {min_sample_size} buildings "
               f"({sweep_type} {building_category})")
 
     return agg, factor_col
@@ -464,23 +576,16 @@ def get_premise_types_to_plot(agg: pd.DataFrame, max_types: int = 6) -> List[str
     
     return unique_premises[:max_types]
 
-
 def plot_intersection_grid(
     agg: pd.DataFrame,
     factor_col: str,
     title: str,
     output_file: str,
-    shared_ylim: Optional[Tuple[float, float]] = None
+    shared_ylim: Optional[Tuple[float, float]] = None,
+    n_std: float = N_STD_CONSERVATIVE
 ) -> None:
     """
     Create a grid of subplots showing premise type x gas decile interaction.
-    
-    Args:
-        agg: Aggregated dataframe with columns [factor_col, 'Premise Type', 'gas_bin', 'median_cost']
-        factor_col: Name of the factor column (e.g., 'internal_factor')
-        title: Plot title
-        output_file: Full path to save the plot
-        shared_ylim: Optional (min, max) tuple for shared y-axis. If None, calculated from data.
     """
     premises = get_premise_types_to_plot(agg)
     n_plots = len(premises)
@@ -488,7 +593,6 @@ def plot_intersection_grid(
     if n_plots == 0:
         print(f"No premise types to plot for {title}")
         return
-
     # Calculate grid dimensions
     cols = min(3, n_plots)
     rows = (n_plots + cols - 1) // cols
@@ -500,24 +604,23 @@ def plot_intersection_grid(
     if n_plots == 1:
         axes = np.array([axes])
     axes = axes.flatten()
-
+    
     # Gas colors: Yellow (low gas) -> Red (high gas)
-    gas_labels = [l for l in GAS_LABELS if l in agg['gas_bin'].unique()]
+    # Use ALL gas labels for consistent legend, not just those in current data
+    gas_labels = GAS_LABELS
     colors = get_gas_colors(len(gas_labels))
-
+    
     # Calculate shared y-axis limits if not provided
     if shared_ylim is None:
         y_min = 0
-        y_max = agg['median_cost'].quantile(0.95)  # Use 95th percentile to avoid outliers
-        y_max = max(y_max, 3500)  # Ensure we show at least up to £3000 threshold
-        # Add 10% padding
+        y_max = agg['median_cost'].quantile(0.95)
+        y_max = max(y_max, 3500)
         y_max = y_max * 1.1
         shared_ylim = (y_min, y_max)
-
+    
     for i, premise in enumerate(premises):
         ax = axes[i]
         p_data = agg[agg['Premise Type'] == premise]
-
         for j, gas_bin in enumerate(gas_labels):
             g_data = p_data[p_data['gas_bin'] == gas_bin].sort_values(factor_col)
             if not g_data.empty:
@@ -530,7 +633,6 @@ def plot_intersection_grid(
                     color=colors[j],
                     linewidth=2
                 )
-
         ax.set_title(f"{premise}", fontsize=12, fontweight='bold')
         ax.set_xlabel(factor_col.replace('_', ' ').title())
         
@@ -540,36 +642,38 @@ def plot_intersection_grid(
             ax.get_xaxis().set_major_formatter(mpl.ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
         
         ax.grid(True, alpha=0.3)
-
         # Add threshold lines
         for thr in [800, 1500, 2000]:
             if thr <= shared_ylim[1]:
                 ax.axhline(thr, color='green', linestyle=':', alpha=0.5, linewidth=1)
-                # Add threshold label only on first subplot
                 if i == 0 or i == 3:
                     ax.text(ax.get_xlim()[0], thr + (shared_ylim[1] * 0.02), 
                             f'£{thr}', color='gray', fontsize=8, va='bottom')
-
+    
     # Apply shared y-axis limits
     for ax in axes[:n_plots]:
         ax.set_ylim(shared_ylim)
-
+    
     # Turn off unused axes
     for k in range(len(premises), len(axes)):
         axes[k].axis('off')
-
-    # Single legend at the top
-    handles, labels = axes[0].get_legend_handles_labels()
+    
+    # Create legend handles manually for ALL gas bins (not just those in current plot)
+    from matplotlib.lines import Line2D
+    legend_handles = [
+        Line2D([0], [0], color=colors[j], marker='o', markersize=6, linewidth=2)
+        for j in range(len(gas_labels))
+    ]
+    
     fig.legend(
-        handles, labels,
+        legend_handles, gas_labels,
         loc='upper center',
-        bbox_to_anchor=(0.5, 1.1),
+        bbox_to_anchor=(0.5, 1.12),
         ncol=len(gas_labels),
         title="Gas Consumption Decile",
         fontsize=10
     )
-
-
+    
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
@@ -580,11 +684,10 @@ def plot_intersection_internal(
     df: pd.DataFrame, 
     output_path: str,
     shared_ylim: Optional[Tuple[float, float]] = None,
-    min_sample_size: int = MIN_SAMPLE_SIZE
+    min_sample_size: int = MIN_SAMPLE_SIZE,
+    n_std: float = N_STD_CONSERVATIVE
 ) -> None:
-    """
-    Plot 5a: Intersection of Premise Type x Gas Decile for INTERNAL wall insulation.
-    """
+    """Plot 5a: Intersection of Premise Type x Gas Decile for INTERNAL wall insulation."""
     agg, factor_col = prepare_intersection_data(df, SWEEP_INTERNAL, SOLID_WALL_INTERNAL, min_sample_size)
     
     if agg is None or agg.empty:
@@ -596,7 +699,8 @@ def plot_intersection_internal(
         factor_col=factor_col,
         title="Internal Wall Insulation: Building Form vs Gas Usage",
         output_file=os.path.join(output_path, '5a_intersection_internal.png'),
-        shared_ylim=shared_ylim
+        shared_ylim=shared_ylim,
+        n_std=n_std
     )
 
 
@@ -604,11 +708,10 @@ def plot_intersection_external(
     df: pd.DataFrame, 
     output_path: str,
     shared_ylim: Optional[Tuple[float, float]] = None,
-    min_sample_size: int = MIN_SAMPLE_SIZE
+    min_sample_size: int = MIN_SAMPLE_SIZE,
+    n_std: float = N_STD_CONSERVATIVE
 ) -> None:
-    """
-    Plot 5b: Intersection of Premise Type x Gas Decile for EXTERNAL wall insulation.
-    """
+    """Plot 5b: Intersection of Premise Type x Gas Decile for EXTERNAL wall insulation."""
     agg, factor_col = prepare_intersection_data(df, SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, min_sample_size)
     
     if agg is None or agg.empty:
@@ -620,7 +723,8 @@ def plot_intersection_external(
         factor_col=factor_col,
         title="External Wall Insulation: Building Form vs Gas Usage",
         output_file=os.path.join(output_path, '5b_intersection_external.png'),
-        shared_ylim=shared_ylim
+        shared_ylim=shared_ylim,
+        n_std=n_std
     )
 
 
@@ -628,10 +732,7 @@ def calculate_shared_ylim_for_intersections(
     df: pd.DataFrame,
     min_sample_size: int = MIN_SAMPLE_SIZE
 ) -> Optional[Tuple[float, float]]:
-    """
-    Calculate a shared y-axis limit across both internal and external intersection data.
-    This allows direct visual comparison between the two plot types.
-    """
+    """Calculate a shared y-axis limit across both internal and external intersection data."""
     if df is None or COST_METRIC not in df.columns:
         return None
     
@@ -649,195 +750,27 @@ def calculate_shared_ylim_for_intersections(
         return None
     
     y_min = 0
-    y_max = np.percentile(all_medians, 95)  # 95th percentile to avoid outliers
-    y_max = max(y_max, 3500)  # Ensure we show at least up to £3000 threshold
-    y_max = y_max * 1.1  # Add 10% padding
+    y_max = np.percentile(all_medians, 95)
+    y_max = max(y_max, 3500)
+    y_max = y_max * 1.1
     
     return (y_min, y_max)
 
-#========================================================
-# NEW: THRESHOLD SUMMARY LOGGING
+ 
+
+# =========================================================
+# HEATMAPS
 # =========================================================
 
-def generate_threshold_summary(
-    df: pd.DataFrame,
+def plot_intersection_combined_heatmap(
+    df: pd.DataFrame, 
     output_path: str,
-    thresholds: List[int] = [2000, 1500, 800]
+    n_std: float = N_STD_CONSERVATIVE
 ) -> None:
     """
-    Generate a text summary of buildings below each threshold,
-    broken down by premise type and gas decile for both internal and external insulation.
-    
-    Args:
-        df: Detailed results dataframe
-        output_path: Directory to save the summary file
-        thresholds: List of cost thresholds to evaluate (default: [2000, 1500, 800])
-    """
-    if df is None or COST_METRIC not in df.columns:
-        print("Cannot generate summary: No detailed data available")
-        return
-    
-    summary_lines = []
-    summary_lines.append("=" * 80)
-    summary_lines.append("WALL INSULATION COST EFFICIENCY SUMMARY")
-    summary_lines.append(f"Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    summary_lines.append("=" * 80)
-    summary_lines.append("")
-    
-    configs = [
-        (SWEEP_INTERNAL, SOLID_WALL_INTERNAL, 'INTERNAL WALL INSULATION'),
-        (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'EXTERNAL WALL INSULATION'),
-    ]
-    
-    for sweep_type, building_cat, section_title in configs:
-        subset = filter_sweep(df, sweep_type, building_cat)
-        
-        if subset.empty:
-            summary_lines.append(f"\n{'#' * 60}")
-            summary_lines.append(f"# {section_title}")
-            summary_lines.append(f"{'#' * 60}")
-            summary_lines.append("No data available for this insulation type.")
-            continue
-        
-        # Create gas bins and clean premise types
-        subset = subset.copy()
-        subset['gas_bin'] = pd.cut(
-            subset['avg_gas_percentile'],
-            bins=GAS_BINS,
-            labels=GAS_LABELS
-        )
-        subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
-        
-        # Section header
-        summary_lines.append(f"\n{'#' * 60}")
-        summary_lines.append(f"# {section_title}")
-        summary_lines.append(f"{'#' * 60}")
-        summary_lines.append(f"Total buildings in dataset: {len(subset):,}")
-        summary_lines.append(f"Len og dataset : {len(df)}")
-        summary_lines.append(f"{df.columns.tolist()}")
-        summary_lines.append(f"{df.sweep_type.unique()}")
-        sweep_type
-        
-        summary_lines.append("")
-        
-        # Get unique premise types sorted
-        premise_types = sorted(subset['Premise Type'].unique())
-        
-        for premise in premise_types:
-            premise_data = subset[subset['Premise Type'] == premise]
-            premise_total = len(premise_data)
-            
-            if premise_total == 0:
-                continue
-            
-            summary_lines.append("-" * 60)
-            summary_lines.append(f"PREMISE TYPE: {premise}")
-            summary_lines.append(f"Total buildings: {premise_total:,}")
-            summary_lines.append("-" * 60)
-            
-            # Overall threshold summary for this premise type
-            summary_lines.append("\n  OVERALL THRESHOLD SUMMARY:")
-            for threshold in thresholds:
-                below = (premise_data[COST_METRIC] < threshold).sum()
-                pct = (below / premise_total) * 100
-                summary_lines.append(f"    Below £{threshold}/tCO2: {below:,} ({pct:.1f}%)")
-            
-            # Gas decile breakdown
-            summary_lines.append("\n  BREAKDOWN BY GAS CONSUMPTION DECILE:")
-            summary_lines.append("")
-            
-            # Header for the table
-            header = f"    {'Gas Decile':<15} | {'Count':>8} | "
-            header += " | ".join([f"<£{t}".rjust(10) for t in thresholds])
-            summary_lines.append(header)
-            summary_lines.append("    " + "-" * (len(header) - 4))
-            
-            gas_bins_in_data = [g for g in GAS_LABELS if g in premise_data['gas_bin'].unique()]
-            
-            for gas_bin in gas_bins_in_data:
-                gas_data = premise_data[premise_data['gas_bin'] == gas_bin]
-                gas_count = len(gas_data)
-                
-                if gas_count == 0:
-                    continue
-                
-                row = f"    {gas_bin:<15} | {gas_count:>8} | "
-                
-                threshold_parts = []
-                for threshold in thresholds:
-                    below = (gas_data[COST_METRIC] < threshold).sum()
-                    pct = (below / gas_count) * 100
-                    threshold_parts.append(f"{below:>4} ({pct:>4.1f}%)")
-                
-                row += " | ".join(threshold_parts)
-                summary_lines.append(row)
-            
-            # Decile distribution within this premise type
-            summary_lines.append("\n  GAS DECILE DISTRIBUTION:")
-            for gas_bin in gas_bins_in_data:
-                gas_count = len(premise_data[premise_data['gas_bin'] == gas_bin])
-                pct_of_premise = (gas_count / premise_total) * 100
-                summary_lines.append(f"    {gas_bin:<15}: {gas_count:>6,} buildings ({pct_of_premise:>5.1f}% of {premise})")
-            
-            summary_lines.append("")
-        
-        # Overall summary table for this insulation type
-        summary_lines.append("\n" + "=" * 60)
-        summary_lines.append(f"SUMMARY TABLE: {section_title}")
-        summary_lines.append("=" * 60)
-        
-        # Create summary table
-        summary_lines.append("")
-        header = f"{'Premise Type':<20} | {'Total':>8} | "
-        header += " | ".join([f"<£{t}".rjust(12) for t in thresholds])
-        summary_lines.append(header)
-        summary_lines.append("-" * len(header))
-        
-        for premise in premise_types:
-            premise_data = subset[subset['Premise Type'] == premise]
-            premise_total = len(premise_data)
-            
-            if premise_total == 0:
-                continue
-            
-            row = f"{premise[:20]:<20} | {premise_total:>8} | "
-            
-            threshold_parts = []
-            for threshold in thresholds:
-                below = (premise_data[COST_METRIC] < threshold).sum()
-                pct = (below / premise_total) * 100
-                threshold_parts.append(f"{below:>5} ({pct:>4.1f}%)")
-            
-            row += " | ".join(threshold_parts)
-            summary_lines.append(row)
-        
-        # Total row
-        total_count = len(subset)
-        row = f"{'TOTAL':<20} | {total_count:>8} | "
-        threshold_parts = []
-        for threshold in thresholds:
-            below = (subset[COST_METRIC] < threshold).sum()
-            pct = (below / total_count) * 100
-            threshold_parts.append(f"{below:>5} ({pct:>4.1f}%)")
-        row += " | ".join(threshold_parts)
-        summary_lines.append("-" * len(header))
-        summary_lines.append(row)
-        summary_lines.append("")
-    
-    # Write to file
-    output_file = os.path.join(output_path, 'threshold_summary.txt')
-    with open(output_file, 'w') as f:
-        f.write('\n'.join(summary_lines))
-    
-    print(f"Saved threshold summary to: {output_file}")
-
-
-
-
-def plot_intersection_combined_heatmap(df: pd.DataFrame, output_path: str) -> None:
-    """
     Plot 6: Combined heatmap showing cost efficiency across premise types and gas deciles.
-    Creates side-by-side heatmaps for internal and external insulation.
+    
+    NOTE: df should already be collapsed (one row per building-factor combination).
     """
     if df is None or COST_METRIC not in df.columns:
         print("Skipping Plot 6: No detailed data available")
@@ -858,6 +791,8 @@ def plot_intersection_combined_heatmap(df: pd.DataFrame, output_path: str) -> No
             ax.set_title(title)
             continue
 
+        subset = subset.copy()
+        
         # Create gas bins
         subset['gas_bin'] = pd.cut(
             subset['avg_gas_percentile'],
@@ -866,7 +801,6 @@ def plot_intersection_combined_heatmap(df: pd.DataFrame, output_path: str) -> No
         )
         subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
 
-        # Pivot for heatmap: rows = premise type, cols = gas bin, values = median cost
         # Use middle factor value for comparison
         factor_col = get_factor_column(sweep_type)
         mid_factor = subset[factor_col].median()
@@ -877,8 +811,9 @@ def plot_intersection_combined_heatmap(df: pd.DataFrame, output_path: str) -> No
         mid_subset = subset[abs(subset[factor_col] - mid_factor) <= tolerance]
 
         if mid_subset.empty:
-            mid_subset = subset
+            mid_subset = subset.copy()
 
+        # Pivot: each cell is median cost across buildings in that premise/gas combination
         pivot = mid_subset.pivot_table(
             values=COST_METRIC,
             index='Premise Type',
@@ -895,19 +830,19 @@ def plot_intersection_combined_heatmap(df: pd.DataFrame, output_path: str) -> No
         sns.heatmap(
             pivot,
             ax=ax,
-            cmap='RdYlGn_r',  # Red (high cost) -> Green (low cost)
+            cmap='RdYlGn_r',
             annot=True,
             fmt='.0f',
             cbar_kws={'label': '£/tCO2'},
             linewidths=0.5
         )
         
-        
+        ax.set_title(f"{title}\n(Factor ≈ {mid_factor:.1f})", fontsize=12, fontweight='bold')
         ax.set_xlabel("Gas Consumption Decile")
         ax.set_ylabel("Building Type")
 
     plt.suptitle(
-        "Cost Efficiency Heatmap: Premise Type vs Gas Usage",
+        f"Cost Efficiency Heatmap: Premise Type vs Gas Usage\n(Conservative: mean + {n_std}×std)",
         fontsize=14,
         fontweight='bold',
         y=1.02
@@ -918,9 +853,16 @@ def plot_intersection_combined_heatmap(df: pd.DataFrame, output_path: str) -> No
     print("Saved Plot 6: Intersection Heatmap")
 
 
-def plot_viability_matrix(df: pd.DataFrame, output_path: str, threshold: float = 2000) -> None:
+def plot_viability_matrix(
+    df: pd.DataFrame, 
+    output_path: str, 
+    threshold: float = 2000,
+    n_std: float = N_STD_CONSERVATIVE
+) -> None:
     """
     Plot 7: Viability matrix showing % of properties below threshold for each premise/gas combination.
+    
+    NOTE: df should already be collapsed (one row per building-factor combination).
     """
     if df is None or COST_METRIC not in df.columns:
         print("Skipping Plot 7: No detailed data available")
@@ -941,6 +883,8 @@ def plot_viability_matrix(df: pd.DataFrame, output_path: str, threshold: float =
             ax.set_title(title)
             continue
 
+        subset = subset.copy()
+        
         # Create gas bins
         subset['gas_bin'] = pd.cut(
             subset['avg_gas_percentile'],
@@ -949,10 +893,22 @@ def plot_viability_matrix(df: pd.DataFrame, output_path: str, threshold: float =
         )
         subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
 
-        # Calculate viability (% below threshold) for each combination
-        subset['viable'] = subset[COST_METRIC] < threshold
+        # Use middle factor value
+        factor_col = get_factor_column(sweep_type)
+        mid_factor = subset[factor_col].median()
+        factor_range = subset[factor_col].max() - subset[factor_col].min()
+        tolerance = factor_range * 0.1 if factor_range > 0 else 0.1
+        mid_subset = subset[abs(subset[factor_col] - mid_factor) <= tolerance]
 
-        viability = subset.groupby(['Premise Type', 'gas_bin'])['viable'].mean() * 100
+        if mid_subset.empty:
+            mid_subset = subset.copy()
+        else:
+            mid_subset = mid_subset.copy()
+
+        # Calculate viability (% below threshold) for each combination
+        mid_subset['viable'] = mid_subset[COST_METRIC] < threshold
+
+        viability = mid_subset.groupby(['Premise Type', 'gas_bin'])['viable'].mean() * 100
         viability = viability.reset_index()
         
         pivot = viability.pivot(index='Premise Type', columns='gas_bin', values='viable')
@@ -966,7 +922,7 @@ def plot_viability_matrix(df: pd.DataFrame, output_path: str, threshold: float =
         sns.heatmap(
             pivot,
             ax=ax,
-            cmap='RdYlGn',  # Red (low viability) -> Green (high viability)
+            cmap='RdYlGn',
             annot=True,
             fmt='.0f',
             vmin=0,
@@ -975,12 +931,12 @@ def plot_viability_matrix(df: pd.DataFrame, output_path: str, threshold: float =
             linewidths=0.5
         )
 
-        ax.set_title(f"{title}", fontsize=12, fontweight='bold')
+        ax.set_title(f"{title}\n(Factor ≈ {mid_factor:.1f})", fontsize=12, fontweight='bold')
         ax.set_xlabel("Gas Consumption Decile")
         ax.set_ylabel("Building Type")
 
     plt.suptitle(
-        f"Viability Matrix: % Properties Below £{threshold}/tCO2",
+        f"Viability Matrix: % Properties Below £{threshold}/tCO2\n(Conservative: mean + {n_std}×std)",
         fontsize=14,
         fontweight='bold',
         y=1.02
@@ -991,29 +947,118 @@ def plot_viability_matrix(df: pd.DataFrame, output_path: str, threshold: float =
     print("Saved Plot 7: Viability Matrix")
 
 
+# =========================================================
+# EPISTEMIC SENSITIVITY PLOT
+# =========================================================
+
+def plot_epistemic_sensitivity(
+    df_raw: pd.DataFrame,
+    output_path: str
+) -> None:
+    """
+    Plot 8: Show how results vary across epistemic runs.
+    Uses raw (uncollapsed) data to show epistemic spread.
+    """
+    if df_raw is None or COST_METRIC not in df_raw.columns:
+        print("Skipping Plot 8: No raw data available")
+        return
+    
+    if 'epistemic_run_id' not in df_raw.columns:
+        print("Skipping Plot 8: No epistemic_run_id column")
+        return
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True )
+
+    configs = [
+        (SWEEP_INTERNAL, SOLID_WALL_INTERNAL, 'Internal Wall', axes[0]),
+        (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'External Wall', axes[1]),
+    ]
+
+    for sweep_type, building_cat, title, ax in configs:
+        subset = filter_sweep(df_raw, sweep_type, building_cat)
+        
+        if subset.empty:
+            ax.text(0.5, 0.5, 'No Data', ha='center', va='center')
+            ax.set_title(title)
+            continue
+
+        factor_col = get_factor_column(sweep_type)
+        
+        # For each factor value, compute median across buildings for each epistemic run
+        run_medians = []
+        for (factor_val, run_id), group in subset.groupby([factor_col, 'epistemic_run_id']):
+            median_cost = group[COST_METRIC].median()
+            run_medians.append({
+                'factor': factor_val,
+                'run_id': run_id,
+                'median_cost': median_cost
+            })
+        
+        run_df = pd.DataFrame(run_medians)
+        
+        if run_df.empty:
+            continue
+        
+        # Plot mean ± std across runs
+        summary = run_df.groupby('factor')['median_cost'].agg(['mean', 'std']).reset_index()
+        summary['std'] = summary['std'].fillna(0)
+        
+        # Convert to numpy arrays for matplotlib compatibility
+        factors = summary['factor'].values
+        means = summary['mean'].values
+        stds = summary['std'].values
+        
+        ax.fill_between(
+            factors,
+            means - stds,
+            means + stds,
+            alpha=0.3,
+            label='±1 std (epistemic)'
+        )
+        ax.plot(factors, means, 'o-', linewidth=2, label='Mean across runs')
+        
+        # Add threshold lines
+        for thr in [800, 1500, 2200, 2900]:
+            ax.axhline(thr, color='green', linestyle='--', alpha=0.5)
+            ax.text(factors.min(), thr + 50, f'£{thr}', fontsize=8, color='gray')
+        
+        ax.set_xlabel(f'{factor_col.replace("_", " ").title()}')
+        ax.set_ylabel('Median £/tCO2')
+        ax.set_title(f'{title}')
+        ax.legend(loc='upper right')
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_path, '8_epistemic_sensitivity.png'), dpi=300)
+    plt.close()
+    print("Saved Plot 8: Epistemic Sensitivity")
+
+
 # ==========================================
 # MAIN
 # ==========================================
 
 def main():
     args = parse_args()
+    n_std = args.n_std
 
     # Setup Output Directory
     output_dir = args.output_dir if args.output_dir else os.path.join(args.input_dir, 'plots')
     os.makedirs(output_dir, exist_ok=True)
     print(f"Reading from: {args.input_dir}")
     print(f"Saving plots to: {output_dir}")
+    print(f"Conservative estimate: mean + {n_std}×std")
     print("=" * 50)
 
-    # Load Data
-    data = load_data(args.input_dir)
+    # Load Data (includes epistemic collapse)
+    data = load_data(args.input_dir, n_std=n_std)
     print("=" * 50)
 
-    # Generate Basic Plots (1-4)
+    # Generate Basic Plots (1-4) from pre-aggregated CSVs
     print("\nGenerating basic plots...")
     if data['main'] is not None:
-        plot_cost_efficiency_curve(data['main'], output_dir)
-        plot_viability_percentage(data['main'], output_dir)
+        plot_cost_efficiency_curve(data['main'], output_dir, n_std=n_std)
+        plot_viability_percentage(data['main'], output_dir, n_std=n_std)
 
     if data['gas'] is not None:
         plot_gas_stratification(data['gas'], output_dir)
@@ -1021,27 +1066,33 @@ def main():
     if data['premise'] is not None:
         plot_premise_stratification(data['premise'], output_dir)
 
-    # Generate Expanded Intersection Plots (5-7)
+    # Generate Expanded Intersection Plots (5-8) from collapsed parquet
     print("\nGenerating intersection plots...")
     if data['detailed'] is not None:
         min_samples = args.min_samples
         print(f"Using minimum sample size: {min_samples}")
         
-        # Calculate shared y-axis limits across both internal and external
+        # Calculate shared y-axis limits
         shared_ylim = calculate_shared_ylim_for_intersections(data['detailed'], min_samples)
         print(f"Using shared y-axis: {shared_ylim}")
         
-        plot_intersection_internal(data['detailed'], output_dir, shared_ylim=shared_ylim, min_sample_size=min_samples)
-        plot_intersection_external(data['detailed'], output_dir, shared_ylim=shared_ylim, min_sample_size=min_samples)
-        plot_intersection_combined_heatmap(data['detailed'], output_dir)
-        plot_viability_matrix(data['detailed'], output_dir)
+        plot_intersection_internal(data['detailed'], output_dir, shared_ylim=shared_ylim, 
+                                   min_sample_size=min_samples, n_std=n_std)
+        plot_intersection_external(data['detailed'], output_dir, shared_ylim=shared_ylim, 
+                                   min_sample_size=min_samples, n_std=n_std)
+        plot_intersection_combined_heatmap(data['detailed'], output_dir, n_std=n_std)
+        plot_viability_matrix(data['detailed'], output_dir, n_std=n_std)
+        
         print("\nGenerating threshold summary...")
-        generate_threshold_summary(data['detailed'], output_dir)
+        
     else:
         print("Skipping intersection plots: detailed parquet not available")
 
- 
-    
+    # Plot epistemic sensitivity from raw data
+    if data.get('detailed_raw') is not None:
+        print("\nGenerating epistemic sensitivity plot...")
+        plot_epistemic_sensitivity(data['detailed_raw'], output_dir)
+
     print("\n" + "=" * 50)
     print("Visualization complete.")
     print(f"Plots saved to: {output_dir}")
