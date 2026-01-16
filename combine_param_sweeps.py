@@ -90,6 +90,7 @@ GAS_LABELS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 # Minimum sample size for intersection plots
 MIN_SAMPLE_SIZE = 10
 
+print(f'starting for  n std cons {N_STD_CONSERVATIVE}, min sample {MIN_SAMPLE_SIZE}')
 
 # ==========================================
 # DATA PROCESSING FUNCTIONS
@@ -134,6 +135,8 @@ def reduce_single_parquet(
             'external_factor': ext_f,
             'sweep_type': sweep,
             'conservative_estimate': conservative,
+            'mean_val': values.mean(), 
+            'std_val': values.std(), 
         }
         
         # Add building characteristics
@@ -157,7 +160,7 @@ def process_all_parquets(
     Returns number of files processed.
     """
     parquet_files = sorted(results_dir.glob('batch_*/sweep_*/detailed_results.parquet'))
-    parquet_files = parquet_files[0:15]
+    # parquet_files = parquet_files[0:65]
     print(f"Found {len(parquet_files)} parquet files")
     
     if not parquet_files:
@@ -279,9 +282,16 @@ def compute_final_statistics(
 def print_summary(results_df: pd.DataFrame):
     """Print summary tables."""
     
+    # === ADD THESE LINES AT THE START ===
+    # Clean up mixed types before sorting
+    results_df = results_df.copy()
+    results_df['internal_factor'] = pd.to_numeric(results_df['internal_factor'], errors='coerce')
+    results_df['external_factor'] = pd.to_numeric(results_df['external_factor'], errors='coerce')
+    # ====================================
+
     print("\n" + "=" * 90)
     print("COMBINED RESULTS SUMMARY")
-    print("=" * 90)
+    
     
     # Internal sweep - solid_wall_internal
     print("\nINTERNAL FACTOR SWEEP (solid_wall_internal buildings):")
@@ -445,6 +455,14 @@ def plot_cost_efficiency_curve(df: pd.DataFrame, output_path: Path, n_std: float
     plt.tight_layout()
     plt.savefig(output_path / '1_cost_efficiency_curve.png', dpi=300)
     plt.close()
+    
+    # Save underlying data
+    plot_data = pd.concat([
+        internal_data[['internal_factor', 'building_category', 'n', 'n_valid', 'median', 'mean', 'std']].assign(wall_type='internal'),
+        external_data[['external_factor', 'building_category', 'n', 'n_valid', 'median', 'mean', 'std']].assign(wall_type='external')
+    ], ignore_index=True)
+    plot_data.to_csv(output_path / '1_cost_efficiency_curve_data.csv', index=False)
+    
     print("Saved Plot 1: Cost Efficiency Curve")
 
 
@@ -493,6 +511,15 @@ def plot_viability_percentage(df: pd.DataFrame, output_path: Path, n_std: float 
     plt.tight_layout()
     plt.savefig(output_path / '2_viability_ramp.png', dpi=300)
     plt.close()
+    
+    # Save underlying data
+    threshold_cols = [c for c in ['pct_below_1000', 'pct_below_2000', 'pct_below_3000', 'pct_below_5000'] if c in df.columns]
+    plot_data = pd.concat([
+        int_data[['internal_factor', 'building_category', 'n', 'n_valid'] + threshold_cols].assign(wall_type='internal'),
+        ext_data[['external_factor', 'building_category', 'n', 'n_valid'] + threshold_cols].assign(wall_type='external')
+    ], ignore_index=True)
+    plot_data.to_csv(output_path / '2_viability_ramp_data.csv', index=False)
+    
     print("Saved Plot 2: Viability Ramp")
 
 
@@ -517,6 +544,8 @@ def plot_viability_multi_threshold(df: pd.DataFrame, output_path: Path, n_std: f
     ]
 
     colors = plt.cm.viridis(np.linspace(0.2, 0.8, len(available_cols)))
+    
+    viability_data_list = []
 
     for sweep_type, building_cat, title, ax in configs:
         data = filter_sweep(df, sweep_type, building_cat)
@@ -527,6 +556,11 @@ def plot_viability_multi_threshold(df: pd.DataFrame, output_path: Path, n_std: f
             ax.text(0.5, 0.5, 'No Data', ha='center', va='center', fontsize=14)
             ax.set_title(title)
             continue
+        
+        # Collect data for CSV
+        data_copy = data[[factor_col, 'building_category', 'n', 'n_valid'] + available_cols].copy()
+        data_copy['wall_type'] = sweep_type
+        viability_data_list.append(data_copy)
 
         for i, col in enumerate(available_cols):
             threshold = col.replace('pct_below_', '£')
@@ -549,6 +583,12 @@ def plot_viability_multi_threshold(df: pd.DataFrame, output_path: Path, n_std: f
     plt.tight_layout()
     plt.savefig(output_path / '3_viability_multi_threshold.png', dpi=300, bbox_inches='tight')
     plt.close()
+    
+    # Save underlying data
+    if viability_data_list:
+        viability_df = pd.concat(viability_data_list, ignore_index=True)
+        viability_df.to_csv(output_path / '3_viability_multi_threshold_data.csv', index=False)
+    
     print("Saved Plot 3: Multi-Threshold Viability")
 
 
@@ -585,7 +625,9 @@ def plot_gas_stratification(
     # Aggregate by factor and gas decile
     agg = subset.groupby(['external_factor', 'gas_decile']).agg(
         median=('conservative_estimate', 'median'),
-        count=('conservative_estimate', 'count')
+        mean=('conservative_estimate', 'mean'),
+        std=('conservative_estimate', 'std'),
+        n_buildings=('conservative_estimate', 'count')
     ).reset_index()
 
     fig, ax = plt.subplots(figsize=(10, 7))
@@ -616,6 +658,10 @@ def plot_gas_stratification(
     plt.tight_layout()
     plt.savefig(output_path / '4a_gas_decile_impact.png', dpi=300, bbox_inches='tight')
     plt.close()
+    
+    # Save underlying data
+    agg.to_csv(output_path / '4a_gas_decile_impact_data.csv', index=False)
+    
     print("Saved Plot 4a: Gas Decile Impact")
 
 
@@ -652,7 +698,9 @@ def plot_premise_stratification(
     # Aggregate by factor and premise type
     agg = subset.groupby(['internal_factor', 'Premise Type']).agg(
         median=('conservative_estimate', 'median'),
-        count=('conservative_estimate', 'count')
+        mean=('conservative_estimate', 'mean'),
+        std=('conservative_estimate', 'std'),
+        n_buildings=('conservative_estimate', 'count')
     ).reset_index()
 
     fig, ax = plt.subplots(figsize=(10, 7))
@@ -682,6 +730,10 @@ def plot_premise_stratification(
     plt.tight_layout()
     plt.savefig(output_path / '4b_premise_type_impact.png', dpi=300, bbox_inches='tight')
     plt.close()
+    
+    # Save underlying data
+    agg.to_csv(output_path / '4b_premise_type_impact_data.csv', index=False)
+    
     print("Saved Plot 4b: Premise Type Impact")
 
 
@@ -722,12 +774,13 @@ def prepare_intersection_data(
     agg = subset.groupby([factor_col, 'Premise Type', 'gas_bin']).agg(
         median_cost=('conservative_estimate', 'median'),
         mean_cost=('conservative_estimate', 'mean'),
-        sample_count=('conservative_estimate', 'count')
+        std_cost=('conservative_estimate', 'std'),
+        n_buildings=('conservative_estimate', 'count')
     ).reset_index()
 
     # Filter small samples
     before_count = len(agg)
-    agg = agg[agg['sample_count'] >= min_sample_size]
+    agg = agg[agg['n_buildings'] >= min_sample_size]
     after_count = len(agg)
     
     if before_count > after_count:
@@ -821,6 +874,11 @@ def plot_intersection_grid(
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
+    
+    # Save underlying data
+    csv_file = output_file.with_suffix('.csv').name.replace('.csv', '_data.csv')
+    agg.to_csv(output_file.parent / csv_file, index=False)
+    
     print(f"Saved: {output_file}")
 
 
@@ -899,6 +957,8 @@ def plot_intersection_heatmap(
         (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'External Wall Insulation', axes[1]),
     ]
 
+    heatmap_data_list = []
+
     for sweep_type, building_cat, title, ax in configs:
         subset = filter_sweep(df, sweep_type, building_cat)
         
@@ -932,6 +992,25 @@ def plot_intersection_heatmap(
             columns='gas_decile',
             aggfunc='median'
         )
+        
+        # Also create count pivot for CSV output
+        pivot_count = mid_subset.pivot_table(
+            values='conservative_estimate',
+            index='Premise Type',
+            columns='gas_decile',
+            aggfunc='count'
+        )
+        
+        # Save aggregated data for this sweep type
+        agg_data = mid_subset.groupby(['Premise Type', 'gas_decile']).agg(
+            median_cost=('conservative_estimate', 'median'),
+            mean_cost=('conservative_estimate', 'mean'),
+            std_cost=('conservative_estimate', 'std'),
+            n_buildings=('conservative_estimate', 'count')
+        ).reset_index()
+        agg_data['sweep_type'] = sweep_type
+        agg_data['factor_used'] = mid_factor
+        heatmap_data_list.append(agg_data)
 
         if pivot.empty:
             ax.text(0.5, 0.5, 'Insufficient Data', ha='center', va='center', fontsize=14)
@@ -962,6 +1041,12 @@ def plot_intersection_heatmap(
     plt.tight_layout()
     plt.savefig(output_path / '6_intersection_heatmap.png', dpi=300, bbox_inches='tight')
     plt.close()
+    
+    # Save underlying data
+    if heatmap_data_list:
+        heatmap_df = pd.concat(heatmap_data_list, ignore_index=True)
+        heatmap_df.to_csv(output_path / '6_intersection_heatmap_data.csv', index=False)
+    
     print("Saved Plot 6: Intersection Heatmap")
 
 
@@ -976,7 +1061,7 @@ def compute_epistemic_stats_from_parquets(
     Returns a DataFrame with columns: factor, sweep_type, building_category, run_id, median_cost
     """
     parquet_files = sorted(results_dir.glob('batch_*/sweep_*/detailed_results.parquet'))
-    parquet_files = parquet_files[0:15]  # Match the main processing limit
+    # parquet_files = parquet_files[0:65]  # Match the main processing limit
     
     if not parquet_files:
         return None
@@ -1076,6 +1161,9 @@ def plot_epistemic_sensitivity(
             processed_data.append(None)
             continue
 
+        # Count actual number of epistemic runs
+        n_epistemic_runs = subset['run_id'].nunique()
+        
         # Summarize: mean ± std of median costs across epistemic runs
         summary = subset.groupby('factor')['median_cost'].agg(['mean', 'std']).reset_index()
         summary['std'] = summary['std'].fillna(0)
@@ -1088,7 +1176,8 @@ def plot_epistemic_sensitivity(
         processed_data.append({
             'title': title,
             'summary': summary,
-            'suffix': file_suffix
+            'suffix': file_suffix,
+            'n_epistemic_runs': n_epistemic_runs,
         })
 
     # Determine shared Y limit
@@ -1126,7 +1215,7 @@ def plot_epistemic_sensitivity(
         
         ax.set_xlabel("Improvement Factor", fontsize=14)
         ax.set_ylabel('Median £/tCO2 (across buildings)', fontsize=14)
-        ax.set_title(f"Epistemic Uncertainty: {data['title']}\n(Variation across {int(summary['factor'].count())} epistemic runs)", 
+        ax.set_title(f"Epistemic Uncertainty: {data['title']}\n(Variation across {data['n_epistemic_runs']} epistemic runs)", 
                      fontsize=14, fontweight='bold')
         ax.legend(loc='upper right')
         ax.grid(True, alpha=0.3)
@@ -1136,6 +1225,13 @@ def plot_epistemic_sensitivity(
         filename = f"7_epistemic_sensitivity_{data['suffix']}.png"
         plt.savefig(output_path / filename, dpi=300)
         plt.close()
+        
+        # Save underlying data
+        summary_df = summary.copy()
+        summary_df['wall_type'] = data['suffix']
+        summary_df['n_epistemic_runs'] = data['n_epistemic_runs']
+        summary_df.to_csv(output_path / f"7_epistemic_sensitivity_{data['suffix']}_data.csv", index=False)
+        
         print(f"Saved Plot 7 ({data['title']}): {filename}")
 
 
@@ -1195,6 +1291,8 @@ def plot_distribution_comparison(
         (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'External Wall', axes[1]),
     ]
     
+    distribution_data_list = []
+    
     for sweep_type, building_cat, title, ax in configs:
         subset = filter_sweep(df, sweep_type, building_cat)
         factor_col = get_factor_column(sweep_type)
@@ -1211,6 +1309,19 @@ def plot_distribution_comparison(
             factors = [factors[i] for i in indices]
         
         plot_data = subset[subset[factor_col].isin(factors)]
+        
+        # Aggregate data for CSV
+        agg_data = plot_data.groupby(factor_col).agg(
+            median_cost=('conservative_estimate', 'median'),
+            mean_cost=('conservative_estimate', 'mean'),
+            std_cost=('conservative_estimate', 'std'),
+            p25=('conservative_estimate', lambda x: x.quantile(0.25)),
+            p75=('conservative_estimate', lambda x: x.quantile(0.75)),
+            n_buildings=('conservative_estimate', 'count')
+        ).reset_index()
+        agg_data['wall_type'] = sweep_type
+        agg_data['building_category'] = building_cat
+        distribution_data_list.append(agg_data)
         
         sns.boxplot(
             data=plot_data, x=factor_col, y='conservative_estimate',
@@ -1231,6 +1342,12 @@ def plot_distribution_comparison(
     plt.tight_layout()
     plt.savefig(output_path / '8_distribution_comparison.png', dpi=300, bbox_inches='tight')
     plt.close()
+    
+    # Save underlying data
+    if distribution_data_list:
+        distribution_df = pd.concat(distribution_data_list, ignore_index=True)
+        distribution_df.to_csv(output_path / '8_distribution_comparison_data.csv', index=False)
+    
     print("Saved Plot 8: Distribution Comparison")
 
 
@@ -1301,9 +1418,12 @@ def generate_all_visualizations(
 # MAIN
 # ==========================================
 
+import datetime
+
 def main():
     results_dir = Path('wall_param_sweep/results')
-    output_dir = results_dir / 'combined'
+    now = datetime.datetime.now()
+    output_dir = results_dir / f'combined_{str(now.time())}'
     output_dir.mkdir(exist_ok=True)
     print(f"Output directory: {output_dir}")
     
