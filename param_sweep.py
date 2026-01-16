@@ -44,7 +44,7 @@ from dataclasses import dataclass
 # CONFIGURATION
 # ========================================
 
-N_EPISTEMIC_RUNS = 5
+N_EPISTEMIC_RUNS = 50
 RANDOM_SEED_OUTER = 42
 
 SCENARIOS = ['wall_installation']
@@ -59,8 +59,8 @@ GAS_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_dat
 ELEC_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_all_meters_electricity_2022.csv'
 
 # Parameter sweep ranges
-INTERNAL_WALL_FACTORS = [ 1.00, 1.50, 2.00, 2.50, 3.00, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8 , 8.5, 9 , 9.5, 10 ]
-EXTERNAL_WALL_FACTORS = [ 1.00, 1.50, 2.00, 2.50, 3.00, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7,  7.5, 8 , 8.5, 9 , 9.5, 10 ]
+INTERNAL_WALL_FACTORS = [ 1.00, 2.00,  3.00, 4,  5,  6,   7, 8 ,  9 ,  10 ]
+EXTERNAL_WALL_FACTORS = [ 1.00,   2.00,  3.00, 4, 5,  6,  7,   8 ,  9 , 10 ]
 
 # Key metric - using p50 (median of aleatoric distribution)
 COST_PER_TCO2_METRIC = 'wall_installation_capex_per_net_ton_co2_wall_installation_p50'
@@ -104,7 +104,7 @@ from src.RetrofitConfig import RetrofitConfig
 def parse_args():
     parser = argparse.ArgumentParser(description='Wall improvement factor parameter sweep v4')
     parser.add_argument('--batch', type=str, default='batches/NE/batch_10.txt', help='Path to batch file')
-    parser.add_argument('--output', type=str, default='wall_sweep_results_v4', help='Base output directory')
+    parser.add_argument('--output', type=str, default='wall_sweep_results_v5', help='Base output directory')
     parser.add_argument('--n-postcodes', type=int, default=100, help='Number of postcodes per batch (-1 for all)')
     parser.add_argument('--all', action='store_true', help='Process all postcodes in batch')
     parser.add_argument('--all-batches', action='store_true', help='Run across ALL batches')
