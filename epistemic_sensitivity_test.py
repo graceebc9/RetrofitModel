@@ -49,10 +49,7 @@ onsud_path_base = '/home/gb669/rds/hpc-work/energy_map/data/onsud_files/Data'
 GAS_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_gas_2022.csv'
 ELEC_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_all_meters_electricity_2022.csv'
 
-# First batch
-TEST_BATCH_PATH = 'batches/NE/batch_10.txt'
-TEST_ONSUD_PATH = 'batches/NE/onsud_10.csv'
-
+ 
 # Output directory
 OUTPUT_DIR = '5_sensitivity_results'
 
@@ -83,10 +80,10 @@ FACTOR_DEFAULTS = {
     'age_band_multipliers_uncertainty': 1.0,
     'cost_scenario': 'central',
     'external_wall_probability': 0.5,
-    'flat_fp_mean': 55,
-    'flat_fp_std': 8,
-    'flat_eff_mean': 0.75,
-    'flat_eff_std': 0.05,
+    #'flat_fp_mean': 55,
+    #'flat_fp_std': 8,
+    #'flat_eff_mean': 0.75,
+    #'flat_eff_std': 0.05,
     'area_based_choice': 'mode',
 }
 
@@ -118,7 +115,7 @@ def parse_args():
     parser.add_argument(
         '--batch', 
         type=str, 
-        default='batches/NE/batch_10.txt',
+        default='batches/NE/batch_110.txt',
         help='Path to batch file (e.g., batches/NE/batch_10.txt)'
     )
     parser.add_argument(
@@ -141,7 +138,7 @@ def parse_args():
     parser.add_argument(
         '--n-epistemic',
         type=int,
-        default=3,
+        default=20,
         help='Number of epistemic runs (default: 5)'
     )
     args = parser.parse_args()
