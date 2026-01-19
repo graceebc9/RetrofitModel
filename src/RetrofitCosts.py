@@ -593,7 +593,7 @@ class CostEstimator:
                 epist_scenario_params['cost_max'], 
                 n_samples
             )
-            final_costs = base_costs  *regional_multiplier * age_multiplier 
+            final_costs = base_costs   * age_multiplier 
  
         
         # 4. Apply caps (which are also part of the epist_scenario)

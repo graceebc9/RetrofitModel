@@ -55,10 +55,10 @@ class RetrofitModel2D:
         '1980-1989', '1990-1999', 'Post 1999'
     ])
     
-    regional_multipliers: Dict[str, float] = field(default_factory=lambda: {
-        'LN': 1.25, 'SE': 1.15, 'SW': 1.05, 'NW': 0.95, 'NE': 0.85,
-        'YH': 0.90, 'WA': 0.95, 'WM': 0.98, 'EM': 0.95, 'EE': 1.08,
-    })
+    # regional_multipliers: Dict[str, float] = field(default_factory=lambda: {
+    #     'LN': 1.25, 'SE': 1.15, 'SW': 1.05, 'NW': 0.95, 'NE': 0.85,
+    #     'YH': 0.90, 'WA': 0.95, 'WM': 0.98, 'EM': 0.95, 'EE': 1.08,
+    # })
     
     valid_regions: List[str] = field(default_factory=lambda: [
         'LN', 'SE', 'SW', 'NW', 'NE', 'YH', 'WA', 'EM', 'EE', 'WM'
@@ -125,7 +125,7 @@ class RetrofitModel2D:
             self.cost_estimator = CostEstimator(self.custom_intervention_configs)
         
         # (Original logging from your script)
-        logger.debug(f"Regional multipliers: {list(self.regional_multipliers.keys())}")
+        # logger.debug(f"Regional multipliers: {list(self.regional_multipliers.keys())}")
         logger.debug(f"Available scenarios: {list(self.retrofit_packages.keys())}")
         logger.debug("RetrofitModel (Inner Loop) initialized successfully with fixed Epistemic Scenario.")
 
@@ -137,9 +137,9 @@ class RetrofitModel2D:
             raise ValueError(f"Invalid region '{region}'. Valid: {self.valid_regions}")
         return region
     
-    def get_regional_multiplier(self, region: str) -> float:
-        """Get regional cost multiplier."""
-        return self.regional_multipliers[self.validate_region(region)]
+    # def get_regional_multiplier(self, region: str) -> float:
+    #     """Get regional cost multiplier."""
+    #     return self.regional_multipliers[self.validate_region(region)]
 
     def _validate_inputs(self, df, region, scenario):
         # ... (Original validation logic) ...
