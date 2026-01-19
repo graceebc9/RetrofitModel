@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 # ========================================
 
 # Test configuration
-N_EPISTEMIC_RUNS = 5
 RANDOM_SEED_OUTER = 42
+
 SCENARIOS = ['wall_installation', 'loft_installation', 'heat_pump_only']
 
 # Paths 
@@ -281,6 +281,10 @@ def prepare_building_data(pc: str, data: dict, logger: logging.Logger) -> Option
             return None
     
     building_data['postcode'] = pc
+    
+    #filter out unknown typolgoyies 
+    building_data = building_data[building_data['premise_type']!='Unknown'] 
+    building_data = building_data[~building_data['premise_type'].isna()] 
     return building_data
 
 
