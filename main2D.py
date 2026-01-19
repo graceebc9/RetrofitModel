@@ -110,12 +110,7 @@ retrofit_config = RetrofitConfig(
         # 'external_wall_occurence': 0.5,
     }
 )
-
-# retrofig_model = RetrofitModel2D(
-#     retrofit_config,
-#     n_samples=n_monte_carlo
-# )
-
+ 
 from src.utils import log_configuration
 
  

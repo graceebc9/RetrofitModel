@@ -33,7 +33,9 @@ FACTOR_DEFAULTS = {
 
 def generate_epistemic_scenarios_lhs(
     N_epistemic_runs: int,
-    fixed_factors: Optional[Dict[str, Any]] = None
+    random_seed: int, 
+    fixed_factors: Optional[Dict[str, Any]] = None, 
+    
 ) -> pd.DataFrame:
     """
     Generates N_epistemic_runs scenarios for the Outer Loop using Latin Hypercube Sampling.
@@ -55,7 +57,7 @@ def generate_epistemic_scenarios_lhs(
     N_factors = 13
     
     # Generate the Latin Hypercube Samples (N_epistemic_runs rows, N_factors columns)
-    lhs_samples_uniform = lhs(N_factors, samples=N_epistemic_runs, criterion='m', iterations=100)
+    lhs_samples_uniform = lhs(N_factors, samples=N_epistemic_runs, criterion='m', iterations=100,  random_state=random_seed,)
     
     # === Inverse Transform Sampling ===
     
