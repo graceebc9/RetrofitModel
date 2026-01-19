@@ -625,10 +625,10 @@ class RetrofitEnergy:
         base_kwh_per_m = np.random.triangular(min_val, mode_val, max_val, size=n_samples)
         
         # Get regional multiplier (default to 1.0 if not found)
-        multiplier = self.regional_multipliers.get(region.upper(), 1.0)
+        # multiplier = self.regional_multipliers.get(region.upper(), 1.0)
         
         # Apply multiplier to base rate (vectorized)
-        adjusted_kwh_per_m = base_kwh_per_m * multiplier
+        adjusted_kwh_per_m = base_kwh_per_m 
         
         # Calculate annual generation for all samples (vectorized)
         annual_generation_kwh = adjusted_kwh_per_m * closest_roof_size
@@ -638,7 +638,7 @@ class RetrofitEnergy:
             'annual_generation_kwh': annual_generation_kwh,
             
             'adjusted_kwh_per_m': adjusted_kwh_per_m,
-            'regional_multiplier': np.full(n_samples, multiplier),
+            # 'regional_multiplier': np.full(n_samples, multiplier),
             'matched_roof_size': np.full(n_samples, closest_roof_size)  # Show which size was matched
     
     
