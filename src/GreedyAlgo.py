@@ -87,66 +87,7 @@ def true_greedy_knapsack(df_knapsack: pd.DataFrame,
     
     return selected_df, remaining_budget
 
-
-# def true_greedy_knapsack(df_knapsack, budget, cost_column='cost of interventon_mean', efficiency_column='cost_per_net_ton_co2_kg'):
-#     """
-#     Selects the most cost-effective buildings to receive interventions until the budget is exhausted.
-    
-#     Parameters:
-#     -----------
-#     df_knapsack : DataFrame with one row (best intervention) per building (upn).
-#     budget : float, total budget available (in £).
-#     cost_column : str, name of the column containing the absolute cost of the intervention.
-#     efficiency_column : str, name of the column containing the cost-effectiveness metric 
-#                         (lower is better, e.g., cost_per_net_ton_co2_kg).
-    
-    
-#     Returns:
-#     --------
-#     selected : DataFrame of selected interventions.
-#     remaining : float, remaining budget.
-#     """
-    
-#     # 1. Sort by the cost-effectiveness metric (acending: lower cost per CO2 saved is better)
-#     # This is the core of the greedy strategy.
-#     df_sorted = df_knapsack.sort_values(efficiency_column, ascending=True).reset_index(drop=True)
-    
-#     selected_interventions = []
-#     remaining_budget = budget
-    
-#     print(f"Starting true greedy selection with budget: £{budget:,.0f}")
-    
-#     # 2. Iterate through the sorted, most cost-effective interventions
-#     for idx, row in df_sorted.iterrows():
-#         project_cost = row[cost_column]
-        
-#         # Check if we can afford the current most cost-effective project
-#         if project_cost <= remaining_budget:
-#             selected_interventions.append(row)
-#             remaining_budget -= project_cost
-#         else:
-#             # Crucial for efficiency: Since the list is sorted, 
-#             # if we can't afford the current project, we can't afford any subsequent, 
-#             # less cost-effective projects either. Stop iteration immediately.
-#             break 
-            
-#     selected_df = pd.DataFrame(selected_interventions)
-    
-#     total_spent = budget - remaining_budget
  
-    
-#     if len(selected_df) > 0:
-#         total_co2 = selected_df['total_ton_co2_saved'].sum()
-#         print("\n✅ Selection Complete:")
-#         print(f"  Buildings covered: {len(selected_df):,}")
-#         print(f"  Total spent: £{total_spent:,.0f}")
-#         print(f"  Total CO2 saved: {total_co2:,.2f} tons")
-#         print(f"  Cost per ton CO2 (Achieved): £{total_spent/total_co2:,.2f}")
-#     else:
-#         print("\n⚠️ No interventions selected (budget insufficient)")
-    
-#     return selected_df, remaining_budget
-
 
 import pandas as pd
 import matplotlib.pyplot as plt
