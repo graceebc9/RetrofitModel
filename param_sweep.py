@@ -725,6 +725,27 @@ def _trim_to_limit(
         return df.head(remaining)
     return df
 
+def check_batch_complete(output_base_dir: str, batch_path: str) -> bool:
+    """Check if a batch already has completed results in any sweep directory."""
+    # Extract batch number from path like 'batches/NE/batch_10.txt'
+    batch_num = os.path.basename(batch_path).replace('batch_', '').replace('.txt', '')
+    print(f'batch num {batch_num}') 
+    batch_dir = output_base_dir
+    print(batch_dir)
+    if not os.path.exists(batch_dir):
+        return False
+    
+    # Check for any sweep_* directory with required files
+    required_files = ['sweep_by_building_category.csv', 'detailed_results.parquet']
+    
+    for item in os.listdir(batch_dir):
+        if item.startswith('sweep_'):
+            sweep_dir = os.path.join(batch_dir, item)
+            if os.path.isdir(sweep_dir):
+                if all(os.path.exists(os.path.join(sweep_dir, f)) for f in required_files):
+                    return True
+    
+    return False
 
 # ========================================
 # PREPROCESSING
@@ -1254,6 +1275,7 @@ def run_parameter_sweep(
     seed: int = 42,
     prob_external: float = 0.5,
     n_std: float = 1.0,
+     skip_existing: bool = True,  # NEW
 ) -> Optional[pd.DataFrame]:
     """
     Run wall improvement factor parameter sweep across building data.
@@ -1268,6 +1290,22 @@ def run_parameter_sweep(
     
     Returns aggregated results by building category.
     """
+    
+    if skip_existing:
+        original_count = len(batch_paths)
+        batch_paths = [
+            bp for bp in batch_paths 
+            if not check_batch_complete(output_base_dir, bp)
+        ]
+        skipped = original_count - len(batch_paths)
+        print(f'Skipped: {skipped}') 
+        if skipped > 0:
+            print(f"Skipping {skipped} already-completed batches")
+        
+        if not batch_paths:
+            print("All batches already complete!")
+            return None
+    
     config = SweepConfig(
         n_postcodes=n_postcodes,
         n_epistemic_runs=n_epistemic_runs,
