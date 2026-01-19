@@ -46,7 +46,7 @@ PALETTE = {
     CAVITY_WALL: '#2ca02c',          # Green
 }
 
-THRESHOLDS = [800, 1500, 2200]
+THRESHOLDS = [800, 1600, 2400]
 
 # MAPPING: Matches CSV data labels -> Script keys
 CATEGORY_MAP = {
@@ -63,8 +63,8 @@ COST_METRIC = 'wall_installation_capex_per_net_ton_co2_wall_installation_p50'
 N_STD_CONSERVATIVE = 1.0  # mean + N_STD * std for conservative estimate
 
 # Gas bin configuration
-GAS_BINS = [-0.1, 2, 4, 6, 8, 10.1]
-GAS_LABELS = ['0-2 (Low)', '2-4', '4-6', '6-8', '8-10 (High)']
+
+GAS_LABELS = [0,1,2,3,4,5,6,7,8,9]
 
 # Minimum sample size for intersection plots (filters out noisy bins)
 MIN_SAMPLE_SIZE = 20
@@ -507,11 +507,8 @@ def prepare_intersection_data(
 
     # Create gas bins
     subset = subset.copy()
-    subset['gas_bin'] = pd.cut(
-        subset['avg_gas_percentile'],
-        bins=GAS_BINS,
-        labels=GAS_LABELS
-    )
+    subset['gas_bin'] =  subset['avg_gas_percentile']
+ 
 
     # Clean premise types
     subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
@@ -579,7 +576,6 @@ def get_premise_types_to_plot(agg: pd.DataFrame, max_types: int = 6) -> List[str
 def plot_intersection_grid(
     agg: pd.DataFrame,
     factor_col: str,
-    title: str,
     output_file: str,
     shared_ylim: Optional[Tuple[float, float]] = None,
     n_std: float = N_STD_CONSERVATIVE
@@ -608,6 +604,7 @@ def plot_intersection_grid(
     # Gas colors: Yellow (low gas) -> Red (high gas)
     # Use ALL gas labels for consistent legend, not just those in current data
     gas_labels = GAS_LABELS
+ 
     colors = get_gas_colors(len(gas_labels))
     
     # Calculate shared y-axis limits if not provided
@@ -622,6 +619,7 @@ def plot_intersection_grid(
         ax = axes[i]
         p_data = agg[agg['Premise Type'] == premise]
         for j, gas_bin in enumerate(gas_labels):
+            print(gas_bin) 
             g_data = p_data[p_data['gas_bin'] == gas_bin].sort_values(factor_col)
             if not g_data.empty:
                 ax.plot(
@@ -643,7 +641,7 @@ def plot_intersection_grid(
         
         ax.grid(True, alpha=0.3)
         # Add threshold lines
-        for thr in [800, 1500, 2000]:
+        for thr in [800, 1600, 2400]:
             if thr <= shared_ylim[1]:
                 ax.axhline(thr, color='green', linestyle=':', alpha=0.5, linewidth=1)
                 if i == 0 or i == 3:
@@ -697,7 +695,6 @@ def plot_intersection_internal(
     plot_intersection_grid(
         agg=agg,
         factor_col=factor_col,
-        title="Internal Wall Insulation: Building Form vs Gas Usage",
         output_file=os.path.join(output_path, '5a_intersection_internal.png'),
         shared_ylim=shared_ylim,
         n_std=n_std
@@ -721,7 +718,7 @@ def plot_intersection_external(
     plot_intersection_grid(
         agg=agg,
         factor_col=factor_col,
-        title="External Wall Insulation: Building Form vs Gas Usage",
+       
         output_file=os.path.join(output_path, '5b_intersection_external.png'),
         shared_ylim=shared_ylim,
         n_std=n_std
@@ -852,104 +849,15 @@ def plot_intersection_combined_heatmap(
     plt.close()
     print("Saved Plot 6: Intersection Heatmap")
 
-
-def plot_viability_matrix(
-    df: pd.DataFrame, 
-    output_path: str, 
-    threshold: float = 2000,
-    n_std: float = N_STD_CONSERVATIVE
-) -> None:
-    """
-    Plot 7: Viability matrix showing % of properties below threshold for each premise/gas combination.
-    
-    NOTE: df should already be collapsed (one row per building-factor combination).
-    """
-    if df is None or COST_METRIC not in df.columns:
-        print("Skipping Plot 7: No detailed data available")
-        return
-
-    fig, axes = plt.subplots(1, 2, figsize=(16, 8))
-
-    configs = [
-        (SWEEP_INTERNAL, SOLID_WALL_INTERNAL, 'Internal Wall Insulation', axes[0]),
-        (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'External Wall Insulation', axes[1]),
-    ]
-
-    for sweep_type, building_cat, title, ax in configs:
-        subset = filter_sweep(df, sweep_type, building_cat)
-
-        if subset.empty:
-            ax.text(0.5, 0.5, 'No Data', ha='center', va='center', fontsize=14)
-            ax.set_title(title)
-            continue
-
-        subset = subset.copy()
-        
-        # Create gas bins
-        subset['gas_bin'] = pd.cut(
-            subset['avg_gas_percentile'],
-            bins=GAS_BINS,
-            labels=GAS_LABELS
-        )
-        subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
-
-        # Use middle factor value
-        factor_col = get_factor_column(sweep_type)
-        mid_factor = subset[factor_col].median()
-        factor_range = subset[factor_col].max() - subset[factor_col].min()
-        tolerance = factor_range * 0.1 if factor_range > 0 else 0.1
-        mid_subset = subset[abs(subset[factor_col] - mid_factor) <= tolerance]
-
-        if mid_subset.empty:
-            mid_subset = subset.copy()
-        else:
-            mid_subset = mid_subset.copy()
-
-        # Calculate viability (% below threshold) for each combination
-        mid_subset['viable'] = mid_subset[COST_METRIC] < threshold
-
-        viability = mid_subset.groupby(['Premise Type', 'gas_bin'])['viable'].mean() * 100
-        viability = viability.reset_index()
-        
-        pivot = viability.pivot(index='Premise Type', columns='gas_bin', values='viable')
-
-        if pivot.empty:
-            ax.text(0.5, 0.5, 'Insufficient Data', ha='center', va='center', fontsize=14)
-            ax.set_title(title)
-            continue
-
-        # Plot heatmap
-        sns.heatmap(
-            pivot,
-            ax=ax,
-            cmap='RdYlGn',
-            annot=True,
-            fmt='.0f',
-            vmin=0,
-            vmax=100,
-            cbar_kws={'label': '% Viable'},
-            linewidths=0.5
-        )
-
-        ax.set_title(f"{title}\n(Factor ≈ {mid_factor:.1f})", fontsize=12, fontweight='bold')
-        ax.set_xlabel("Gas Consumption Decile")
-        ax.set_ylabel("Building Type")
-
-    plt.suptitle(
-        f"Viability Matrix: % Properties Below £{threshold}/tCO2\n(Conservative: mean + {n_std}×std)",
-        fontsize=14,
-        fontweight='bold',
-        y=1.02
-    )
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_path, '7_viability_matrix.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    print("Saved Plot 7: Viability Matrix")
-
+ 
 
 # =========================================================
 # EPISTEMIC SENSITIVITY PLOT
 # =========================================================
+import matplotlib.pyplot as plt
+import pandas as pd
+import os
+import numpy as np
 
 def plot_epistemic_sensitivity(
     df_raw: pd.DataFrame,
@@ -957,7 +865,7 @@ def plot_epistemic_sensitivity(
 ) -> None:
     """
     Plot 8: Show how results vary across epistemic runs.
-    Uses raw (uncollapsed) data to show epistemic spread.
+    Saves separate figures for Internal and External walls but maintains a shared Y-axis scale.
     """
     if df_raw is None or COST_METRIC not in df_raw.columns:
         print("Skipping Plot 8: No raw data available")
@@ -967,24 +875,27 @@ def plot_epistemic_sensitivity(
         print("Skipping Plot 8: No epistemic_run_id column")
         return
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True )
-
+    # Configuration for the two separate plots
     configs = [
-        (SWEEP_INTERNAL, SOLID_WALL_INTERNAL, 'Internal Wall', axes[0]),
-        (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'External Wall', axes[1]),
+        (SWEEP_INTERNAL, SOLID_WALL_INTERNAL, 'Internal Wall', 'internal'),
+        (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'External Wall', 'external'),
     ]
 
-    for sweep_type, building_cat, title, ax in configs:
+    # --- Step 1: Pre-calculate data to find the Global Max Y ---
+    processed_data = []
+    global_max_y = 0
+    thresholds = [800, 1600, 2400, 3200]
+
+    for sweep_type, building_cat, title, file_suffix in configs:
         subset = filter_sweep(df_raw, sweep_type, building_cat)
         
         if subset.empty:
-            ax.text(0.5, 0.5, 'No Data', ha='center', va='center')
-            ax.set_title(title)
+            processed_data.append(None)
             continue
 
         factor_col = get_factor_column(sweep_type)
         
-        # For each factor value, compute median across buildings for each epistemic run
+        # Compute median across buildings for each epistemic run
         run_medians = []
         for (factor_val, run_id), group in subset.groupby([factor_col, 'epistemic_run_id']):
             median_cost = group[COST_METRIC].median()
@@ -997,17 +908,45 @@ def plot_epistemic_sensitivity(
         run_df = pd.DataFrame(run_medians)
         
         if run_df.empty:
+            processed_data.append(None)
             continue
         
-        # Plot mean ± std across runs
+        # Summarize mean ± std
         summary = run_df.groupby('factor')['median_cost'].agg(['mean', 'std']).reset_index()
         summary['std'] = summary['std'].fillna(0)
         
-        # Convert to numpy arrays for matplotlib compatibility
+        # Track the highest value (Mean + Std) to set shared axis later
+        current_max = (summary['mean'] + summary['std']).max()
+        if current_max > global_max_y:
+            global_max_y = current_max
+
+        # Store processed data for the plotting step
+        processed_data.append({
+            'title': title,
+            'summary': summary,
+            'factor_col': factor_col,
+            'suffix': file_suffix
+        })
+
+    # Determine Shared Y Limit (Max of data or Max threshold, plus padding)
+    y_limit_top = max(global_max_y, max(thresholds)) * 1.1
+
+    # --- Step 2: Generate and Save Separate Plots ---
+    for data in processed_data:
+        # Handle cases with no data
+        if data is None:
+            continue
+
+        summary = data['summary']
+        
+        # Create a new figure for each plot
+        fig, ax = plt.subplots(figsize=(8, 6))
+
         factors = summary['factor'].values
         means = summary['mean'].values
         stds = summary['std'].values
         
+        # Plot Fill
         ax.fill_between(
             factors,
             means - stds,
@@ -1015,24 +954,31 @@ def plot_epistemic_sensitivity(
             alpha=0.3,
             label='±1 std (epistemic)'
         )
+        # Plot Mean Line
         ax.plot(factors, means, 'o-', linewidth=2, label='Mean across runs')
         
         # Add threshold lines
-        for thr in [800, 1500, 2200, 2900]:
+        for thr in thresholds:
             ax.axhline(thr, color='green', linestyle='--', alpha=0.5)
-            ax.text(factors.min(), thr + 50, f'£{thr}', fontsize=8, color='gray')
+            # Only add text if within reasonable view
+            if thr < y_limit_top:
+                ax.text(factors.min(), thr + 50, f'£{thr}', fontsize=8, color='gray')
         
-        ax.set_xlabel(f'{factor_col.replace("_", " ").title()}')
+        # Formatting
+        ax.set_xlabel(f"{data['factor_col'].replace('_', ' ').title()}")
         ax.set_ylabel('Median £/tCO2')
-        ax.set_title(f'{title}')
+        
         ax.legend(loc='upper right')
         ax.grid(True, alpha=0.3)
+        
+        # --- Apply Shared Y-Axis Manually ---
+        ax.set_ylim(bottom=0, top=y_limit_top)
 
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_path, '8_epistemic_sensitivity.png'), dpi=300)
-    plt.close()
-    print("Saved Plot 8: Epistemic Sensitivity")
-
+        plt.tight_layout()
+        filename = f"8_epistemic_sensitivity_{data['suffix']}.png"
+        plt.savefig(os.path.join(output_path, filename), dpi=300)
+        plt.close() # Close figure to free memory
+        print(f"Saved Plot 8 ({data['title']})")
 
 # ==========================================
 # MAIN
@@ -1080,10 +1026,10 @@ def main():
                                    min_sample_size=min_samples, n_std=n_std)
         plot_intersection_external(data['detailed'], output_dir, shared_ylim=shared_ylim, 
                                    min_sample_size=min_samples, n_std=n_std)
-        plot_intersection_combined_heatmap(data['detailed'], output_dir, n_std=n_std)
-        plot_viability_matrix(data['detailed'], output_dir, n_std=n_std)
         
-        print("\nGenerating threshold summary...")
+        
+        
+       
         
     else:
         print("Skipping intersection plots: detailed parquet not available")

@@ -151,7 +151,7 @@ def add_sigma_columns(df_out, scenarios, sigma=1):
     """
     # Avoid modifying the original dataframe in place unexpectedly
     # df_out = df.copy()
-    print('starting sigma cols')
+    print('Starting to add sigma cols')
     metric_patterns = {
         'capex':  '{sc}_capex_per_net_ton_co2_{sc}_p50_{stat}',
         'energy': '{sc}_total_energy_abs_co2_ton_samples_{sc}_p50_{stat}',
@@ -176,7 +176,6 @@ def add_sigma_columns(df_out, scenarios, sigma=1):
                 std_vals  = df_out[std_col].to_numpy()
                 
                 # Define new column name (e.g. wall_installation_capex_1sigma)
-                # Note: We use {sigma}sigma in the name to be descriptive
                 sigma_str = str(float(sigma))
                 new_col_name = f"{sc}_{metric}_p50_{sigma_str}sigma"
                 
@@ -284,7 +283,7 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
         print('running for epc')
         raw_df = pd.read_csv(filepath ) 
     
-    print('clean typolgoies ')
+    print('Starting to clean typolgoies ')
     clean_df = filter_typology(raw_df )
     print(f'Shape before: {raw_df.shape}, shape after: {clean_df.shape} ' ) 
     
@@ -292,7 +291,7 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
     # B. AGGREGATE
     # -------------------------------------------------------------
     try:
-        print('starting agg') 
+        print('Starting to  aggregate') 
         agg_df = pool_epistemic_runs_robust(clean_df, SCENARIO_LIST, id_col='upn')
         
         # --- Identify buildings that already have loft insulation ---
@@ -302,7 +301,7 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
         
         agg_df= add_sigma_columns(agg_df, SCENARIO_LIST, sigma=SIGMA_VAL)
         print('done sgima add')
-        print(agg_df.columns.tolist() ) 
+        
         
         all_interventions = []
 
@@ -320,15 +319,23 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
             # 2. Extract
             sub_df = wdf[COLS_KEEP].copy()
             sub_df['intervention'] = scn
-            sub_df['capex_per_net_ton'] = wdf[f'{scn}_capex_p50_{float(RISK_PENALTY_SIGMA)}sigma']
-            sub_df['total_co2_saved'] = wdf[f'{scn}_total_energy_abs_co2_ton_samples_{scn}_p50_mean']
-            sub_df['total_capex'] = wdf[f'{scn}_cost_{scn}_p50_mean'] 
+            sub_df['capex_per_net_ton_sigma'] = wdf[f'{scn}_capex_p50_{float(RISK_PENALTY_SIGMA)}sigma']
+            
+            
+            sub_df['mean_capex_per_net_ton'] = wdf[f'{scn}_capex_per_net_ton_co2_{scn}_p50_mean']
+            sub_df['std_capex_per_net_ton'] = wdf[f'{scn}_capex_per_net_ton_co2_{scn}_p50_std']
+            
+            sub_df['mean_total_co2_saved'] = wdf[f'{scn}_total_energy_abs_co2_ton_samples_{scn}_p50_mean']
+            sub_df['std_total_co2_saved'] = wdf[f'{scn}_total_energy_abs_co2_ton_samples_{scn}_p50_std']
+            
+            sub_df['mean_total_capex'] = wdf[f'{scn}_cost_{scn}_p50_mean'] 
+            sub_df['std_total_capex'] = wdf[f'{scn}_cost_{scn}_p50_std'] 
             
             # 3. Filter Monsters
             mask_valid = (
-                (sub_df['capex_per_net_ton'] > 0) & 
-                (sub_df['capex_per_net_ton'] <= ABS_COST_CAP) &
-                (sub_df['capex_per_net_ton'].notna())
+                (sub_df['capex_per_net_ton_sigma'] > 0) & 
+                (sub_df['capex_per_net_ton_sigma'] <= ABS_COST_CAP) &
+                (sub_df['capex_per_net_ton_sigma'].notna())
             )
             
             # --- APPLY CONSTRAINT FILTER ---
@@ -345,13 +352,13 @@ def process_single_file(filepath, output_dir, master_headers, LOFT_INSULATION_EX
         # E. SELECT BEST
         # -------------------------------------------------------------
         if all_interventions:
-            print('all interventions') 
+            print('Startng all interventions') 
             combined_df = pd.concat(all_interventions, ignore_index=True)
-            combined_df.sort_values(by='capex_per_net_ton', ascending=True, inplace=True)
+            combined_df.sort_values(by='capex_per_net_ton_sigma', ascending=True, inplace=True)
             best_only_df = combined_df.drop_duplicates(subset=['upn'], keep='first')
             
             output_path = os.path.join(output_dir, f"best_intervention_{filename}_loft_{LOFT_INSULATION_EXISTING_PERCENT}.csv")
-            print('Saving ott' ) 
+            print(f'Saving t0 {output_path}' ) 
             best_only_df.to_csv(output_path, index=False)
         else:
             logging.warning(f"No valid interventions found for {filename}")
