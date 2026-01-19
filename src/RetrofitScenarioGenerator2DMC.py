@@ -11,6 +11,10 @@ from .RetrofitModel2D import RetrofitModel2D
 
 logger = logging.getLogger(__name__)
 
+# setting this to be fixed to 0.5 
+extenral_wall_prob= 0.5 
+
+
 @dataclass
 class RetrofitScenarioGenerator2DMC:
     """
@@ -121,7 +125,7 @@ class RetrofitScenarioGenerator2DMC:
                 col_mapping=col_mapping, 
                 config=typ_config, 
                 random_seed=random_seed,
-                prob_external = epistemic_scenario['external_wall_probability']
+                prob_external =  extenral_wall_prob  
             )
         
             # This creates a NEW RetrofitModel instance for each Outer Loop run.
