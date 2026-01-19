@@ -81,6 +81,10 @@ FACTOR_DEFAULTS = {
     'age_band_multipliers_uncertainty': 1.0,
     'cost_scenario': 'central',
     'area_based_choice': 'mode',
+        'flat_fp_mean': 55,
+    'flat_fp_std': 8,
+    'flat_eff_mean': 0.75,
+    'flat_eff_std': 0.05,
 }
 
 # ========================================
@@ -284,6 +288,14 @@ def prepare_building_data(pc: str, data: dict, logger: logging.Logger) -> Option
     
     #filter out unknown typolgoyies 
     building_data = building_data[building_data['premise_type']!='Unknown'] 
+    
+    excl_typs = [ 'Tall flats 6-15 storeys', 
+       'Very tall point block flats', 
+       'Domestic outbuilding',
+       'all_unknown_typology',
+         'Medium height flats 5-6 storeys', 
+       ] 
+    building_data = building_data[~building_data['premise_type'].isin(excl_typs) ] 
     building_data = building_data[~building_data['premise_type'].isna()] 
     return building_data
 
