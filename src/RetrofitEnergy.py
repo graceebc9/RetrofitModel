@@ -18,27 +18,10 @@ from .BuildingCharacteristics import BuildingCharacteristics
 class RetrofitEnergy:
     """Enhanced configuration with Monte Carlo cost sampling."""
     
-    # Improvement factor for solid wall vs cavity wall (default 10% better)
-    solid_wall_internal_improvement_factor: float = 0.2
-    solid_wall_external_improvement_factor: float = 0.3
-    
-    solar_regional_multiplier: Dict[str, float] = field(default_factory=lambda: {
-        # high sun regions 
-        'SW': 1.20,  # South West            
-        'SE': 1.20,            
-        'EE': 1.2,
-        # mid region 
-        'LN': 1.00,  # London
-        'EM': 1.00,  # East Midlands
-        'WM': 1.00,  # West Midlands
-        
-        # low sun regions 
-        'YH': 0.8,  # Yorkshire and Humber
-        'NW': 0.8,  # North West
-        'NE': 0.8,  # North East
-        'WA': 0.8,  # Wales
-    }) 
-    
+    # Improvement factor for solid wall vs cavity wall  - neds to be set when called 
+    solid_wall_internal_improvement_factor: float = 0.1 
+    solid_wall_external_improvement_factor: float = 0.2 
+     
     def __post_init__(self):
         """Generate solid wall configs after initialization."""
         # Generate solid wall configurations from cavity wall
