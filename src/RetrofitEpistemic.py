@@ -19,14 +19,14 @@ FACTOR_DEFAULTS = {
     'decile_misclassification_bias': 0.0,
     'solid_wall_internal_improvement_factor': 0.10,
     'solid_wall_external_improvement_factor': 0.20,
-    'regional_multipliers_uncertainty': 1.0,
+    # 'regional_multipliers_uncertainty': 1.0,
     'age_band_multipliers_uncertainty': 1.0,
     'cost_scenario': 'central',
     'external_wall_probability': 0.5,
-    'flat_fp_mean': 55,
-    'flat_fp_std': 8,
-    'flat_eff_mean': 0.75,
-    'flat_eff_std': 0.05,
+    # 'flat_fp_mean': 55,
+    # 'flat_fp_std': 8,
+    # 'flat_eff_mean': 0.75,
+    # 'flat_eff_std': 0.05,
     'area_based_choice': 'mode',
 }
 
@@ -80,7 +80,8 @@ def generate_epistemic_scenarios_lhs(
     swe_samples = truncnorm.ppf(lhs_samples_uniform[:, 3], a=a_swe, b=b_swe, loc=0.2, scale=0.02)
 
     # Factor 5: Regional Cost Multipliers (beta_REG) - Uniform: Range [0.9, 1.1]
-    reg_samples = uniform.ppf(lhs_samples_uniform[:, 4], loc=0.9, scale=0.2) 
+    # removeing this - only suing one region 
+    # reg_samples = uniform.ppf(lhs_samples_uniform[:, 4], loc=0.9, scale=0.2) 
 
     # Factor 6: Age Band Cost Multipliers (beta_AGE) - Uniform: Range [0.92, 1.08]
     age_samples = uniform.ppf(lhs_samples_uniform[:, 5], loc=0.92, scale=0.16)
@@ -93,7 +94,8 @@ def generate_epistemic_scenarios_lhs(
     cost_scenario_samples = scenario_choices[indices]
 
     # Factor 8: External Wall Occurrence (beta_EWO) - Uniform: Range [0.1, 0.9]
-    ewo_samples = uniform.ppf(lhs_samples_uniform[:, 7], loc=0.1, scale=0.8)
+    # setting this to be defauly 0.5 
+    # ewo_samples = uniform.ppf(lhs_samples_uniform[:, 7], loc=0.1, scale=0.8)
 
     # Factor 9: Mean Flat Footprint (fp_mean) - Truncated Normal: loc=55, scale=5, bounds [40, 70]
     a_fp_m, b_fp_m = (40 - 55) / 5, (70 - 55) / 5
@@ -124,10 +126,10 @@ def generate_epistemic_scenarios_lhs(
         'decile_misclassification_bias': decile_samples,
         'solid_wall_internal_improvement_factor': swi_samples,
         'solid_wall_external_improvement_factor': swe_samples,
-        'regional_multipliers_uncertainty': reg_samples,
+        # 'regional_multipliers_uncertainty': reg_samples,
         'age_band_multipliers_uncertainty': age_samples,
         'cost_scenario': cost_scenario_samples,
-        'external_wall_probability': ewo_samples,
+        # 'external_wall_probability': ewo_samples,
         'flat_fp_mean': fp_mean_samples,
         'flat_fp_std': fp_std_samples,
         'flat_eff_mean': eff_mean_samples,

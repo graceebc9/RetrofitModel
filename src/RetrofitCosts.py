@@ -520,7 +520,7 @@ class CostEstimator:
                                 building_chars: BuildingCharacteristics,
                                 epist_scenario: str = 'central',
                                 # --- Accepting sampled epistemic factors ---
-                                regional_multiplier:float =1.0 ,
+                                # regional_multiplier:float =1.0 ,
                                 age_multiplier: float = 1.0,
                                 # complexity_multiplier: float = 1.0,
                                 **kwargs) -> np.ndarray:
@@ -581,7 +581,9 @@ class CostEstimator:
             min_cost, max_cost = cost_range
             mode_cost = (min_cost + max_cost) / 2
             base_costs = np.random.triangular(min_cost, mode_cost, max_cost, n_samples)
-            final_costs = base_costs * regional_multiplier * age_multiplier  * uprn_scaler
+            # removing the regional multiplier
+            # final_costs = base_costs * regional_multiplier * age_multiplier  * uprn_scaler
+            final_costs = base_costs  * age_multiplier  * uprn_scaler
         else:
             area = self.get_area_for_intervention(intervention, building_chars)
             typology = kwargs.get('typology', 'all_unknown_typology')
