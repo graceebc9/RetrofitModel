@@ -92,15 +92,17 @@ def main():
         budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000,  100_000_000]
         budgets = [ 1_000_000, 25_000_000, 50_000_000, 80_000_000,  100_000_000, 200_000_000]
         # budgets= [200_000_000]
-        budgets = [ 500_000_000]
+        # budgets = [ 500_000]
         # budgets=[25_000_000]
         # budgets = [  50_000_000,80_000_000]
         loft_probs = [0.95, 0.65 ]
+        loft_probs = [0.95 ]
         # loft_probs = [0.0, 1.0]
         
         
         
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2,1.4 ]
+        # equity_factors = [0, 0.2]
         # equity_factors = [ 1.4  ]
         # equity_factors=[0.8] 
 
@@ -180,7 +182,9 @@ def main():
                 res_df = load_data_simple(files_to_use, number )
             else:
                 res_df = load_data_simple(files_to_use )
+            
             res_df=res_df.drop_duplicates()
+            print('res df cols: ', res_df.columns.tolist() )
             print('res df shape: ' )
             print(res_df.shape)
             print('num upns')
@@ -289,7 +293,7 @@ def main():
                     print(f"  Equity Factor: {equity_factor}")
                     print(f"{'='*80}")
                 
-                    df = add_equity_weight(df, equity_factor , capex_col='capex_per_net_ton' )
+                    df = add_equity_weight(df, equity_factor , capex_col='capex_per_net_ton_sigma' )
 
                     # Run greedy algorithm
                     baseline_selection = df 
@@ -300,9 +304,9 @@ def main():
                         selected_projects_df, remaining_funds = true_greedy_knapsack(
                             df_knapsack=baseline_selection,
                             budget=budget,
-                            cost_column='total_capex',
+                            cost_column='mean_total_capex',
                             efficiency_column='weighted_capex_per_net_ton' ,
-                            carbon_col='total_co2_saved',
+                            carbon_col='mean_total_co2_saved',
                             logger=detail_logger, 
                         )
                         selected_projects_df['remaining_funds'] = remaining_funds
@@ -316,7 +320,7 @@ def main():
                         
                         baseline_selection.to_csv(baseline_path, index=False)
                         selected_projects_df.to_csv(selected_path, index=False)
-                        
+                        print('selected_projects_df cols: ' , selected_projects_df.columns.tolist() ) 
                         summary_logger.info(f"Baseline selection saved to: {baseline_path}")
                         summary_logger.info(f"Selected projects results saved to: {selected_path}")
                         print(f'budget: {budget}')
@@ -376,7 +380,7 @@ def main():
     print("\n" + "="*80)
     print("Start post process ") 
     print("="*80)
-    post_proc_meta=False  
+    post_proc_meta=True  
     post_proc_epc=True  
     meta_epc=False  
     print('Part 3 ')
