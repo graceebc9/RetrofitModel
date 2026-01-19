@@ -10,7 +10,7 @@ Usage:
     python combine_sweep_results.py --plots-only --output-dir wall_param_sweep/results/combined_12:34:56
     
     # Recompute statistics and plots (skip parquet processing)
-    python combine_sweep_results.py --skip-processing --output-dir wall_param_sweep/results/combined_12:34:56
+    python combipct_below_2000ne_sweep_results.py --skip-processing --output-dir wall_param_sweep/results/combined_12:34:56
 """
 
 import argparse
@@ -215,7 +215,7 @@ def compute_final_statistics(
         
         for category in df['building_category'].dropna().unique():
             cat_df = df[df['building_category'] == category]
-            values = cat_df['conservative_estimate']
+            values = cat_df['mean_val']
             valid = values[np.isfinite(values) & (values.abs() < 1e6)]
             
             if len(valid) == 0:
@@ -248,6 +248,81 @@ def compute_final_statistics(
     
     return results_df
 
+
+
+def compute_epistemic_stats_from_parquets(
+    results_dir: Path,
+    metric_col: str = COST_PER_TCO2_METRIC,
+) -> Optional[pd.DataFrame]:
+    """
+    Compute epistemic statistics by reading parquet files.
+    Calculates the median cost per run to isolate run-level variance.
+    """
+    parquet_files = sorted(results_dir.glob('results/batch_*/sweep_*/detailed_results.parquet'))
+    parquet_files=parquet_files[0:5]
+    
+    # --- NOTE: Removed hard limit for production runs ---
+    # parquet_files = parquet_files[0:50] 
+    
+    if not parquet_files:
+        return None
+
+    all_run_medians = []
+
+    for filepath in tqdm(parquet_files, desc="Computing epistemic stats"):
+        try:
+            df = pd.read_parquet(filepath)
+
+            if 'building_category' not in df.columns:
+                df['building_category'] = df.apply(create_building_category, axis=1)
+
+            df = normalize_building_category(df)
+
+            if 'epistemic_run_id' not in df.columns:
+                continue
+
+            # Process Internal Wall Sweeps
+            internal_mask = df['sweep_type'] == SWEEP_INTERNAL
+            if internal_mask.any():
+                internal_df = df[internal_mask]
+                # Group by Factor AND Run ID to get one stat per epistemic run
+                for (factor, run_id, cat), group in internal_df.groupby(
+                    ['internal_factor', 'epistemic_run_id', 'building_category']
+                ):
+                    median_cost = group[metric_col].median()
+                    all_run_medians.append({
+                        'factor': factor,
+                        'sweep_type': SWEEP_INTERNAL,
+                        'building_category': cat,
+                        'run_id': run_id,
+                        'median_cost': median_cost,
+                    })
+
+            # Process External Wall Sweeps
+            external_mask = df['sweep_type'] == SWEEP_EXTERNAL
+            if external_mask.any():
+                external_df = df[external_mask]
+                for (factor, run_id, cat), group in external_df.groupby(
+                    ['external_factor', 'epistemic_run_id', 'building_category']
+                ):
+                    median_cost = group[metric_col].median()
+                    all_run_medians.append({
+                        'factor': factor,
+                        'sweep_type': SWEEP_EXTERNAL,
+                        'building_category': cat,
+                        'run_id': run_id,
+                        'median_cost': median_cost,
+                    })
+
+        except Exception as e:
+            print(f"\nError processing {filepath} for epistemic stats: {e}")
+            continue
+
+    if not all_run_medians:
+        return None
+
+    return pd.DataFrame(all_run_medians)
+    
 
 def load_existing_statistics(output_dir: Path) -> pd.DataFrame:
     """Load existing statistics CSV if it exists."""
@@ -355,171 +430,7 @@ def get_premise_types_to_plot(agg: pd.DataFrame, max_types: int = 6) -> List[str
             unique_premises.append(p)
     
     return unique_premises[:max_types]
-
-   
-# def compute_epistemic_stats_from_parquets(
-#     results_dir: Path,
-#     metric_col: str = COST_PER_TCO2_METRIC,
-# ) -> Optional[pd.DataFrame]:
-#     """Compute epistemic statistics by reading parquet files."""
-#     parquet_files = sorted(results_dir.glob('batch_*/sweep_*/detailed_results.parquet'))
-#     parquet_files=parquet_files[0:50]
-#     if not parquet_files:
-#         return None
-
-#     all_run_medians = []
-
-#     for filepath in tqdm(parquet_files, desc="Computing epistemic stats"):
-#         try:
-#             df = pd.read_parquet(filepath)
-
-#             if 'building_category' not in df.columns:
-#                 df['building_category'] = df.apply(create_building_category, axis=1)
-
-#             df = normalize_building_category(df)
-
-#             if 'epistemic_run_id' not in df.columns:
-#                 continue
-
-#             internal_mask = df['sweep_type'] == SWEEP_INTERNAL
-#             if internal_mask.any():
-#                 internal_df = df[internal_mask]
-#                 for (factor, run_id, cat), group in internal_df.groupby(
-#                     ['internal_factor', 'epistemic_run_id', 'building_category']
-#                 ):
-#                     median_cost = group[metric_col].median()
-#                     all_run_medians.append({
-#                         'factor': factor,
-#                         'sweep_type': SWEEP_INTERNAL,
-#                         'building_category': cat,
-#                         'run_id': run_id,
-#                         'median_cost': median_cost,
-#                     })
-
-#             external_mask = df['sweep_type'] == SWEEP_EXTERNAL
-#             if external_mask.any():
-#                 external_df = df[external_mask]
-#                 for (factor, run_id, cat), group in external_df.groupby(
-#                     ['external_factor', 'epistemic_run_id', 'building_category']
-#                 ):
-#                     median_cost = group[metric_col].median()
-#                     all_run_medians.append({
-#                         'factor': factor,
-#                         'sweep_type': SWEEP_EXTERNAL,
-#                         'building_category': cat,
-#                         'run_id': run_id,
-#                         'median_cost': median_cost,
-#                     })
-
-#         except Exception as e:
-#             print(f"\nError processing {filepath} for epistemic stats: {e}")
-#             continue
-
-#     if not all_run_medians:
-#         return None
-
-#     return pd.DataFrame(all_run_medians)
-
-
-# def plot_epistemic_sensitivity(
-#     results_dir: Path,
-#     output_path: Path,
-#     n_std: float = N_STD_CONSERVATIVE,
-# ) -> None:
-#     """Plot 7: Show how results vary across epistemic runs."""
-#     print("Computing epistemic statistics from parquet files...")
-#     epistemic_df = compute_epistemic_stats_from_parquets(results_dir)
-
-#     if epistemic_df is None or epistemic_df.empty:
-#         print("Skipping Plot 7: No epistemic data available")
-#         return
-
-#     configs = [
-#         (SWEEP_INTERNAL, SOLID_WALL_INTERNAL, 'Internal Wall', 'internal'),
-#         (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'External Wall', 'external'),
-#     ]
-
-#     processed_data = []
-#     global_max_y = 0
-#     thresholds = [800, 1600, 2400, 3200]
-
-#     for sweep_type, building_cat, title, file_suffix in configs:
-#         subset = epistemic_df[
-#             (epistemic_df['sweep_type'] == sweep_type) &
-#             (epistemic_df['building_category'] == building_cat)
-#         ]
-
-#         if subset.empty:
-#             processed_data.append(None)
-#             continue
-
-#         n_epistemic_runs = subset['run_id'].nunique()
-
-#         summary = subset.groupby('factor')['median_cost'].agg(['mean', 'std']).reset_index()
-#         summary['std'] = summary['std'].fillna(0)
-
-#         current_max = (summary['mean'] + summary['std']).max()
-#         if current_max > global_max_y:
-#             global_max_y = current_max
-
-#         processed_data.append({
-#             'title': title,
-#             'summary': summary,
-#             'suffix': file_suffix,
-#             'n_epistemic_runs': n_epistemic_runs,
-#         })
-
-#     y_limit_top = max(global_max_y, max(thresholds)) * 1.1
-
-#     for data in processed_data:
-#         if data is None:
-#             continue
-
-#         summary = data['summary']
-
-#         fig, ax = plt.subplots(figsize=(10, 7))
-
-#         factors = summary['factor'].values
-#         means = summary['mean'].values
-#         stds = summary['std'].values
-
-#         ax.fill_between(
-#             factors,
-#             means - stds,
-#             means + stds,
-#             alpha=0.3,
-#             label='±1 std (epistemic)'
-#         )
-#         ax.plot(factors, means, 'o-', linewidth=2, label='Mean across runs')
-
-#         for thr in thresholds:
-#             ax.axhline(thr, color='green', linestyle='--', alpha=0.5)
-#             if thr < y_limit_top:
-#                 ax.text(factors.min(), thr + 50, f'£{thr}', fontsize=9, color='gray')
-
-#         ax.set_xlabel("Improvement Factor", fontsize=14)
-#         ax.set_ylabel('Median £/tCO2 (across buildings)', fontsize=14)
-#         ax.set_title(f"Epistemic Uncertainty: {data['title']}\n(Variation across {data['n_epistemic_runs']} epistemic runs)",
-#                      fontsize=14, fontweight='bold')
-#         ax.legend(loc='upper right')
-#         ax.grid(True, alpha=0.3)
-#         ax.set_ylim(bottom=0, top=y_limit_top)
-
-#         plt.tight_layout()
-#         filename = f"7_epistemic_sensitivity_{data['suffix']}.png"
-#         plt.savefig(output_path / filename, dpi=300)
-#         plt.close()
-
-#         summary_df = summary.copy()
-#         summary_df['wall_type'] = data['suffix']
-#         summary_df['n_epistemic_runs'] = data['n_epistemic_runs']
-#         summary_df.to_csv(output_path / f"7_epistemic_sensitivity_{data['suffix']}_data.csv", index=False)
-
-#         print(f"Saved Plot 7 ({data['title']}): {filename}")
-  
-
-
-
+ 
 
 # ==========================================
 # CLI ARGUMENT PARSING

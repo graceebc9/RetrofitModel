@@ -132,60 +132,7 @@ def get_premise_types_to_plot(agg: pd.DataFrame, max_types: int = 6) -> List[str
     
     return unique_premises[:max_types]
 
-
-# def prepare_intersection_data(
-#     reduced_csv_path: Path,
-#     sweep_type: str,
-#     building_category: str,
-#     min_sample_size: int = MIN_SAMPLE_SIZE,
-#     chunksize: int = DEFAULT_CHUNKSIZE,
-# ) -> Tuple[Optional[pd.DataFrame], str]:
-#     """Prepare data for intersection plots from reduced CSV."""
-#     factor_col = get_factor_column(sweep_type)
-
-#     filtered_chunks = []
-#     for chunk in pd.read_csv(reduced_csv_path, chunksize=chunksize):
-#         chunk = normalize_building_category(chunk)
-#         mask = (chunk['sweep_type'] == sweep_type) & (chunk['building_category'] == building_category)
-#         if mask.any():
-#             filtered_chunks.append(chunk[mask])
-
-#     if not filtered_chunks:
-#         return None, factor_col
-
-#     subset = pd.concat(filtered_chunks, ignore_index=True)
-
-#     if subset.empty:
-#         return None, factor_col
-
-#     subset = subset.copy()
-#     subset['gas_bin'] = subset['avg_gas_percentile'].astype(int)
-#     subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
-#     # Build aggregation dict
-#     agg_dict = {
-#         'median_cost': ('conservative_estimate', 'median'),
-#         'mean_cost': ('conservative_estimate', 'mean'),
-#         'std_cost': ('conservative_estimate', 'std'),
-#         'n_buildings': ('conservative_estimate', 'count'),
-#     }
-    
-#     # Add raw mean/std aggregations for plots 9a/9b if columns exist
-#     if 'mean_val' in subset.columns:
-#         agg_dict['raw_mean_cost'] = ('mean_val', 'mean')
-#     if 'std_val' in subset.columns:
-#         agg_dict['raw_std_cost'] = ('std_val', 'mean')  # Mean of per-building stds
-
-#     agg = subset.groupby([factor_col, 'Premise Type', 'gas_bin']).agg(**agg_dict).reset_index()
-    
-#     before_count = len(agg)
-#     agg = agg[agg['n_buildings'] >= min_sample_size]
-#     after_count = len(agg)
-
-#     if before_count > after_count:
-#         print(f"  Filtered {before_count - after_count} bins with < {min_sample_size} buildings")
-
-#     return agg, factor_col
-
+ 
 def prepare_intersection_data(
     reduced_csv_path: Path,
     sweep_type: str,
@@ -318,6 +265,203 @@ def calculate_shared_ylim_with_std(
     y_max = max(y_max, 3500) * 1.1
 
     return (0, y_max)
+
+
+# ==========================================
+# plot 0 ; epistemic range 
+# ==========================================
+
+
+def compute_epistemic_stats_from_parquets(
+    results_dir: Path,
+    metric_col: str = COST_PER_TCO2_METRIC,
+) -> Optional[pd.DataFrame]:
+    """
+    Compute epistemic statistics by reading parquet files.
+    Calculates the median cost per run to isolate run-level variance.
+    """
+    parquet_files = sorted(results_dir.glob('results/batch_*/sweep_*/detailed_results.parquet'))
+    
+    
+    # --- NOTE: Removed hard limit for production runs ---
+    # parquet_files = parquet_files[0:50] 
+    
+    if not parquet_files:
+        return None
+
+    all_run_medians = []
+
+    for filepath in tqdm(parquet_files, desc="Computing epistemic stats"):
+        try:
+            df = pd.read_parquet(filepath)
+
+            if 'building_category' not in df.columns:
+                df['building_category'] = df.apply(create_building_category, axis=1)
+
+            df = normalize_building_category(df)
+
+            if 'epistemic_run_id' not in df.columns:
+                continue
+
+            # Process Internal Wall Sweeps
+            internal_mask = df['sweep_type'] == SWEEP_INTERNAL
+            if internal_mask.any():
+                internal_df = df[internal_mask]
+                # Group by Factor AND Run ID to get one stat per epistemic run
+                for (factor, run_id, cat), group in internal_df.groupby(
+                    ['internal_factor', 'epistemic_run_id', 'building_category']
+                ):
+                    median_cost = group[metric_col].median()
+                    all_run_medians.append({
+                        'factor': factor,
+                        'sweep_type': SWEEP_INTERNAL,
+                        'building_category': cat,
+                        'run_id': run_id,
+                        'median_cost': median_cost,
+                    })
+
+            # Process External Wall Sweeps
+            external_mask = df['sweep_type'] == SWEEP_EXTERNAL
+            if external_mask.any():
+                external_df = df[external_mask]
+                for (factor, run_id, cat), group in external_df.groupby(
+                    ['external_factor', 'epistemic_run_id', 'building_category']
+                ):
+                    median_cost = group[metric_col].median()
+                    all_run_medians.append({
+                        'factor': factor,
+                        'sweep_type': SWEEP_EXTERNAL,
+                        'building_category': cat,
+                        'run_id': run_id,
+                        'median_cost': median_cost,
+                    })
+
+        except Exception as e:
+            print(f"\nError processing {filepath} for epistemic stats: {e}")
+            continue
+
+    if not all_run_medians:
+        return None
+
+    return pd.DataFrame(all_run_medians)
+
+
+def plot_epistemic_sensitivity(
+    results_dir: Path,
+    output_path: Path,
+) -> None:
+    """
+    Plot 0: Show how results vary across epistemic runs using Percentiles.
+    Uses 5th-95th percentiles to show the spread of outcomes.
+    """
+    print("Computing epistemic statistics from parquet files...")
+    print(results_dir) 
+    epistemic_df = compute_epistemic_stats_from_parquets(results_dir)
+
+    if epistemic_df is None or epistemic_df.empty:
+        print("Skipping Plot 7: No epistemic data available")
+        return
+
+    configs = [
+        (SWEEP_INTERNAL, SOLID_WALL_INTERNAL, 'Internal Wall', 'internal'),
+        (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'External Wall', 'external'),
+    ]
+
+    processed_data = []
+    global_max_y = 0
+    thresholds = [800, 1600, 2400, 3200]
+
+    for sweep_type, building_cat, title, file_suffix in configs:
+        subset = epistemic_df[
+            (epistemic_df['sweep_type'] == sweep_type) &
+            (epistemic_df['building_category'] == building_cat)
+        ]
+
+        if subset.empty:
+            processed_data.append(None)
+            continue
+
+        n_epistemic_runs = subset['run_id'].nunique()
+
+        # --- STATS UPDATE: Use Quantiles instead of Mean/Std ---
+        # q05 = 5th percentile (lower bound)
+        # q50 = 50th percentile (median of the runs)
+        # q95 = 95th percentile (upper bound)
+        summary = subset.groupby('factor')['median_cost'].agg(
+            q05=lambda x: x.quantile(0.05),
+            q50=lambda x: x.quantile(0.50),
+            q95=lambda x: x.quantile(0.95)
+        ).reset_index()
+
+        # Update global max Y based on the 95th percentile
+        current_max = summary['q95'].max()
+        if current_max > global_max_y:
+            global_max_y = current_max
+
+        processed_data.append({
+            'title': title,
+            'summary': summary,
+            'suffix': file_suffix,
+            'n_epistemic_runs': n_epistemic_runs,
+        })
+
+    y_limit_top = max(global_max_y, max(thresholds)) * 1.1
+
+    for data in processed_data:
+        if data is None:
+            continue
+
+        summary = data['summary']
+        fig, ax = plt.subplots(figsize=(10, 7))
+
+        factors = summary['factor'].values
+        # Extract the quantiles for plotting
+        q05 = summary['q05'].values
+        q50 = summary['q50'].values
+        q95 = summary['q95'].values
+
+        # Plot the spread (Confidence Interval)
+        ax.fill_between(
+            factors,
+            q05,
+            q95,
+            alpha=0.3,
+            label='5th-95th Percentile Spread'
+        )
+        
+        # Plot the central tendency (Median)
+        ax.plot(factors, q50, 'o-', linewidth=2, label='Median across runs')
+
+        # Add Reference Thresholds
+        for thr in thresholds:
+            ax.axhline(thr, color='green', linestyle='--', alpha=0.5)
+            if thr < y_limit_top:
+                ax.text(factors.min(), thr + 50, f'£{thr}', fontsize=9, color='gray')
+
+        ax.set_xlabel("Improvement Factor", fontsize=14)
+        ax.set_ylabel('Median £/tCO2 (across buildings)', fontsize=14)
+        ax.set_title(
+            f"Epistemic Uncertainty: {data['title']}\n"
+            f"(Variation across {data['n_epistemic_runs']} epistemic runs)",
+            fontsize=14, fontweight='bold'
+        )
+        
+        ax.legend(loc='upper right')
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim(bottom=0, top=y_limit_top)
+
+        plt.tight_layout()
+        filename = f"7_epistemic_sensitivity_{data['suffix']}.png"
+        plt.savefig(output_path / filename, dpi=300)
+        plt.close()
+
+        # Save the summary data for inspection
+        summary_df = summary.copy()
+        summary_df['wall_type'] = data['suffix']
+        summary_df['n_epistemic_runs'] = data['n_epistemic_runs']
+        summary_df.to_csv(output_path / f"0_epistemic_sensitivity_{data['suffix']}_data.csv", index=False)
+
+        print(f"Saved Plot 0 ({data['title']}): {filename}")
 
 
 # ==========================================
@@ -912,81 +1056,149 @@ def plot_intersection_external(
 
 
 # ==========================================
-# PLOT 7: Epistemic Sensitivity
+# PLOT 7: range Sensitivity
 # ==========================================
-
-def compute_epistemic_stats_from_parquets(
+def compute_range_stats_from_csv(
     results_dir: Path,
-    metric_col: str = COST_PER_TCO2_METRIC,
+    mean_col: str = 'mean_val',
+    std_col: str = 'std_val',
+    force_recompute: bool = False
 ) -> Optional[pd.DataFrame]:
-    """Compute epistemic statistics by reading parquet files."""
-    parquet_files = sorted(results_dir.glob('batch_*/sweep_*/detailed_results.parquet'))
+    """
+    Compute epistemic statistics using Law of Total Variance.
+    Treats the input CSV as already aggregated (or pools all runs), 
+    calculating stats per Factor + Category.
+    """
+    # Define cache path
+    cache_path = results_dir / "epistemic_stats_summary.csv"
 
-    if not parquet_files:
-        return None
-
-    all_run_medians = []
-
-    for filepath in tqdm(parquet_files, desc="Computing epistemic stats"):
+    # 1. TRY TO LOAD FROM CACHE
+    if not force_recompute and cache_path.exists():
+        print(f"Loading cached epistemic stats from: {cache_path}")
         try:
-            df = pd.read_parquet(filepath)
-
-            if 'building_category' not in df.columns:
-                df['building_category'] = df.apply(create_building_category, axis=1)
-
-            df = normalize_building_category(df)
-
-            if 'epistemic_run_id' not in df.columns:
-                continue
-
-            internal_mask = df['sweep_type'] == SWEEP_INTERNAL
-            if internal_mask.any():
-                internal_df = df[internal_mask]
-                for (factor, run_id, cat), group in internal_df.groupby(
-                    ['internal_factor', 'epistemic_run_id', 'building_category']
-                ):
-                    median_cost = group[metric_col].median()
-                    all_run_medians.append({
-                        'factor': factor,
-                        'sweep_type': SWEEP_INTERNAL,
-                        'building_category': cat,
-                        'run_id': run_id,
-                        'median_cost': median_cost,
-                    })
-
-            external_mask = df['sweep_type'] == SWEEP_EXTERNAL
-            if external_mask.any():
-                external_df = df[external_mask]
-                for (factor, run_id, cat), group in external_df.groupby(
-                    ['external_factor', 'epistemic_run_id', 'building_category']
-                ):
-                    median_cost = group[metric_col].median()
-                    all_run_medians.append({
-                        'factor': factor,
-                        'sweep_type': SWEEP_EXTERNAL,
-                        'building_category': cat,
-                        'run_id': run_id,
-                        'median_cost': median_cost,
-                    })
-
+            return pd.read_csv(cache_path)
         except Exception as e:
-            print(f"\nError processing {filepath} for epistemic stats: {e}")
-            continue
+            print(f"Warning: Failed to load cache ({e}). Recomputing...")
 
-    if not all_run_medians:
+    # 2. IF NO CACHE, COMPUTE FROM SCRATCH
+    print("Computing epistemic statistics from reduced CSV...")
+    csv_path = results_dir / 'reduced_building_estimates.csv'
+    
+    if not csv_path.exists():
+        print(f"Error: File not found at {csv_path}")
         return None
 
-    return pd.DataFrame(all_run_medians)
+    try:
+        df = pd.read_csv(csv_path)
+        print(f"Loaded {len(df):,} rows.")
+        # print(f"Columns: {df.columns.tolist()}")
 
+        # --- PRE-PROCESSING ---
+        if 'building_category' not in df.columns:
+            # Assuming create_building_category is in scope
+            df['building_category'] = df.apply(create_building_category, axis=1)
 
-def plot_epistemic_sensitivity(
+        # Assuming normalize_building_category is in scope
+        df = normalize_building_category(df)
+            
+        # Pre-calculate variance (sigma^2) for Eve's Law
+        if std_col in df.columns:
+            df['_temp_var'] = df[std_col] ** 2
+        else:
+            # Fallback if std_val is missing
+            print(f"Warning: {std_col} missing. Assuming 0 internal noise.")
+            df['_temp_var'] = 0
+
+        # --- HELPER: AGGREGATION LOGIC (EVE'S LAW) ---
+        def calculate_robust_group_stats(group_df, factor_val, cat, sweep_type):
+            """Aggregates a group of buildings into a single robust metric."""
+            
+            # 1. Central Tendency (Average of the Means)
+            group_mean = group_df[mean_col].mean()
+            
+            # 2. Law of Total Variance
+            # Term A: Average Internal Uncertainty (Mean of Variances)
+            within_var = group_df['_temp_var'].mean()
+            
+            # Term B: Population Heterogeneity (Variance of Means)
+            # (How much do buildings differ from each other?)
+            between_var = group_df[mean_col].var()
+            
+            if pd.isna(between_var): between_var = 0 # Handle single-building groups
+            
+            # Total Standard Deviation
+            total_std = np.sqrt(within_var + between_var)
+            
+            return {
+                'factor': factor_val,
+                'sweep_type': sweep_type,
+                'building_category': cat,
+                
+                'robust_metric': group_mean + total_std, # The Conservative Estimate
+                'group_mean': group_mean,
+                'group_std': total_std,
+                'within_std': np.sqrt(within_var), # Useful for debugging
+                'between_std': np.sqrt(between_var), # Useful for debugging
+                'n_buildings': len(group_df)
+            }
+
+        # --- PROCESS SWEEPS ---
+        all_stats = []
+
+        if 'sweep_type' in df.columns:
+            # Internal Sweeps
+            mask_int = df['sweep_type'] == SWEEP_INTERNAL
+            if mask_int.any():
+                print("Processing Internal Sweeps (Grouping by Factor)...")
+                # Group ONLY by Factor and Category (Pooling all runs/batches)
+                grouped = df[mask_int].groupby(['internal_factor', 'building_category'])
+                
+                for (factor, cat), group in grouped:
+                    all_stats.append(calculate_robust_group_stats(group, factor, cat, SWEEP_INTERNAL))
+            
+            # External Sweeps
+            mask_ext = df['sweep_type'] == SWEEP_EXTERNAL
+            if mask_ext.any():
+                print("Processing External Sweeps (Grouping by Factor)...")
+                grouped = df[mask_ext].groupby(['external_factor', 'building_category'])
+                
+                for (factor, cat), group in grouped:
+                    all_stats.append(calculate_robust_group_stats(group, factor, cat, SWEEP_EXTERNAL))
+        else:
+            print("Error: 'sweep_type' column missing from CSV.")
+            return None
+
+        if not all_stats:
+            print("No statistics calculated. Check data filters.")
+            return None
+
+        # 3. SAVE TO CACHE
+        result_df = pd.DataFrame(all_stats)
+        try:
+            result_df.to_csv(cache_path, index=False)
+            print(f"Saved epistemic stats cache to: {cache_path}")
+        except Exception as e:
+            print(f"Warning: Could not save cache file: {e}")
+
+        return result_df
+
+    except Exception as e:
+        print(f"Critical Error processing CSV: {e}")
+        return None
+    
+
+def plot_range_sensitivity(
     results_dir: Path,
     output_path: Path,
     n_std: float = N_STD_CONSERVATIVE,
 ) -> None:
-    """Plot how results vary across epistemic runs."""
+    """
+    Plot the Mean and the Std Range (Group Uncertainty) across epistemic runs.
+    """
     print("Computing epistemic statistics from parquet files...")
-    epistemic_df = compute_epistemic_stats_from_parquets(results_dir)
+    
+    # 1. Load the data (contains 'group_mean' and 'group_std' per run)
+    epistemic_df = compute_range_stats_from_csv(results_dir)
 
     if epistemic_df is None or epistemic_df.empty:
         print("Skipping Plot 7: No epistemic data available")
@@ -1011,12 +1223,26 @@ def plot_epistemic_sensitivity(
             processed_data.append(None)
             continue
 
-        n_epistemic_runs = subset['run_id'].nunique()
+        
 
-        summary = subset.groupby('factor')['median_cost'].agg(['mean', 'std']).reset_index()
-        summary['std'] = summary['std'].fillna(0)
+        # -----------------------------------------------------------
+        # AGGREGATION LOGIC
+        # -----------------------------------------------------------
+        # We want to represent the "Typical" Mean and "Typical" Std across the runs.
+        # Line = Average of the Group Means
+        # Shading = Average of the Group Stds (The typical uncertainty width)
+        
+        summary = subset.groupby('factor').agg({
+            'group_mean': 'mean', # The central line
+            'group_std': 'mean'   # The width of the spread
+        }).reset_index()
+        
+        # Calculate bounds for plotting
+        summary['upper_bound'] = summary['group_mean'] + summary['group_std']
+        summary['lower_bound'] = summary['group_mean'] - summary['group_std']
 
-        current_max = (summary['mean'] + summary['std']).max()
+        # Update global max for Y-axis scaling
+        current_max = summary['upper_bound'].max()
         if current_max > global_max_y:
             global_max_y = current_max
 
@@ -1024,9 +1250,10 @@ def plot_epistemic_sensitivity(
             'title': title,
             'summary': summary,
             'suffix': file_suffix,
-            'n_epistemic_runs': n_epistemic_runs,
+            
         })
 
+    # Set Y-limit with some headroom
     y_limit_top = max(global_max_y, max(thresholds)) * 1.1
 
     for data in processed_data:
@@ -1038,44 +1265,60 @@ def plot_epistemic_sensitivity(
         fig, ax = plt.subplots(figsize=(10, 7))
 
         factors = summary['factor'].values
-        means = summary['mean'].values
-        stds = summary['std'].values
+        means = summary['group_mean'].values
+        
+        # We plot the bounds directly calculated from Mean +/- Std
+        upper = summary['upper_bound'].values
+        lower = summary['lower_bound'].values
+        
+        # Ensure lower bound doesn't go below zero for cost charts
+        lower = np.maximum(lower, 0)
 
+        # 1. The Shaded Region (The Standard Deviation Range)
         ax.fill_between(
             factors,
-            means - stds,
-            means + stds,
-            alpha=0.3,
-            label='±1 std (epistemic)'
+            lower,
+            upper,
+            alpha=0.25,
+            color='tab:blue',
+            label='±1 Std Dev (Group Variance)'
         )
-        ax.plot(factors, means, 'o-', linewidth=2, label='Mean across runs')
+        
+        # 2. The Central Line (The Mean)
+        ax.plot(factors, means, 'o-', linewidth=2, color='tab:blue', label='Mean Cost/Ton')
 
+        # Add Threshold Lines
         for thr in thresholds:
             ax.axhline(thr, color='green', linestyle='--', alpha=0.5)
             if thr < y_limit_top:
                 ax.text(factors.min(), thr + 50, f'£{thr}', fontsize=9, color='gray')
 
         ax.set_xlabel("Improvement Factor", fontsize=14)
-        ax.set_ylabel('Median £/tCO2 (across buildings)', fontsize=14)
-        ax.set_title(f"Epistemic Uncertainty: {data['title']}\n(Variation across {data['n_epistemic_runs']} epistemic runs)",
-                     fontsize=14, fontweight='bold')
+        ax.set_ylabel('£/tCO2 (Mean ± Std)', fontsize=12, fontweight='bold')
+        
+        ax.set_title(
+            f"Epistemic Sensitivity: {data['title']}\n"
+            f"(Mean Cost ± Group Standard Deviation)",
+            fontsize=13, fontweight='bold'
+        )
+        
         ax.legend(loc='upper right')
         ax.grid(True, alpha=0.3)
         ax.set_ylim(bottom=0, top=y_limit_top)
 
         plt.tight_layout()
-        filename = f"7_epistemic_sensitivity_{data['suffix']}.png"
+        filename = f"7_range_sensitivity_{data['suffix']}.png"
         plt.savefig(output_path / filename, dpi=300)
         plt.close()
 
+        # Save backing data
         summary_df = summary.copy()
         summary_df['wall_type'] = data['suffix']
-        summary_df['n_epistemic_runs'] = data['n_epistemic_runs']
+        
         summary_df.to_csv(output_path / f"7_epistemic_sensitivity_{data['suffix']}_data.csv", index=False)
 
         print(f"Saved Plot 7 ({data['title']}): {filename}")
-
-
+        
 # ==========================================
 # PLOT 8: Distribution Comparison
 # ==========================================
@@ -1344,6 +1587,9 @@ def generate_all_visualizations(
 
     results_df = clean_dataframe(results_df)
 
+    plot_epistemic_sensitivity(results_dir, plots_dir)
+    
+
     print("\n--- Basic Plots (1-3) ---")
     plot_cost_efficiency_curve(results_df, plots_dir, n_std)
     plot_viability_percentage(results_df, plots_dir, n_std)
@@ -1357,8 +1603,8 @@ def generate_all_visualizations(
     shared_ylim = calculate_shared_ylim(reduced_csv_path, min_sample_size)
     print(f"Shared y-axis: {shared_ylim}")
     #shared_ylim=(0, 15000)
-    plot_intersection_internal(reduced_csv_path, plots_dir, shared_ylim, min_sample_size, n_std)
-    plot_intersection_external(reduced_csv_path, plots_dir, shared_ylim, min_sample_size, n_std)
+    #plot_intersection_internal(reduced_csv_path, plots_dir, shared_ylim, min_sample_size, n_std)
+    #plot_intersection_external(reduced_csv_path, plots_dir, shared_ylim, min_sample_size, n_std)
 
     print("\n--- Mean ± Std Intersection Plots (9a-9b) ---")
     shared_ylim_std = calculate_shared_ylim_with_std(reduced_csv_path, min_sample_size)
@@ -1370,13 +1616,11 @@ def generate_all_visualizations(
     print("\n--- Heatmap Plot (6) ---")
     # plot_intersection_heatmap(reduced_csv_path, plots_dir, n_std)
 
-    if include_epistemic:
-        print("\n--- Epistemic Sensitivity Plot (7) ---")
-        plot_epistemic_sensitivity(results_dir, plots_dir, n_std)
-    else:
-        print("\n--- Skipping Epistemic Sensitivity Plot (7) ---")
-        print("  (Use --include-epistemic to enable, requires raw parquets)")
-
+    
+    print("\n--- Epistemic Sensitivity Plot (7) ---")
+    plot_range_sensitivity(output_dir, plots_dir, n_std)
+    
+    
     print("\n--- Distribution Plot (8) ---")
     plot_distribution_comparison(reduced_csv_path, plots_dir, n_std)
 
@@ -1416,7 +1660,7 @@ Examples:
     parser.add_argument(
         '--results-dir',
         type=str,
-        default='wall_param_sweep/results',
+        required=True,
         help='Directory containing raw parquet results (for epistemic plot)'
     )
 
