@@ -65,6 +65,7 @@ EXTERNAL_WALL_FACTORS = [ 1.00,   2.00,  3.00, 4, 5,  6,  7,   8 ,  9 , 10 ]
 # Key metric - using p50 (median of aleatoric distribution)
 COST_PER_TCO2_METRIC = 'wall_installation_capex_per_net_ton_co2_wall_installation_p50'
 
+
 # Columns to preserve from input data
 PRESERVE_COLS = [
     'upn', 'postcode', 'premise_type_filled', 'avg_gas_percentile',
