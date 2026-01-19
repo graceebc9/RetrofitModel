@@ -133,6 +133,59 @@ def get_premise_types_to_plot(agg: pd.DataFrame, max_types: int = 6) -> List[str
     return unique_premises[:max_types]
 
 
+# def prepare_intersection_data(
+#     reduced_csv_path: Path,
+#     sweep_type: str,
+#     building_category: str,
+#     min_sample_size: int = MIN_SAMPLE_SIZE,
+#     chunksize: int = DEFAULT_CHUNKSIZE,
+# ) -> Tuple[Optional[pd.DataFrame], str]:
+#     """Prepare data for intersection plots from reduced CSV."""
+#     factor_col = get_factor_column(sweep_type)
+
+#     filtered_chunks = []
+#     for chunk in pd.read_csv(reduced_csv_path, chunksize=chunksize):
+#         chunk = normalize_building_category(chunk)
+#         mask = (chunk['sweep_type'] == sweep_type) & (chunk['building_category'] == building_category)
+#         if mask.any():
+#             filtered_chunks.append(chunk[mask])
+
+#     if not filtered_chunks:
+#         return None, factor_col
+
+#     subset = pd.concat(filtered_chunks, ignore_index=True)
+
+#     if subset.empty:
+#         return None, factor_col
+
+#     subset = subset.copy()
+#     subset['gas_bin'] = subset['avg_gas_percentile'].astype(int)
+#     subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
+#     # Build aggregation dict
+#     agg_dict = {
+#         'median_cost': ('conservative_estimate', 'median'),
+#         'mean_cost': ('conservative_estimate', 'mean'),
+#         'std_cost': ('conservative_estimate', 'std'),
+#         'n_buildings': ('conservative_estimate', 'count'),
+#     }
+    
+#     # Add raw mean/std aggregations for plots 9a/9b if columns exist
+#     if 'mean_val' in subset.columns:
+#         agg_dict['raw_mean_cost'] = ('mean_val', 'mean')
+#     if 'std_val' in subset.columns:
+#         agg_dict['raw_std_cost'] = ('std_val', 'mean')  # Mean of per-building stds
+
+#     agg = subset.groupby([factor_col, 'Premise Type', 'gas_bin']).agg(**agg_dict).reset_index()
+    
+#     before_count = len(agg)
+#     agg = agg[agg['n_buildings'] >= min_sample_size]
+#     after_count = len(agg)
+
+#     if before_count > after_count:
+#         print(f"  Filtered {before_count - after_count} bins with < {min_sample_size} buildings")
+
+#     return agg, factor_col
+
 def prepare_intersection_data(
     reduced_csv_path: Path,
     sweep_type: str,
@@ -159,24 +212,34 @@ def prepare_intersection_data(
         return None, factor_col
 
     subset = subset.copy()
+    
+    # --- STATISTICAL PRE-PROCESSING ---
+    # We need the variance (sigma^2), not just std, to average it correctly.
+    if 'std_val' in subset.columns:
+        subset['var_val'] = subset['std_val'] ** 2
+    else:
+        # Fallback if std_val missing, though it implies data issues
+        subset['var_val'] = 0 
+        
     subset['gas_bin'] = subset['avg_gas_percentile'].astype(int)
     subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
-    # Build aggregation dict
+
+    # --- UPDATED AGGREGATION ---
+    # We need specific components to build the robust metric later
     agg_dict = {
-        'median_cost': ('conservative_estimate', 'median'),
-        'mean_cost': ('conservative_estimate', 'mean'),
-        'std_cost': ('conservative_estimate', 'std'),
         'n_buildings': ('conservative_estimate', 'count'),
+        # Component 1: Central Tendency of the Group
+        'group_mean': ('mean_val', 'mean'), 
+        # Component 2: Heterogeneity (How different are the buildings?)
+        'between_building_var': ('mean_val', 'var'),
+        # Component 3: Model Noise (Average internal uncertainty)
+        'within_building_var': ('var_val', 'mean') 
     }
     
-    # Add raw mean/std aggregations for plots 9a/9b if columns exist
-    if 'mean_val' in subset.columns:
-        agg_dict['raw_mean_cost'] = ('mean_val', 'mean')
-    if 'std_val' in subset.columns:
-        agg_dict['raw_std_cost'] = ('std_val', 'mean')  # Mean of per-building stds
-
+    # Perform Aggregation
     agg = subset.groupby([factor_col, 'Premise Type', 'gas_bin']).agg(**agg_dict).reset_index()
     
+    # Filter for sample size
     before_count = len(agg)
     agg = agg[agg['n_buildings'] >= min_sample_size]
     after_count = len(agg)
@@ -184,6 +247,20 @@ def prepare_intersection_data(
     if before_count > after_count:
         print(f"  Filtered {before_count - after_count} bins with < {min_sample_size} buildings")
 
+    # --- STATISTICAL POST-PROCESSING ---
+    # Calculate the Total Group Variance (Eve's Law)
+    # Total Var = Average(Internal Noise) + Variance(Building Means)
+    agg['total_group_variance'] = agg['within_building_var'].fillna(0) + agg['between_building_var'].fillna(0)
+    agg['total_group_std'] = np.sqrt(agg['total_group_variance'])
+    
+    # Create the Robust Metric (Conservative Estimate)
+    agg['robust_conservative_estimate'] = agg['group_mean'] + agg['total_group_std']
+
+    # Rename for compatibility with your existing plotting code if needed
+    # Or keep distinct to compare "Old Mean" vs "Robust Estimate"
+    agg['mean_cost'] = agg['robust_conservative_estimate'] 
+
+    # group_mean total_group_std
     return agg, factor_col
 
 
@@ -202,7 +279,7 @@ def calculate_shared_ylim(
             reduced_csv_path, sweep_type, building_cat, min_sample_size
         )
         if agg is not None and not agg.empty:
-            all_medians.extend(agg['median_cost'].dropna().tolist())
+            all_medians.extend(agg['robust_conservative_estimate'].dropna().tolist())
 
     if not all_medians:
         return None
@@ -217,7 +294,10 @@ def calculate_shared_ylim_with_std(
     reduced_csv_path: Path,
     min_sample_size: int = MIN_SAMPLE_SIZE
 ) -> Optional[Tuple[float, float]]:
-    """Calculate shared y-axis limit using mean + std bounds."""
+    """Calculate shared y-axis limit using mean + std bounds
+    use cols group_mean total_group_std 
+    
+    ."""
     all_upper_bounds = []
 
     for sweep_type, building_cat in [
@@ -228,7 +308,7 @@ def calculate_shared_ylim_with_std(
             reduced_csv_path, sweep_type, building_cat, min_sample_size
         )
         if agg is not None and not agg.empty:
-            upper = agg['mean_cost'] + agg['std_cost'].fillna(0)
+            upper = agg['group_mean'] + agg['total_group_std'].fillna(0)
             all_upper_bounds.extend(upper.dropna().tolist())
 
     if not all_upper_bounds:
@@ -619,7 +699,7 @@ def plot_intersection_grid(
 
     if shared_ylim is None:
         y_min = 0
-        y_max = agg['median_cost'].quantile(0.95)
+        y_max = agg['robust_conservative_estimate'].quantile(0.95)
         y_max = max(y_max, 3500) * 1.1
         shared_ylim = (y_min, y_max)
 
@@ -632,7 +712,7 @@ def plot_intersection_grid(
             if not g_data.empty:
                 ax.plot(
                     np.array(g_data[factor_col]),
-                    np.array(g_data['median_cost']),
+                    np.array(g_data['robust_conservative_estimate']),
                     marker='o', markersize=6, label=str(gas_bin),
                     color=colors[j], linewidth=2
                 )
@@ -641,7 +721,7 @@ def plot_intersection_grid(
         ax.set_xlabel(factor_col.replace('_', ' ').title())
 
         if i % cols == 0:
-            ax.set_ylabel("Median £/tCO2")
+            ax.set_ylabel("robust_conservative_estimate £/tCO2")
 
         ax.grid(True, alpha=0.3)
 
@@ -729,106 +809,106 @@ def plot_intersection_external(
 # PLOT 6: Intersection Heatmap
 # ==========================================
 
-def plot_intersection_heatmap(
-    reduced_csv_path: Path,
-    output_path: Path,
-    n_std: float = N_STD_CONSERVATIVE,
-    chunksize: int = DEFAULT_CHUNKSIZE,
-) -> None:
-    """Plot combined heatmap showing cost efficiency across premise types and gas deciles."""
-    all_data = []
-    for chunk in pd.read_csv(reduced_csv_path, chunksize=chunksize):
-        chunk = normalize_building_category(chunk)
-        all_data.append(chunk)
+# def plot_intersection_heatmap(
+#     reduced_csv_path: Path,
+#     output_path: Path,
+#     n_std: float = N_STD_CONSERVATIVE,
+#     chunksize: int = DEFAULT_CHUNKSIZE,
+# ) -> None:
+#     """Plot combined heatmap showing cost efficiency across premise types and gas deciles."""
+#     all_data = []
+#     for chunk in pd.read_csv(reduced_csv_path, chunksize=chunksize):
+#         chunk = normalize_building_category(chunk)
+#         all_data.append(chunk)
 
-    if not all_data:
-        print("Skipping Plot 6: No data available")
-        return
+#     if not all_data:
+#         print("Skipping Plot 6: No data available")
+#         return
 
-    df = pd.concat(all_data, ignore_index=True)
+#     df = pd.concat(all_data, ignore_index=True)
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 8))
+#     fig, axes = plt.subplots(1, 2, figsize=(16, 8))
 
-    configs = [
-        (SWEEP_INTERNAL, SOLID_WALL_INTERNAL, 'Internal Wall Insulation', axes[0]),
-        (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'External Wall Insulation', axes[1]),
-    ]
+#     configs = [
+#         (SWEEP_INTERNAL, SOLID_WALL_INTERNAL, 'Internal Wall Insulation', axes[0]),
+#         (SWEEP_EXTERNAL, SOLID_WALL_EXTERNAL, 'External Wall Insulation', axes[1]),
+#     ]
 
-    heatmap_data_list = []
+#     heatmap_data_list = []
 
-    for sweep_type, building_cat, title, ax in configs:
-        subset = filter_sweep(df, sweep_type, building_cat)
+#     for sweep_type, building_cat, title, ax in configs:
+#         subset = filter_sweep(df, sweep_type, building_cat)
 
-        if subset.empty:
-            ax.text(0.5, 0.5, 'No Data', ha='center', va='center', fontsize=14)
-            ax.set_title(title)
-            continue
+#         if subset.empty:
+#             ax.text(0.5, 0.5, 'No Data', ha='center', va='center', fontsize=14)
+#             ax.set_title(title)
+#             continue
 
-        subset = subset.copy()
-        subset['gas_decile'] = subset['avg_gas_percentile'].astype(int)
-        subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
+#         subset = subset.copy()
+#         subset['gas_decile'] = subset['avg_gas_percentile'].astype(int)
+#         subset['Premise Type'] = subset['premise_type_filled'].apply(clean_premise_name)
 
-        factor_col = get_factor_column(sweep_type)
-        mid_factor = subset[factor_col].median()
+#         factor_col = get_factor_column(sweep_type)
+#         mid_factor = subset[factor_col].median()
 
-        factor_range = subset[factor_col].max() - subset[factor_col].min()
-        tolerance = factor_range * 0.1 if factor_range > 0 else 0.1
-        mid_subset = subset[abs(subset[factor_col] - mid_factor) <= tolerance]
+#         factor_range = subset[factor_col].max() - subset[factor_col].min()
+#         tolerance = factor_range * 0.1 if factor_range > 0 else 0.1
+#         mid_subset = subset[abs(subset[factor_col] - mid_factor) <= tolerance]
 
-        if mid_subset.empty:
-            mid_subset = subset.copy()
+#         if mid_subset.empty:
+#             mid_subset = subset.copy()
 
-        pivot = mid_subset.pivot_table(
-            values='conservative_estimate',
-            index='Premise Type',
-            columns='gas_decile',
-            aggfunc='median'
-        )
+#         pivot = mid_subset.pivot_table(
+#             values='conservative_estimate',
+#             index='Premise Type',
+#             columns='gas_decile',
+#             aggfunc='median'
+#         )
 
-        agg_data = mid_subset.groupby(['Premise Type', 'gas_decile']).agg(
-            median_cost=('conservative_estimate', 'median'),
-            mean_cost=('conservative_estimate', 'mean'),
-            std_cost=('conservative_estimate', 'std'),
-            n_buildings=('conservative_estimate', 'count')
-        ).reset_index()
-        agg_data['sweep_type'] = sweep_type
-        agg_data['factor_used'] = mid_factor
-        heatmap_data_list.append(agg_data)
+#         agg_data = mid_subset.groupby(['Premise Type', 'gas_decile']).agg(
+#             median_cost=('conservative_estimate', 'median'),
+#             mean_cost=('conservative_estimate', 'mean'),
+#             std_cost=('conservative_estimate', 'std'),
+#             n_buildings=('conservative_estimate', 'count')
+#         ).reset_index()
+#         agg_data['sweep_type'] = sweep_type
+#         agg_data['factor_used'] = mid_factor
+#         heatmap_data_list.append(agg_data)
 
-        if pivot.empty:
-            ax.text(0.5, 0.5, 'Insufficient Data', ha='center', va='center', fontsize=14)
-            ax.set_title(title)
-            continue
+#         if pivot.empty:
+#             ax.text(0.5, 0.5, 'Insufficient Data', ha='center', va='center', fontsize=14)
+#             ax.set_title(title)
+#             continue
 
-        sns.heatmap(
-            pivot,
-            ax=ax,
-            cmap='RdYlGn_r',
-            annot=True,
-            fmt='.0f',
-            cbar_kws={'label': '£/tCO2'},
-            linewidths=0.5
-        )
+#         sns.heatmap(
+#             pivot,
+#             ax=ax,
+#             cmap='RdYlGn_r',
+#             annot=True,
+#             fmt='.0f',
+#             cbar_kws={'label': '£/tCO2'},
+#             linewidths=0.5
+#         )
 
 
-        ax.set_xlabel("Gas Consumption Decile")
-        ax.set_ylabel("Building Type")
+#         ax.set_xlabel("Gas Consumption Decile")
+#         ax.set_ylabel("Building Type")
 
-    plt.suptitle(
-        f"Cost Efficiency Heatmap: Premise Type vs Gas Usage\n(Conservative: mean + {n_std}×std)",
-        fontsize=14,
-        fontweight='bold',
-        y=1.02
-    )
-    plt.tight_layout()
-    plt.savefig(output_path / '6_intersection_heatmap.png', dpi=300, bbox_inches='tight')
-    plt.close()
+#     plt.suptitle(
+#         f"Cost Efficiency Heatmap: Premise Type vs Gas Usage\n(Conservative: mean + {n_std}×std)",
+#         fontsize=14,
+#         fontweight='bold',
+#         y=1.02
+#     )
+#     plt.tight_layout()
+#     plt.savefig(output_path / '6_intersection_heatmap.png', dpi=300, bbox_inches='tight')
+#     plt.close()
 
-    if heatmap_data_list:
-        heatmap_df = pd.concat(heatmap_data_list, ignore_index=True)
-        heatmap_df.to_csv(output_path / '6_intersection_heatmap_data.csv', index=False)
+#     if heatmap_data_list:
+#         heatmap_df = pd.concat(heatmap_data_list, ignore_index=True)
+#         heatmap_df.to_csv(output_path / '6_intersection_heatmap_data.csv', index=False)
 
-    print("Saved Plot 6: Intersection Heatmap")
+#     print("Saved Plot 6: Intersection Heatmap")
 
 
 # ==========================================
@@ -1094,7 +1174,9 @@ def plot_intersection_grid_with_std(
     shared_ylim: Optional[Tuple[float, float]] = None,
     n_std: float = N_STD_CONSERVATIVE
 ) -> None:
-    """Create a grid showing premise type x gas decile with mean ± std bands."""
+    """Create a grid showing premise type x gas decile with mean ± std bands
+    use cols # group_mean total_group_std
+    ."""
     premises = get_premise_types_to_plot(agg)
     n_plots = len(premises)
 
@@ -1115,7 +1197,7 @@ def plot_intersection_grid_with_std(
     colors = get_gas_colors(len(gas_labels))
 
     if shared_ylim is None:
-        y_max = (agg['mean_cost'] + agg['std_cost'].fillna(0)).quantile(0.95)
+        y_max = (agg['group_mean'] + agg['total_group_std'].fillna(0)).quantile(0.95)
         y_max = max(y_max, 3500) * 1.1
         shared_ylim = (0, y_max)
 
@@ -1129,8 +1211,8 @@ def plot_intersection_grid_with_std(
                 factors = np.array(g_data[factor_col])
                 # means = np.array(g_data['mean_cost'])
                 # stds = np.array(g_data['std_cost'].fillna(0))
-                means = np.array(g_data['raw_mean_cost'])
-                stds = np.array(g_data['raw_std_cost'].fillna(0))
+                means = np.array(g_data['group_mean'])
+                stds = np.array(g_data['total_group_std'].fillna(0))
 
                 ax.fill_between(
                     factors,
@@ -1250,7 +1332,7 @@ def generate_all_visualizations(
     include_epistemic: bool = False,
 ) -> None:
     """Generate all visualizations from processed data."""
-    plots_dir = output_dir / 'plots'
+    plots_dir = output_dir / 'plots_combined'
     plots_dir.mkdir(exist_ok=True)
 
     print("\n" + "=" * 50)
@@ -1286,7 +1368,7 @@ def generate_all_visualizations(
     plot_intersection_external_with_std(reduced_csv_path, plots_dir, shared_ylim_std, min_sample_size, n_std)
 
     print("\n--- Heatmap Plot (6) ---")
-    plot_intersection_heatmap(reduced_csv_path, plots_dir, n_std)
+    # plot_intersection_heatmap(reduced_csv_path, plots_dir, n_std)
 
     if include_epistemic:
         print("\n--- Epistemic Sensitivity Plot (7) ---")
