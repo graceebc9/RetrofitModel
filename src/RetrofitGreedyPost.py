@@ -137,44 +137,136 @@ def flatten_multiindex_cols(df):
                   for col in df.columns.values]
     return df
 
+# def aggregate_results(df):
+#     """Aggregate metrics across epistemic runs."""
+#     if df.empty:
+#         print("Warning: Results dataframe is empty. Cannot aggregate.")
+#         return pd.DataFrame()
+        
+#     # 1. Count number of buildings per scenario/epistemic run
+#     df['num_buildings'] = 1  # Each row is a building
+    
+#     # # 2. Calculate totals per epistemic run
+#     df_summary = df.groupby(['scenario']).agg({
+#         'total_capex': ['mean', 'sum'],  # mean per bldg, sum = total spent
+#         'total_co2_saved': 'sum',  # total CO2 saved across all bldgs
+#         'capex_per_net_ton': 'mean', # avg cost effectiveness
+#         'weighted_capex_per_net_ton': 'mean',  # avg weighted cost
+#         'remaining_funds': 'first',  # should be same for all in run
+#         'num_buildings': 'sum'  # total number of buildings retrofitted
+#     }).reset_index()
+    
+#     # Flatten column names (e.g., ('cost_of_intervention_mean', 'mean') -> 'cost_of_intervention_mean_mean')
+#     df_summary = flatten_multiindex_cols(df_summary)
+    
+#     # # 3. Now aggregate stats (mean, std) across all epistemic runs
+#     # agg_dict = {
+#     #     'total_capex_mean': ['mean', 'std'], # avg cost per building
+#     #     'total_capex_sum': ['mean', 'std'], # avg total budget spent
+#     #     'total_co2_saved_robust_sum': ['mean', 'std'], # avg total CO2 saved
+#     #     'capex_per_net_ton_mean': ['mean', 'std'], # avg cost effectiveness
+#     #     'weighted_capex_per_net_ton_mean': ['mean', 'std'], # avg weighted cost
+#     #     'remaining_funds_first': ['mean', 'std'], # avg remaining funds
+#     #     'num_buildings_sum': ['mean', 'std'] # avg number of buildings
+#     # }
+    
+#     # aggregated = df_summary.groupby('scenario').agg(agg_dict).reset_index()
+    
+#     # Fix: Flatten the final aggregated columns
+#     # aggregated = flatten_multiindex_cols(aggregated)
+    
+#     return df_summary
 def aggregate_results(df):
-    """Aggregate metrics across epistemic runs."""
+    """
+    Aggregate metrics using Law of Total Variance for robust estimation.
+    """
     if df.empty:
         print("Warning: Results dataframe is empty. Cannot aggregate.")
         return pd.DataFrame()
         
-    # 1. Count number of buildings per scenario/epistemic run
-    df['num_buildings'] = 1  # Each row is a building
+    df = df.copy() # Prevent SettingWithCopy warnings
     
-    # # 2. Calculate totals per epistemic run
-    df_summary = df.groupby(['scenario']).agg({
-        'total_capex': ['mean', 'sum'],  # mean per bldg, sum = total spent
-        'total_co2_saved': 'sum',  # total CO2 saved across all bldgs
-        'capex_per_net_ton': 'mean', # avg cost effectiveness
-        'weighted_capex_per_net_ton': 'mean',  # avg weighted cost
-        'remaining_funds': 'first',  # should be same for all in run
-        'num_buildings': 'sum'  # total number of buildings retrofitted
-    }).reset_index()
+    # ---------------------------------------------------------
+    # 1. PRE-CALCULATION: PREPARE VARIANCES
+    # ---------------------------------------------------------
+    # Square the Stds to get Variances (because Var(A+B) = Var(A) + Var(B))    
+    # Capex Intensity
+    df['var_capex_per_net_ton'] = df['std_capex_per_net_ton'] ** 2
+
+    # Total Capex
+    df['var_total_capex'] = df['std_total_capex'] ** 2
+    # Total Carbon    
+    df['var_total_carbon'] = df['std_total_co2_saved'] ** 2
+
+    # ---------------------------------------------------------
+    # 2. DEFINE AGGREGATION
+    # ---------------------------------------------------------
+    agg_dict = {
+        'num_buildings_sum': ('upn', 'count'),
+        
+        # --- CAPEX PER TON (INTENSITY METRIC) ---
+        # Component A: Central Tendency
+        'mean_capex_per_net_ton_group': ('mean_capex_per_net_ton', 'mean'),
+        # Component B: Internal Model Noise (Mean of Variances)
+        'within_group_var': ('var_capex_per_net_ton', 'mean'),
+        # Component C: Between-Building Spread (Variance of Means)
+        'between_group_var': ('mean_capex_per_net_ton', 'var'),
+        
+        # --- TOTALS (VOLUME METRICS) ---
+        # For totals, variances simply sum up (assuming independence)
+        'total_capex_mean': ('mean_total_capex', 'sum'),
+        'total_capex_var_sum': ('var_total_capex', 'sum'),
+        
+        'total_co2_saved_mean': ('mean_total_co2_saved', 'sum'),
+        'total_carbon_var_sum' : ('var_total_carbon', 'sum'),
+    }
+
+    # Perform Groupby
+    df_summary = df.groupby(['scenario']).agg(**agg_dict).reset_index()
     
-    # Flatten column names (e.g., ('cost_of_intervention_mean', 'mean') -> 'cost_of_intervention_mean_mean')
-    df_summary = flatten_multiindex_cols(df_summary)
+    # ---------------------------------------------------------
+    # 3. POST-CALCULATION: REBUILD ROBUST METRICS
+    # ---------------------------------------------------------
     
-    # # 3. Now aggregate stats (mean, std) across all epistemic runs
-    # agg_dict = {
-    #     'total_capex_mean': ['mean', 'std'], # avg cost per building
-    #     'total_capex_sum': ['mean', 'std'], # avg total budget spent
-    #     'total_co2_saved_robust_sum': ['mean', 'std'], # avg total CO2 saved
-    #     'capex_per_net_ton_mean': ['mean', 'std'], # avg cost effectiveness
-    #     'weighted_capex_per_net_ton_mean': ['mean', 'std'], # avg weighted cost
-    #     'remaining_funds_first': ['mean', 'std'], # avg remaining funds
-    #     'num_buildings_sum': ['mean', 'std'] # avg number of buildings
-    # }
+    # --- A. Robust Capex Per Ton (Law of Total Variance) ---
+    # Total Variance = Mean(Internal Vars) + Variance(Means)
+    df_summary['total_variance_intensity'] = (
+        df_summary['within_group_var'].fillna(0) + 
+        df_summary['between_group_var'].fillna(0)
+    )
+    df_summary['total_std_intensity'] = np.sqrt(df_summary['total_variance_intensity'])
     
-    # aggregated = df_summary.groupby('scenario').agg(agg_dict).reset_index()
+    # Final Metric: Group Mean + Group Total Std
+    df_summary['robust_capex_per_net_ton'] = (
+        df_summary['mean_capex_per_net_ton_group'] + 
+        df_summary['total_std_intensity']
+    )
     
-    # Fix: Flatten the final aggregated columns
-    # aggregated = flatten_multiindex_cols(aggregated)
+    # --- B. Robust Total Capex (Sum of Variances) ---
+    # Std of Sum = Sqrt(Sum of Variances)
+    df_summary['total_capex_std'] = np.sqrt(df_summary['total_capex_var_sum'])
+    df_summary['robust_total_capex'] = (
+        df_summary['total_capex_mean'] + 
+        df_summary['total_capex_std']
+    )
     
+    # --- C. Robust Total Carbon (Sum of Variances) ---
+    # Std of Sum = Sqrt(Sum of Variances)
+    df_summary['total_carbon_std'] = np.sqrt(df_summary['total_carbon_var_sum'])
+    
+    # Note: For Carbon, "Conservative" usually means "Guaranteed Minimum Savings" (Mean - Std)
+    # whereas for Cost it means "Maximum Likely Cost" (Mean + Std).
+    # I've added both interpretations just in case.
+    df_summary['conservative_min_carbon_saved'] = (
+        df_summary['total_co2_saved_mean'] - df_summary['total_carbon_std']
+    )
+    
+    # ---------------------------------------------------------
+    # 4. CLEANUP
+    # ---------------------------------------------------------
+    # Map to generic names if needed for downstream plotting
+    # df_summary['total_co2_saved'] = df_summary['total_co2_saved_mean']
+
     return df_summary
 
 
@@ -231,13 +323,16 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
         loft_val=LOFT_VALUE,
         base_path=BASE_PATH
     )
-    
+    print('results_df cols')
+    print(results_df.columns.tolist() )
     if results_df.empty or equity_df.empty:
         print("Critical error: No data was loaded. Exiting.")
         return
 
-    # --- 2. Aggregate Data ---
+    # --- 2. Aggregate Data --- - this calcs the aggregations per scenario 
     results_agg = aggregate_results(results_df)
+    print('results cols ')
+    print(results_agg.columns.tolist() )
     # equity_agg = aggregate_equity(equity_df)
     equity_agg= equity_df
 
@@ -245,6 +340,9 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
         print("Critical error: Aggregation failed. Exiting.")
         return
     
+    print('results_df cols')
+    print(results_df.columns.tolist() )
+
     results_df.to_csv('testresults.csv')
     # --- 3. Merge & Format ---
     comparison_df = results_agg.merge(equity_agg, on='scenario', how='left')
@@ -291,13 +389,19 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     
     display_cols = [
         'scenario_label',
-        'total_co2_saved_sum',
-        'num_buildings_sum_mean',
+        # 'total_co2_saved_sum'
+        'total_co2_saved_mean',
+        'total_carbon_std',  
+        'num_buildings_sum',
+        'capex_per_net_ton_sigma', 
+        'mean_capex_per_net_ton', 
+        'std_capex_per_net_ton',
         'high_deprived_pct_mean',
         'equity_concentration_mean',
         'med_deprived_pct_mean',
         'low_deprived_pct_mean'
     ]
+    # rename 
     
     # Filter for columns that actually exist in the final dataframe
     display_cols = [col for col in display_cols if col in comparison_df.columns]
@@ -321,7 +425,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
 
     plot_metric_by_group(results_df, scenario_colors, 
                          filename=os.path.join(OUTPUT_PATH, f"12b_carbon_metapersona__loft_{LOFT_VALUE}_sigma_{RISK_PENALTY_SIGMA}.png")  , 
-                         value_col='total_co2_saved' ,
+                         value_col='mean_total_co2_saved' ,
                          metric_stat='sum',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
@@ -330,8 +434,17 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
                          y_axis_zero=True)
 
     plot_metric_by_group(results_df, scenario_colors, 
-                         filename=os.path.join(OUTPUT_PATH, f"13_cost_per_Ton_per_persona_loft_{LOFT_VALUE}_sigma_{RISK_PENALTY_SIGMA}.png")  , 
-                         value_col='capex_per_net_ton',
+                         filename=os.path.join(OUTPUT_PATH, f"13_mean_cost_per_Ton_per_persona_loft_{LOFT_VALUE}_sigma_{RISK_PENALTY_SIGMA}.png")  , 
+                         value_col='mean_capex_per_net_ton',
+                         group_col='meta_socio_persona',
+                         xlabel='Socio-economic Persona',
+                         ylabel='Total Cost per Ton Saved (£)',
+                         title='Distribution of Total Cost per Ton by Persona',
+                         y_axis_zero=True)
+    
+    plot_metric_by_group(results_df, scenario_colors, 
+                         filename=os.path.join(OUTPUT_PATH, f"13BB_sigma_cost_per_Ton_per_persona_loft_{LOFT_VALUE}_sigma_{RISK_PENALTY_SIGMA}.png")  , 
+                         value_col='capex_per_net_ton_sigma',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
                          ylabel='Total Cost per Ton Saved (£)',
@@ -340,7 +453,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     
     plot_metric_by_group(results_df, scenario_colors, 
                          filename=os.path.join(OUTPUT_PATH, f"14_cost_per_intervention_prr_persona__loft_{LOFT_VALUE}_sigma_{RISK_PENALTY_SIGMA}.png")  , 
-                         value_col='total_capex',
+                         value_col='mean_total_capex',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
                          ylabel='Total Cost per Intervention (£)',

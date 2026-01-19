@@ -29,7 +29,7 @@ class RetrofitScenarioGenerator2DMC:
                                 scenarios: list, 
                                 model_class: Any,  # The RetrofitModel (now Inner Loop) class
                                 region: str,
-                                random_seed: Optional[int] = None,
+                                random_seed: int,
                                 # col_mapping: Optional[Dict[str, str]] = None
                                 ) -> pd.DataFrame:
         """
@@ -93,7 +93,7 @@ class RetrofitScenarioGenerator2DMC:
         if random_seed is not None:
             np.random.seed(random_seed)
             
-        epistemic_scenarios_df = self.epistemic_sampler(self.n_epistemic_runs)
+        epistemic_scenarios_df = self.epistemic_sampler(self.n_epistemic_runs, random_seed = random_seed)
         
         # List to store the results of each Outer Loop run (N_epistemic dataframes)
         all_epistemic_results = []
