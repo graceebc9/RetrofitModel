@@ -22,16 +22,16 @@ if epc_yn =='Y':
 else:
     is_epc = False 
     
-RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')  )   
+RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')  )  
 
 if is_hpc:
     # Update this path if necessary to match your actual data location
     if not is_epc:
-        LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE'
+        LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v10/NE'
     else:
-        LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/v9_logs_with_epc'
+        LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/v10_logs_with_epc'
         # Use the file you confirmed works as the Source of Truth for headers
-    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/120_log_file.csv'
+    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v10/NE/120_log_file.csv'
 else: 
     if is_epc:
         LOG_DIR='/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/epc_merge'
@@ -41,13 +41,13 @@ else:
     REFERENCE_FILE = '/Volumes/T9/2025_10_RetrofitModel/1_data_runs/NE/120_log_file.csv'
 
 if is_epc:
-    OUTPUT_BASE_DIR = f'2_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only'
-    LOG_FILE_PATH = f'2_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processing_log.txt'
-    ERROR_LOG_FILE = f'2_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/epc_processing_errors.txt'
+    OUTPUT_BASE_DIR = f'4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only'
+    LOG_FILE_PATH = f'4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processing_log.txt'
+    ERROR_LOG_FILE = f'4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/epc_processing_errors.txt'
 else:
-    OUTPUT_BASE_DIR = f'2_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only'
-    LOG_FILE_PATH = f'2_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processing_log.txt'
-    ERROR_LOG_FILE = f'2_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processing_errors.txt'
+    OUTPUT_BASE_DIR = f'4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only'
+    LOG_FILE_PATH = f'4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processing_log.txt'
+    ERROR_LOG_FILE = f'4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processing_errors.txt'
 
 # --- NEW PARAMETER ---
 # 0.35 means 35% of buildings already have loft insulation and cannot get it again.
