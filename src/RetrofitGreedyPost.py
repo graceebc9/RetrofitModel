@@ -66,12 +66,21 @@ def load_data(budgets, equity_weights, loft_val, base_path):
             pcts = results_df_temp.groupby('meta_socio_persona')['upn'].count() / results_df_temp.groupby('meta_socio_persona')['upn'].count().sum()
             
             equity_df_temp = pd.DataFrame({
-                'high_deprived_count': [counts.get('high_deprived', 0)],
-                'high_deprived_pct': [pcts.get('high_deprived', 0.0)],
-                'low_deprived_count': [counts.get('low_deprived', 0)],
-                'low_deprived_pct': [pcts.get('low_deprived', 0.0)],
-                'med_deprived_count': [counts.get('med_deprived', 0)],
-                'med_deprived_pct': [pcts.get('med_deprived', 0.0)]
+                'high_risk_count': [counts.get('high_risk', 0)],
+                'high_risk_pct': [pcts.get('high_risk', 0.0)],
+                
+                'med_risk_count': [counts.get('med_risk', 0)],
+                'med_risk_pct': [pcts.get('med_risk', 0.0)],
+ 
+                'middle_risk_count': [counts.get('middle_risk', 0)],
+                'middle_risk_pct': [pcts.get('middle_risk', 0.0)],
+                
+                'low_risk_count': [counts.get('low_risk', 0)],
+                'low_risk_pct': [pcts.get('low_risk', 0.0)],
+
+                 'v_low_risk_count': [counts.get('v_low_risk', 0)],
+                'v_low_risk_pct': [pcts.get('v_low_risk', 0.0)],
+ 
             })
             equity_df_temp['scenario'] = scenario_label
             equity_df_temp['budget'] = budget
@@ -293,13 +302,26 @@ def aggregate_equity(df, group_cols=['scenario']):
     #     'student_pct': ['mean', 'std']
     # }
     agg_dict = {
-        'high_deprived_pct': ['mean', 'std'],
+        
         'equity_concentration': ['mean', 'std'],
-        'high_deprived_count': ['mean', 'std'],
-        'med_deprived_count': ['mean', 'std'],
-        'med_deprived_pct': ['mean', 'std'],
-        'low_deprived_count': ['mean', 'std'],
-        'low_deprived_pct': ['mean', 'std'],
+        
+        'high_risk_pct': ['mean', 'std'],
+        'high_risk_count': ['mean', 'std'],
+        
+        'med_risk_count': ['mean', 'std'],
+        'med_risk_pct': ['mean', 'std'],
+        
+ 
+
+         'middle_risk_pct': ['mean', 'std'],
+        'middle_risk_count': ['mean', 'std'],
+        
+        'low_risk_count': ['mean', 'std'],
+        'low_risk_pct': ['mean', 'std'],
+        'v_low_risk_count': ['mean', 'std'],
+        'v_low_risk_pct': ['mean', 'std'],
+        
+ 
         
     }
     aggregated = df.groupby(group_cols).agg(agg_dict).reset_index()
@@ -347,19 +369,22 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     # --- 3. Merge & Format ---
     comparison_df = results_agg.merge(equity_agg, on='scenario', how='left')
 
-    # Fix: Create scenario map with correct keys (matching the 'scenario' col)
+        
     scenario_map = {
-        f'budget_{b}_equity_{e}': f'${b/1e6:.0f}M, Equity={e}'
+        f'budget_{b/1e6:.0f}M_equity_{e}': f'£{b/1e6:.0f}M, Equity={e}'
         for b in BUDGETS
         for e in EQUITY_WEIGHTS
     }
-    
+        
     # Add clean labels for plotting
     comparison_df['scenario_label'] = comparison_df['scenario'].map(scenario_map)
+    print('scenario_map')
+    print(scenario_map)
     
-    # Fix: Sort the final dataframe based on parameter values for a logical order
-    # Create temporary sorting keys from the 'scenario' string
-    temp_map = {f'budget_{b}_equity_{e}': (e, b) for b in BUDGETS for e in EQUITY_WEIGHTS}
+    
+
+    
+    temp_map = {f'budget_{b/1e6:.0f}M_equity_{e}': (e, b) for b in BUDGETS for e in EQUITY_WEIGHTS}
     sort_keys = comparison_df['scenario'].map(temp_map)
     
     if sort_keys.notna().all():
@@ -396,10 +421,12 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
         'capex_per_net_ton_sigma', 
         'mean_capex_per_net_ton', 
         'std_capex_per_net_ton',
-        'high_deprived_pct_mean',
+        'high_risk_pct_mean',
         'equity_concentration_mean',
-        'med_deprived_pct_mean',
-        'low_deprived_pct_mean'
+        'med_risk_pct_mean',
+        'middle_risk_pct_mean',
+        'low_risk_pct_mean'
+        'v_low_risk_pct_mean'
     ]
     # rename 
     
