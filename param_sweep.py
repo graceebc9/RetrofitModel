@@ -1,5 +1,5 @@
 """
-Module: wall_improvement_sweep_v4.py
+Module: param_sweep.py
 
 Parameter sweep with CORRECT stratification and CORRECT epistemic aggregation:
 - Wall type: solid_wall vs cavity_wall

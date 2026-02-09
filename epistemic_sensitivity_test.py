@@ -117,7 +117,7 @@ def parse_args():
     parser.add_argument(
         '--batch', 
         type=str, 
-        default='batches/NE/batch_110.txt',
+        default='batches/NE/batch_130.txt',
         help='Path to batch file (e.g., batches/NE/batch_10.txt)'
     )
     parser.add_argument(
@@ -250,54 +250,7 @@ def load_test_data(batch_path: str, n_postcodes: int, logger: logging.Logger):
 # ========================================
 # BUILDING DATA PREPARATION
 # ========================================
-def analyze_building_stock(building_data: pd.DataFrame, logger: logging.Logger):
-    """Analyze building stock to understand factor applicability"""
-    
-    logger.info("\n" + "=" * 70)
-    logger.info("BUILDING STOCK ANALYSIS")
-    logger.info("=" * 70)
-    
-    logger.info(f"Total buildings: {len(building_data)}")
-    print(building_data.columns.tolist() ) 
-    # Wall types
-    if 'wall_type' in building_data.columns:
-        logger.info("\nWall Type Distribution:")
-        wall_dist = building_data['wall_type'].value_counts()
-        for wtype, count in wall_dist.items():
-            pct = count / len(building_data) * 100
-            logger.info(f"  {wtype}: {count} ({pct:.1f}%)")
-    
-    # Premise types
-    if 'premise_type' in building_data.columns:
-        logger.info("\nPremise Type Distribution:")
-        premise_dist = building_data['premise_type'].value_counts()
-        for ptype, count in premise_dist.items():
-            pct = count / len(building_data) * 100
-            logger.info(f"  {ptype}: {count} ({pct:.1f}%)")
-    
-    # Age bands
-    if 'age_band' in building_data.columns:
-        logger.info("\nAge Band Distribution:")
-        age_dist = building_data['age_band'].value_counts()
-        for age, count in age_dist.items():
-            pct = count / len(building_data) * 100
-            logger.info(f"  {age}: {count} ({pct:.1f}%)")
-    
-    # Check for wall installation eligibility
-    # (buildings that would actually get wall insulation measures)
-    if 'wall_type' in building_data.columns:
-        solid_walls = building_data[
-            building_data['wall_type'].str.contains('solid', case=False, na=False)
-        ]
-        cavity_walls = building_data[
-            building_data['wall_type'].str.contains('cavity', case=False, na=False)
-        ]
-        
-        logger.info(f"\nWall Insulation Eligibility:")
-        logger.info(f"  Solid walls (eligible for IWI/EWI): {len(solid_walls)} ({len(solid_walls)/len(building_data)*100:.1f}%)")
-        logger.info(f"  Cavity walls (eligible for CWI): {len(cavity_walls)} ({len(cavity_walls)/len(building_data)*100:.1f}%)")
-        
-
+ 
 
 def prepare_building_data(pc: str, data: dict, logger: logging.Logger) -> Optional[pd.DataFrame]:
     """Prepare building data for a single postcode."""
@@ -434,33 +387,7 @@ def diagnose_factor_usage(
     if factor_values.std() < 0.001:
         logger.warning(f"⚠️  Factor has very low variance - might be effectively constant!")
     
-    # 2. Check building stock applicability
-    if 'solid_wall' in factor_name.lower():
-        # Check how many buildings have solid walls
-        if 'wall_type' in building_data.columns:
-            wall_counts = building_data['wall_type'].value_counts()
-            logger.info(f"\nWall types in building stock:")
-            for wall_type, count in wall_counts.items():
-                logger.info(f"  {wall_type}: {count} ({count/len(building_data)*100:.1f}%)")
-            
-            # Check if solid walls exist
-            solid_wall_buildings = building_data[
-                building_data['wall_type'].str.contains('solid', case=False, na=False)
-            ]
-            logger.info(f"\nBuildings with solid walls: {len(solid_wall_buildings)} / {len(building_data)}")
-            
-            if len(solid_wall_buildings) == 0:
-                logger.warning(f"⚠️  NO SOLID WALL BUILDINGS FOUND - factor cannot affect outputs!")
-                return False
-        
-        # Check for related columns
-        wall_related_cols = [col for col in building_data.columns if 'wall' in col.lower()]
-        logger.info(f"\nWall-related columns: {wall_related_cols}")
-    
-    # 3. Check if factor is used in any calculations
-    logger.info(f"\nSearching for '{factor_name}' usage in code...")
-    logger.info("(Manual check needed - search RetrofitModel2D, RetrofitScenarioGenerator2DMC)")
-    
+ 
     return True
 
 
@@ -752,7 +679,7 @@ def run_sensitivity_test(
     
     combined_building_data = pd.concat(all_building_data, ignore_index=True)
     logger.info(f"Combined building data shape: {combined_building_data.shape}")
-    analyze_building_stock(combined_building_data, logger)
+    
     
     # Retrofit config
     retrofit_config = RetrofitConfig(
