@@ -5,6 +5,8 @@ Unified notation:
 - Loft probability markers: ● (circle) for 0.95, ▲ (triangle) for 0.65
 - Budget: £M on axes, integer values (1, 10, 50, 80, 100)
 - CO2: kilotonnes (kt) with comma formatting
+
+
 """
 
 import os
