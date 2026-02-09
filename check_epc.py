@@ -12,8 +12,10 @@ from src.personas import load_personas
 # =======================
 LOFT = 0.95
 RISK_PENALTY_SIGMA = 1.0
-LOG_FOLDER = f'/Volumes/T9/2025_10_RetrofitModel/3_optimiseD_iroiities/epc/risk_sigma_{RISK_PENALTY_SIGMA}__processed_best_only'
-OUTPUT_DIR = f'/Volumes/T9/2025_10_RetrofitModel/4_gredy_epc/summary/portfolio_analysis_plots/loft_{LOFT}'
+# LOG_FOLDER = f'/Volumes/T9/2025_10_RetrofitModel/3_optimiseD_iroiities/epc/risk_sigma_{RISK_PENALTY_SIGMA}__processed_best_only'
+LOG_FOLDER = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only'
+# OUTPUT_DIR = f'/Volumes/T9/2025_10_RetrofitModel/4_gredy_epc/summary/portfolio_analysis_plots/loft_{LOFT}'
+OUTPUT_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_epcc_evals/NE/summary/portfolio_analysis_plots/LOFT_{LOFT}'
 
 # Column Mappings
 COL_UPN = 'upn'
@@ -25,13 +27,26 @@ COL_EPC = 'CURRENT_ENERGY_RATING'
 # ---------------------------------------------------------
 # CONSISTENT COLOURING CONFIGURATION
 # ---------------------------------------------------------
-persona_order = ['low_deprived', 'med_deprived', 'high_deprived']
+# persona_order = ['low_deprived', 'med_deprived', 'high_deprived']
+
+persona_order = [ 'v_low_risk','low_risk', 'middle_risk', 'med_risk',   'high_risk ']
+
+# Define specific colors for each persona to ensure consistency across all plots
+# PERSONA_COLORS = {
+#     'low_deprived': '#009E73',  # Blue
+#     'med_deprived': '#E69F00',  # Orange
+#     'high_deprived': '#D55E00'  # Red
+# }
+
+persona_order = ['v_low_risk', 'low_risk', 'middle_risk', 'med_risk', 'high_risk']
 
 # Define specific colors for each persona to ensure consistency across all plots
 PERSONA_COLORS = {
-    'low_deprived': '#009E73',  # Blue
-    'med_deprived': '#E69F00',  # Orange
-    'high_deprived': '#D55E00'  # Red
+    'v_low_risk': '#009E73',   # Green (lowest risk)
+    'low_risk': '#56B4E9',     # Light blue
+    'middle_risk': '#E69F00',  # Orange
+    'med_risk': '#D55E00',     # Dark orange
+    'high_risk': '#CC79A7'     # Red/pink (highest risk)
 }
 
 
