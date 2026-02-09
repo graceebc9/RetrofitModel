@@ -116,7 +116,7 @@ def get_sorted_budget_list(df, budget_col='budget'):
 
  
 # plot main 
-def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val = None, sigma_val= None  ):
+def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val = None  ):
     """
     Main plotting function.
     
@@ -152,39 +152,39 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
     
     
     plot_carbon_savings_vs_equity(results_subset, equity_weights, budget_label, 
-                                  os.path.join(output_dir, f"1_carbon_vs_equity_{loft_val}_sigma_{sigma_val}_UNCORR.png"),
+                                  os.path.join(output_dir, f"1_carbon_vs_equity_{loft_val}_UNCORR.png"),
                                   y_axis_zero=y_axis_zero)
     
     plot_carbon_savings_vs_equity(results_subset, equity_weights, budget_label, 
-                                  os.path.join(output_dir, f"1_carbon_vs_equity_{loft_val}_sigma_{sigma_val}_CORR.png"),
+                                  os.path.join(output_dir, f"1_carbon_vs_equity_{loft_val}_CORR.png"),
                                   y_axis_zero=y_axis_zero, co2_std =total_co2_full_corr  )
     
     plot_cost_effectiveness_vs_equity(results_subset, equity_weights, budget_label, 
-                                      os.path.join(output_dir, f"2_cost_effectiveness_vs_equity_{loft_val}_sigma_{sigma_val}_CORR.png"),
+                                      os.path.join(output_dir, f"2_cost_effectiveness_vs_equity_{loft_val}_CORR.png"),
                                       y_axis_zero=y_axis_zero)
         
     plot_cost_effectiveness_vs_equity(results_subset, equity_weights, budget_label, 
-                                      os.path.join(output_dir, f"2_cost_effectiveness_vs_equity_{loft_val}_sigma_{sigma_val}_UNCORR.png"),
+                                      os.path.join(output_dir, f"2_cost_effectiveness_vs_equity_{loft_val}_UNCORR.png"),
                                       y_axis_zero=y_axis_zero, capex_std = capex_per_net_ton_std_col_unorr)
     
     plot_vulnerable_coverage_vs_equity(equity_subset, equity_weights, budget_label, 
-                                       os.path.join(output_dir, f"3_vulnerable_coverage_vs_equity_{loft_val}_sigma_{sigma_val}.png"),
+                                       os.path.join(output_dir, f"3_vulnerable_coverage_vs_equity_{loft_val}.png"),
                                        y_axis_zero=y_axis_zero)
     
     plot_equity_concentration_vs_weight(equity_subset, equity_weights, budget_label, 
-                                        os.path.join(output_dir, f"4_equity_concentration_vs_weight_{loft_val}_sigma_{sigma_val}.png"),
+                                        os.path.join(output_dir, f"4_equity_concentration_vs_weight_{loft_val}.png"),
                                         y_axis_zero=y_axis_zero)
     
  
     
     plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors, budget_label, 
-                      os.path.join(output_dir, f"6_pareto_front_{loft_val}_sigma_{sigma_val}.png"),
+                      os.path.join(output_dir, f"6_pareto_front_{loft_val}.png"),
                       y_axis_zero=y_axis_zero, 
                          ycol=total_co2_saved_col,
         ycol_std= total_co2_saved_col_std, )
 
     plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors, budget_label, 
-                      os.path.join(output_dir, f"6_pareto_front_{loft_val}_sigma_{sigma_val}_FULLCORR.png"),
+                      os.path.join(output_dir, f"6_pareto_front_{loft_val}_FULLCORR.png"),
                       y_axis_zero=y_axis_zero, 
                          ycol=total_co2_saved_col,
         ycol_std= total_co2_full_corr, )
@@ -194,11 +194,11 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
     #                                 y_axis_zero=y_axis_zero)
     
     plot_tradeoff_efficiency(results_subset, equity_subset, scenarios, scenario_colors, budget_label, 
-                             os.path.join(output_dir, f"8_tradeoff_efficiency_{loft_val}_sigma_{sigma_val}.png"),
+                             os.path.join(output_dir, f"8_tradeoff_efficiency_{loft_val}.png"),
                              y_axis_zero=y_axis_zero)
     
     plot_radar_chart(results_subset, equity_subset, 
-                     os.path.join(output_dir, f"9_radar_chart_{loft_val}_sigma_{sigma_val}.png"),scenario_colors
+                     os.path.join(output_dir, f"9_radar_chart_{loft_val}.png"),scenario_colors
                     ) 
 
     # plot_pareto_retrofit_carbon_by_budget(results_subset, equity_subset, scenarios, scenario_colors, budget_label,
@@ -211,7 +211,7 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
         scenarios, 
         scenario_colors, 
         budget_label, 
-        filename=   os.path.join(output_dir, f"10_pareto_bcounts_{loft_val}_sigma_{sigma_val}.png" ) , 
+        filename=   os.path.join(output_dir, f"10_pareto_bcounts_{loft_val}.png" ) , 
         x_col='num_buildings_sum', 
         
         y_col=total_co2_saved_col,
@@ -229,7 +229,7 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
         scenarios, 
         scenario_colors, 
         budget_label, 
-        filename=   os.path.join(output_dir, f"10_pareto_bcounts_{loft_val}_sigma_{sigma_val}_FULLCORR.png" ) , 
+        filename=   os.path.join(output_dir, f"10_pareto_bcounts_{loft_val}_FULLCORR.png" ) , 
         x_col='num_buildings_sum', 
         
         y_col=total_co2_saved_col,
@@ -242,11 +242,11 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
         )
     
     plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenarios, scenario_colors, budget_label,
-                                 os.path.join(output_dir, f"11_pareto_cost_eff__loft_{loft_val}_sigma_{sigma_val}_UNCORR.png") ,
+                                 os.path.join(output_dir, f"11_pareto_cost_eff__loft_{loft_val}_UNCORR.png") ,
                                 y_axis_zero=y_axis_zero)
 
     plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenarios, scenario_colors, budget_label,
-                                 os.path.join(output_dir, f"11_pareto_cost_eff__loft_{loft_val}_sigma_{sigma_val}_CORR.png") ,
+                                 os.path.join(output_dir, f"11_pareto_cost_eff__loft_{loft_val}_CORR.png") ,
                                 y_axis_zero=y_axis_zero, capex_std = capex_per_net_ton_std_col_unorr)
 
 

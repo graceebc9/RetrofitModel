@@ -64,7 +64,7 @@ def main():
     """
     # Configuration
     running_locally = not is_running_on_hpc()
-    RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')  )  
+    # RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')  )  
 
     epc_yn = os.getenv('EPC_YN')
     if epc_yn =='Y':
@@ -91,7 +91,7 @@ def main():
         budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000] 
         budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000,  100_000_000]
         budgets = [ 1_000_000,  25_000_000, 50_000_000, 80_000_000,  100_000_000, 200_000_000]
-        # budgets = [  1_000_000]
+        # budgets = [  25_000_000]
         # budgets = [25_000_000]
         # budgets= [200_000_000]
         # budgets = [ 1_000_000, ]
@@ -103,10 +103,10 @@ def main():
         
         
         
-        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.3, 1.4, 1.5, 1.6, 1.7]
+        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.3, 1.4, 1.5, 1.6]
         # equity_factors = [ 1.3, 1.4, 1.5, 1.6, 1.7]
         # equity_factors = [ 1.6, 1.7]
-        # equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
+        # equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2 ]
         # equity_factors = [ 1.3, 1.4, 1.5]
         # equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.4,  1.6]
         # equity_factors = [0.2,  0.4, ]
@@ -120,9 +120,9 @@ def main():
         epc_yn = os.getenv('EPC_YN')
         if epc_run:
             # INPUT_FILES_PATH=f'/Volumes/T9/2025_10_RetrofitModel/3_optimised_epc/sigma_{RISK_PENALTY_SIGMA}__processed_best_only/*.csv'
-            INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
+            INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities_epc/risk_sigma_1.0/processed_best_only/*'
             # INPUT_FILES_PATH= '/Users/gracecolverd/Downloads/risk_sigma1_epc__processed_best_only/*csv'
-            BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results_epc/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
+            BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results_epc/NE/all_domestic'
             # BASE_DIR = '/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/epc'
 
             # INPUT_FILES_PATH = f'/Volumes/My Passport/retrofitModel_final/4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
@@ -133,8 +133,8 @@ def main():
             # INPUT_FILES_PATH=f'/Volumes/T9/2025_10_RetrofitModel/3_optimiseD_iroiities/risk_sigma_{RISK_PENALTY_SIGMA}__processed_best_only/*.csv'
             # BASE_DIR=f'/Volumes/T9/2025_10_RetrofitModel/4_gredy/risk_{RISK_PENALTY_SIGMA}/'
             
-            INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
-            BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
+            INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_1.0/processed_best_only/*'
+            BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results/NE/all_domestic'
             
             # INPUT_FILES_PATH = f'/Volumes/My Passport/retrofitModel_final/4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
             # BASE_DIR =f'/Volumes/My Passport/retrofitModel_final/5_greedy_results/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
@@ -142,15 +142,15 @@ def main():
 
     else:
         
-        RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')) 
+        # RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')) 
         
         if epc_run:
-            INPUT_FILES_PATH=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
-            BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/epc/risk_sigma_{RISK_PENALTY_SIGMA}'
+            INPUT_FILES_PATH=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities_epc/risk_sigma_1.0/processed_best_only/*'
+            BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/epc'
         else:
             # INPUT_FILES_PATH=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities/risk_sigma_{sigma_value}/processed_best_only/*'
-            INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA} /processed_best_only/*'
-            BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
+            INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_1.0/processed_best_only/*'
+            BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results/NE/all_domestic'
             # BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/all_domestic/risk_sigma_{sigma_value}'
 
         print(f'Starting {INPUT_FILES_PATH}') 
@@ -419,7 +419,7 @@ def main():
 
             # Ensure output directory exists
             os.makedirs(OUTPUT_PATH, exist_ok=True)
-            post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH, RISK_PENALTY_SIGMA=RISK_PENALTY_SIGMA)
+            post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH)
         
     if post_proc_epc:
         if epc_run:
