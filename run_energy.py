@@ -36,14 +36,14 @@ CO2_METRIC_PATTERNS = {
     }
 }
 
-OUTPUT_BASE = '3_stock_results/epistemic_full'
+OUTPUT_BASE = '3_stock_results_2001/epistemic_full'
 os.makedirs(OUTPUT_BASE, exist_ok=True)
 
 # Determine environment and paths
 is_hpc = is_running_on_hpc() 
 if is_hpc:
-    LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/*csv'
-    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/130_log_file.csv'
+    LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v10/NE/*csv'
+    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v10/NE/130_log_file.csv'
 else:
     # Local Test Path
     LOG_DIR = '/Volumes/T9/2025_10_RetrofitModel/1_data_runs/NE/*.csv'

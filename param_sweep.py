@@ -105,7 +105,7 @@ from src.RetrofitConfig import RetrofitConfig
 def parse_args():
     parser = argparse.ArgumentParser(description='Wall improvement factor parameter sweep v4')
     parser.add_argument('--batch', type=str, default='batches/NE/batch_10.txt', help='Path to batch file')
-    parser.add_argument('--output', type=str, default='wall_sweep_results_v5', help='Base output directory')
+    parser.add_argument('--output', type=str, default='wall_sweep_results_v6', help='Base output directory')
     parser.add_argument('--n-postcodes', type=int, default=100, help='Number of postcodes per batch (-1 for all)')
     parser.add_argument('--all', action='store_true', help='Process all postcodes in batch')
     parser.add_argument('--all-batches', action='store_true', help='Run across ALL batches')
@@ -552,7 +552,7 @@ def aggregate_category_by_premise(
 # ========================================
 
 def create_sampler_from_df(epistemic_df: pd.DataFrame) -> Callable:
-    def fixed_sampler(n_runs: int) -> pd.DataFrame:
+    def fixed_sampler(n_runs: int, random_seed: int) -> pd.DataFrame:
         return epistemic_df.copy()
     return fixed_sampler
 
@@ -1344,7 +1344,7 @@ def run_parameter_sweep(
         }
     )
     
-    epistemic_df = generate_epistemic_scenarios_lhs(n_epistemic_runs)
+    epistemic_df = generate_epistemic_scenarios_lhs(n_epistemic_runs, random_seed = seed)
 
     # Run sweeps
     internal_detailed, internal_agg = run_internal_sweep(

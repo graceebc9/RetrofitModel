@@ -39,7 +39,7 @@ METRIC_PATTERNS = {
     }
 }
 
-OUTPUT_BASE = '3_stock_results/buildings_test/'
+OUTPUT_BASE = '3_stock_results_2201/buildings/'
 os.makedirs(OUTPUT_BASE, exist_ok=True)
 
 CHECKPOINT_PATH = os.path.join(OUTPUT_BASE, 'checkpoint.pkl')
@@ -47,8 +47,8 @@ CHECKPOINT_INTERVAL = 50
 
 is_hpc = is_running_on_hpc()
 if is_hpc:
-    LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/*csv'
-    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/130_log_file.csv'
+    LOG_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v10/NE/*csv'
+    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v10/NE/130_log_file.csv'
 else:
     LOG_DIR = '/Volumes/T9/2025_10_RetrofitModel/1_data_runs/NE/*.csv'
     REFERENCE_FILE = None
@@ -246,7 +246,7 @@ def plot_metric_by_decile(df, scenario_name, metric_label, output_path):
         subset = df[df['inferred_insulation_type'] == w_type]
         subset = subset.set_index('decile_numeric').reindex(deciles).reset_index()
 
-        ax.plot(subset['decile_numeric'], subset['median_val'],
+        ax.plot(subset['decile_numeric'].to_numpy() , subset['median_val'].to_numpy(),
                 label=w_type, color=colors[i], marker='o', linewidth=2)
         ax.fill_between(subset['decile_numeric'], subset['p5'], subset['p95'],
                         color=colors[i], alpha=0.2, linewidth=0)
@@ -340,7 +340,7 @@ def plot_co2_compare_decile_x(stats_dict, scenario_name, output_base):
         df['decile_numeric'] = pd.to_numeric(df['avg_gas_percentile'], errors='coerce')
         df = df.sort_values('decile_numeric')
 
-        ax.plot(df['decile_numeric'], df['median_val'],
+        ax.plot(df['decile_numeric'].to_numpy(), df['median_val'].to_numpy(),
                 label=cfg['label'], color=cfg['color'], linestyle=cfg['style'], marker='o')
         ax.fill_between(df['decile_numeric'], df['p5'], df['p95'],
                         color=cfg['color'], alpha=0.1, linewidth=0)
@@ -397,7 +397,7 @@ def plot_co2_compare_premise_x(stats_dict, scenario_name, output_base):
 
         x_vals = [x_map[t] for t in df['premise_type']]
 
-        ax.plot(x_vals, df['median_val'],
+        ax.plot(x_vals, df['median_val'].to_numpy() ,
                 label=cfg['label'], color=cfg['color'], linestyle=cfg['style'], marker='s')
         ax.fill_between(x_vals, df['p5'], df['p95'],
                         color=cfg['color'], alpha=0.1, linewidth=0)

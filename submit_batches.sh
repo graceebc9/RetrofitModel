@@ -34,12 +34,7 @@ if [ ! -x "$SLURM_SCRIPT_PATH" ]; then
     exit 1
 fi
 
-# Check if main.py exists
-MAIN_PY_PATH="${SLURM_SUBMIT_DIR}/main.py"
-if [ ! -f "$MAIN_PY_PATH" ]; then
-    echo "Error: main.py not found at: $MAIN_PY_PATH"
-    exit 1
-fi
+ 
 
 # Calculate the number of jobs needed by counting lines in batch_paths.txt
 num_jobs=$(wc -l < "$BATCH_PATHS_FILE")

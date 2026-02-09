@@ -9,11 +9,13 @@ the fixed factor for each test. This isolates the effect of each factor properly
 Previous bug: Generated new LHS samples for each run, making comparisons invalid.
 
 -- added random seed to sampler 
+-- added skip_existing check to avoid re-running completed analyses
 
 Usage:
-    python sensitivity_test_fixed.py
-    python sensitivity_test_fixed.py --all
-    python sensitivity_test_fixed.py --n-postcodes 5
+    python epistemic_sensitivity_test.py
+    python epistemic_sensitivity_test.py --all
+    python epistemic_sensitivity_test.py --n-postcodes 5
+    python epistemic_sensitivity_test.py --force  # Force re-run even if results exist
 """
 import argparse
 import os
@@ -121,7 +123,7 @@ def parse_args():
     parser.add_argument(
         '--batch_name', 
         type=str, 
-        default='110',
+        default='130',
         help='Path to batch file (e.g., batches/NE/batch_10.txt)'
     )
     parser.add_argument(
@@ -144,7 +146,7 @@ def parse_args():
     parser.add_argument(
         '--n-epistemic',
         type=int,
-        default=20,
+        default=50,
         help='Number of epistemic runs (default: 20)'
     )
     parser.add_argument(
@@ -152,6 +154,11 @@ def parse_args():
         type=int,
         default=42,
         help='Random seed for reproducibility (default: 42)'
+    )
+    parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Force re-run even if results already exist'
     )
     args = parser.parse_args()
     
@@ -243,6 +250,54 @@ def load_test_data(batch_path: str, n_postcodes: int, logger: logging.Logger):
 # ========================================
 # BUILDING DATA PREPARATION
 # ========================================
+def analyze_building_stock(building_data: pd.DataFrame, logger: logging.Logger):
+    """Analyze building stock to understand factor applicability"""
+    
+    logger.info("\n" + "=" * 70)
+    logger.info("BUILDING STOCK ANALYSIS")
+    logger.info("=" * 70)
+    
+    logger.info(f"Total buildings: {len(building_data)}")
+    print(building_data.columns.tolist() ) 
+    # Wall types
+    if 'wall_type' in building_data.columns:
+        logger.info("\nWall Type Distribution:")
+        wall_dist = building_data['wall_type'].value_counts()
+        for wtype, count in wall_dist.items():
+            pct = count / len(building_data) * 100
+            logger.info(f"  {wtype}: {count} ({pct:.1f}%)")
+    
+    # Premise types
+    if 'premise_type' in building_data.columns:
+        logger.info("\nPremise Type Distribution:")
+        premise_dist = building_data['premise_type'].value_counts()
+        for ptype, count in premise_dist.items():
+            pct = count / len(building_data) * 100
+            logger.info(f"  {ptype}: {count} ({pct:.1f}%)")
+    
+    # Age bands
+    if 'age_band' in building_data.columns:
+        logger.info("\nAge Band Distribution:")
+        age_dist = building_data['age_band'].value_counts()
+        for age, count in age_dist.items():
+            pct = count / len(building_data) * 100
+            logger.info(f"  {age}: {count} ({pct:.1f}%)")
+    
+    # Check for wall installation eligibility
+    # (buildings that would actually get wall insulation measures)
+    if 'wall_type' in building_data.columns:
+        solid_walls = building_data[
+            building_data['wall_type'].str.contains('solid', case=False, na=False)
+        ]
+        cavity_walls = building_data[
+            building_data['wall_type'].str.contains('cavity', case=False, na=False)
+        ]
+        
+        logger.info(f"\nWall Insulation Eligibility:")
+        logger.info(f"  Solid walls (eligible for IWI/EWI): {len(solid_walls)} ({len(solid_walls)/len(building_data)*100:.1f}%)")
+        logger.info(f"  Cavity walls (eligible for CWI): {len(cavity_walls)} ({len(cavity_walls)/len(building_data)*100:.1f}%)")
+        
+
 
 def prepare_building_data(pc: str, data: dict, logger: logging.Logger) -> Optional[pd.DataFrame]:
     """Prepare building data for a single postcode."""
@@ -353,6 +408,81 @@ def run_model_with_epistemic_df(
     
     return results
 
+# ========================================
+# DIAGNOSTICS
+# ========================================
+
+def diagnose_factor_usage(
+    building_data: pd.DataFrame,
+    baseline_epistemic_df: pd.DataFrame,
+    factor_name: str,
+    logger: logging.Logger
+):
+    """
+    Diagnose why a factor might not be affecting outputs.
+    """
+    logger.info("=" * 70)
+    logger.info(f"DIAGNOSTIC: {factor_name}")
+    logger.info("=" * 70)
+    
+    # 1. Check if factor varies in epistemic sample
+    factor_values = baseline_epistemic_df[factor_name]
+    logger.info(f"Factor range: {factor_values.min():.4f} to {factor_values.max():.4f}")
+    logger.info(f"Factor mean: {factor_values.mean():.4f}, std: {factor_values.std():.4f}")
+    logger.info(f"Factor unique values: {factor_values.nunique()}")
+    
+    if factor_values.std() < 0.001:
+        logger.warning(f"⚠️  Factor has very low variance - might be effectively constant!")
+    
+    # 2. Check building stock applicability
+    if 'solid_wall' in factor_name.lower():
+        # Check how many buildings have solid walls
+        if 'wall_type' in building_data.columns:
+            wall_counts = building_data['wall_type'].value_counts()
+            logger.info(f"\nWall types in building stock:")
+            for wall_type, count in wall_counts.items():
+                logger.info(f"  {wall_type}: {count} ({count/len(building_data)*100:.1f}%)")
+            
+            # Check if solid walls exist
+            solid_wall_buildings = building_data[
+                building_data['wall_type'].str.contains('solid', case=False, na=False)
+            ]
+            logger.info(f"\nBuildings with solid walls: {len(solid_wall_buildings)} / {len(building_data)}")
+            
+            if len(solid_wall_buildings) == 0:
+                logger.warning(f"⚠️  NO SOLID WALL BUILDINGS FOUND - factor cannot affect outputs!")
+                return False
+        
+        # Check for related columns
+        wall_related_cols = [col for col in building_data.columns if 'wall' in col.lower()]
+        logger.info(f"\nWall-related columns: {wall_related_cols}")
+    
+    # 3. Check if factor is used in any calculations
+    logger.info(f"\nSearching for '{factor_name}' usage in code...")
+    logger.info("(Manual check needed - search RetrofitModel2D, RetrofitScenarioGenerator2DMC)")
+    
+    return True
+
+
+def add_factor_diagnostics_to_main(logger: logging.Logger):
+    """Add this call in your main function after loading data"""
+    
+    # After preparing building data and baseline epistemic sample:
+    problematic_factors = [
+        'solid_wall_internal_improvement_factor',
+        'solid_wall_external_improvement_factor',
+    ]
+    
+    for factor in problematic_factors:
+        diagnose_factor_usage(
+            combined_building_data,
+            baseline_epistemic_df,
+            factor,
+            logger
+        )
+        
+        
+
 
 # ========================================
 # METRICS
@@ -444,6 +574,68 @@ def validate_factor_defaults(epistemic_df: pd.DataFrame, logger: logging.Logger)
 
 
 # ========================================
+# CHECK FOR EXISTING RESULTS
+# ========================================
+
+def find_existing_output_dir(output_base_dir: str, batch_label: str) -> Optional[str]:
+    """
+    Find an existing output directory for this batch (for resuming partial runs).
+    
+    Returns the path to existing results directory if found, None otherwise.
+    """
+    if not os.path.exists(output_base_dir):
+        return None
+    
+    # Look for any existing output directories for this batch
+    existing_dirs = [d for d in os.listdir(output_base_dir) 
+                    if d.startswith(batch_label) and os.path.isdir(os.path.join(output_base_dir, d))]
+    
+    if not existing_dirs:
+        return None
+    
+    # Sort by timestamp (newest first) and return the most recent
+    existing_dirs.sort(reverse=True)
+    return os.path.join(output_base_dir, existing_dirs[0])
+
+
+def check_completed_runs(output_dir: str) -> Dict[str, bool]:
+    """
+    Check which runs have already been completed in the output directory.
+    
+    Returns a dict mapping configuration names to completion status.
+    """
+    completed = {}
+    
+    if not os.path.exists(output_dir):
+        return completed
+    
+    # Check for baseline
+    baseline_file = os.path.join(output_dir, 'baseline_results.csv')
+    completed['baseline'] = os.path.exists(baseline_file)
+    
+    # Check for each factor
+    for factor in FACTOR_DEFAULTS.keys():
+        factor_file = os.path.join(output_dir, f'fixed_{factor}_results.csv')
+        completed[factor] = os.path.exists(factor_file)
+    
+    return completed
+
+
+def is_fully_complete(output_dir: str) -> bool:
+    """Check if all runs are complete (baseline + all factors)."""
+    completed = check_completed_runs(output_dir)
+    
+    if not completed.get('baseline', False):
+        return False
+    
+    for factor in FACTOR_DEFAULTS.keys():
+        if not completed.get(factor, False):
+            return False
+    
+    return True
+
+
+# ========================================
 # MAIN SENSITIVITY TEST (CORRECTED)
 # ========================================
 
@@ -453,24 +645,69 @@ def run_sensitivity_test(
     n_postcodes: int,
     n_epistemic_runs: int = 20,
     random_seed: int = 42,
+    skip_existing: bool = True,
 ):
     """
     Run sensitivity analysis with CORRECTED methodology.
     
     KEY FIX: Generate ONE baseline LHS sample, then for each factor test,
     use the SAME sample with only that factor overwritten.
+    
+    Args:
+        batch_path: Path to batch file containing postcodes.
+        output_base_dir: Base directory for output results.
+        n_postcodes: Number of postcodes to process (-1 for all).
+        n_epistemic_runs: Number of epistemic runs.
+        random_seed: Random seed for reproducibility.
+        skip_existing: If True, skip individual runs that are already complete.
     """
     
     # Update global random seed
     global RANDOM_SEED_OUTER
     RANDOM_SEED_OUTER = random_seed
     
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     batch_label = os.path.basename(batch_path).replace('.txt', '')
     
-    # Setup output directory
-    output_dir = os.path.join(output_base_dir, f'{batch_label}_{timestamp}')
-    os.makedirs(output_dir, exist_ok=True)
+    # Check for existing output directory to resume
+    existing_dir = find_existing_output_dir(output_base_dir, batch_label)
+    
+    if existing_dir and skip_existing:
+        # Check if fully complete
+        if is_fully_complete(existing_dir):
+            print(f"=" * 70)
+            print(f"SKIPPING: All results already exist for batch '{batch_label}'")
+            print(f"Existing results path: {existing_dir}")
+            print(f"Use --force flag to re-run and overwrite.")
+            print(f"=" * 70)
+            
+            # Load and return existing results
+            summary_file = os.path.join(existing_dir, 'sensitivity_summary.csv')
+            ranking_file = os.path.join(existing_dir, 'sensitivity_ranking.csv')
+            
+            summary_df = pd.read_csv(summary_file)
+            ranking_df = pd.read_csv(ranking_file)
+            
+            return summary_df, ranking_df
+        else:
+            # Partial completion - will resume
+            output_dir = existing_dir
+            completed_runs = check_completed_runs(output_dir)
+            n_completed = sum(completed_runs.values())
+            n_total = 1 + len(FACTOR_DEFAULTS)  # baseline + factors
+            print(f"=" * 70)
+            print(f"RESUMING: Found partial results for batch '{batch_label}'")
+            print(f"Completed: {n_completed}/{n_total} runs")
+            print(f"Output directory: {output_dir}")
+            print(f"=" * 70)
+            
+            # Extract timestamp from existing dir for logging
+            timestamp = existing_dir.split('_')[-2] + '_' + existing_dir.split('_')[-1]
+    else:
+        # Fresh run
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_dir = os.path.join(output_base_dir, f'{batch_label}_{timestamp}')
+        os.makedirs(output_dir, exist_ok=True)
+        completed_runs = {}
     
     # Setup logging
     logger = setup_logging_for_batch(output_dir, batch_label, timestamp)
@@ -483,6 +720,9 @@ def run_sensitivity_test(
     logger.info(f"N postcodes: {n_postcodes if n_postcodes != -1 else 'all'}")
     logger.info(f"Random seed: {random_seed}")
     logger.info(f"Output directory: {output_dir}")
+    logger.info(f"Skip existing: {skip_existing}")
+    if completed_runs:
+        logger.info(f"Resuming with {sum(completed_runs.values())} completed runs")
     logger.info("")
     logger.info("METHODOLOGY: Same baseline LHS sample used for all runs.")
     logger.info("Each factor test overwrites ONLY that factor in the baseline sample.")
@@ -491,7 +731,8 @@ def run_sensitivity_test(
     # Log factors being tested
     logger.info(f"Factors to test ({len(FACTOR_DEFAULTS)}):")
     for factor, default in FACTOR_DEFAULTS.items():
-        logger.info(f"  - {factor}: default = {default}")
+        status = "✓ DONE" if completed_runs.get(factor, False) else "pending"
+        logger.info(f"  - {factor}: default = {default} [{status}]")
     logger.info("")
     
     # Load data
@@ -511,6 +752,7 @@ def run_sensitivity_test(
     
     combined_building_data = pd.concat(all_building_data, ignore_index=True)
     logger.info(f"Combined building data shape: {combined_building_data.shape}")
+    analyze_building_stock(combined_building_data, logger)
     
     # Retrofit config
     retrofit_config = RetrofitConfig(
@@ -524,18 +766,42 @@ def run_sensitivity_test(
     
     # =========================================================
     # KEY FIX: Generate ONE baseline epistemic sample with random_seed
+    # (or load existing one if resuming)
     # =========================================================
-    logger.info("Generating baseline epistemic sample (used for ALL runs)...")
-    baseline_epistemic_df = generate_epistemic_scenarios_lhs(
-        N_epistemic_runs=n_epistemic_runs,
-        random_seed=random_seed,  # FIX: Now passing random_seed
-    )
+    baseline_epistemic_path = f'{output_dir}/baseline_epistemic_scenarios.csv'
+    
+    if os.path.exists(baseline_epistemic_path):
+        logger.info("Loading existing baseline epistemic sample...")
+        baseline_epistemic_df = pd.read_csv(baseline_epistemic_path)
+    else:
+        logger.info("Generating baseline epistemic sample (used for ALL runs)...")
+        baseline_epistemic_df = generate_epistemic_scenarios_lhs(
+            N_epistemic_runs=n_epistemic_runs,
+            random_seed=random_seed,
+        )
+        baseline_epistemic_df.to_csv(baseline_epistemic_path, index=False)
+            
+        logger.info("\n" + "=" * 70)
+        logger.info("RUNNING DIAGNOSTICS ON ZERO-SENSITIVITY FACTORS")
+        logger.info("=" * 70)
+        
+        problematic_factors = [
+            'solid_wall_internal_improvement_factor',
+            'solid_wall_external_improvement_factor',
+        ]
+        
+        for factor in problematic_factors:
+            if factor in baseline_epistemic_df.columns:
+                diagnose_factor_usage(
+                    combined_building_data,
+                    baseline_epistemic_df,
+                    factor,
+                    logger
+                )
     
     # Validate factor synchronization
     validate_factor_defaults(baseline_epistemic_df, logger)
     
-    # Save baseline epistemic scenarios for reference
-    baseline_epistemic_df.to_csv(f'{output_dir}/baseline_epistemic_scenarios.csv', index=False)
     logger.info(f"Baseline epistemic scenarios:\n{baseline_epistemic_df.to_string()}")
     
     results_summary = []
@@ -544,74 +810,91 @@ def run_sensitivity_test(
     # =========================================================
     # BASELINE RUN
     # =========================================================
-    logger.info("=" * 60)
-    logger.info("Running BASELINE (all factors vary)")
-    logger.info("=" * 60)
+    baseline_file = f'{output_dir}/baseline_results.csv'
     
-    baseline_df = run_model_with_epistemic_df(
-        building_data=combined_building_data,
-        retrofit_config=retrofit_config,
-        epistemic_df=baseline_epistemic_df,
-        n_epistemic_runs=n_epistemic_runs,
-        logger=logger,
-    )
-    
-    if baseline_df is not None:
-        baseline_df.to_csv(f'{output_dir}/baseline_results.csv', index=False)
-        
-        # Identify metrics
-        metric_cols = identify_output_metrics(baseline_df, logger)
-        logger.info(f"Detected {len(metric_cols)} output metrics")
-        logger.debug(f"Metrics: {metric_cols}")
-        
-        baseline_summary = compute_variance_summary(baseline_df, metric_cols)
-        baseline_summary['configuration'] = 'baseline'
-        baseline_summary['fixed_factor'] = None
-        results_summary.append(baseline_summary)
-        
-        logger.info(f"Baseline complete: {len(baseline_df)} rows")
+    if skip_existing and completed_runs.get('baseline', False):
+        logger.info("=" * 60)
+        logger.info("SKIPPING BASELINE (already complete)")
+        logger.info("=" * 60)
+        baseline_df = pd.read_csv(baseline_file)
+        logger.info(f"Loaded baseline: {len(baseline_df)} rows")
     else:
-        logger.error("Baseline run failed")
-        return None, None
+        logger.info("=" * 60)
+        logger.info("Running BASELINE (all factors vary)")
+        logger.info("=" * 60)
+        
+        baseline_df = run_model_with_epistemic_df(
+            building_data=combined_building_data,
+            retrofit_config=retrofit_config,
+            epistemic_df=baseline_epistemic_df,
+            n_epistemic_runs=n_epistemic_runs,
+            logger=logger,
+        )
+        
+        if baseline_df is not None:
+            baseline_df.to_csv(baseline_file, index=False)
+            logger.info(f"Baseline complete: {len(baseline_df)} rows")
+        else:
+            logger.error("Baseline run failed")
+            return None, None
+    
+    # Identify metrics
+    metric_cols = identify_output_metrics(baseline_df, logger)
+    logger.info(f"Detected {len(metric_cols)} output metrics")
+    logger.debug(f"Metrics: {metric_cols}")
+    
+    baseline_summary = compute_variance_summary(baseline_df, metric_cols)
+    baseline_summary['configuration'] = 'baseline'
+    baseline_summary['fixed_factor'] = None
+    results_summary.append(baseline_summary)
     
     # =========================================================
     # FIXED FACTOR RUNS (using SAME baseline sample)
     # =========================================================
     for factor, default_value in FACTOR_DEFAULTS.items():
-        logger.info("=" * 60)
-        logger.info(f"Running with {factor} FIXED to {default_value}")
-        logger.info("=" * 60)
+        factor_file = f'{output_dir}/fixed_{factor}_results.csv'
         
-        # Verify factor exists in baseline
-        if factor not in baseline_epistemic_df.columns:
-            logger.warning(f"Factor '{factor}' not in epistemic sample - skipping")
-            continue
-        
-        # KEY: Copy baseline and overwrite ONLY this factor
-        fixed_epistemic_df = baseline_epistemic_df.copy()
-        fixed_epistemic_df[factor] = default_value
-        
-        logger.debug(f"Fixed epistemic df:\n{fixed_epistemic_df[[factor]].to_string()}")
-        
-        fixed_df = run_model_with_epistemic_df(
-            building_data=combined_building_data,
-            retrofit_config=retrofit_config,
-            epistemic_df=fixed_epistemic_df,
-            n_epistemic_runs=n_epistemic_runs,
-            logger=logger,
-        )
-        
-        if fixed_df is not None:
-            fixed_df.to_csv(f'{output_dir}/fixed_{factor}_results.csv', index=False)
-            
-            fixed_summary = compute_variance_summary(fixed_df, metric_cols)
-            fixed_summary['configuration'] = f'fixed_{factor}'
-            fixed_summary['fixed_factor'] = factor
-            results_summary.append(fixed_summary)
-            
-            logger.info(f"Completed: {factor}")
+        if skip_existing and completed_runs.get(factor, False):
+            logger.info("=" * 60)
+            logger.info(f"SKIPPING {factor} (already complete)")
+            logger.info("=" * 60)
+            fixed_df = pd.read_csv(factor_file)
+            logger.info(f"Loaded {factor}: {len(fixed_df)} rows")
         else:
-            logger.warning(f"Failed: {factor}")
+            logger.info("=" * 60)
+            logger.info(f"Running with {factor} FIXED to {default_value}")
+            logger.info("=" * 60)
+            
+            # Verify factor exists in baseline
+            if factor not in baseline_epistemic_df.columns:
+                logger.warning(f"Factor '{factor}' not in epistemic sample - skipping")
+                continue
+            
+            # KEY: Copy baseline and overwrite ONLY this factor
+            fixed_epistemic_df = baseline_epistemic_df.copy()
+            fixed_epistemic_df[factor] = default_value
+            
+            logger.debug(f"Fixed epistemic df:\n{fixed_epistemic_df[[factor]].to_string()}")
+            
+            fixed_df = run_model_with_epistemic_df(
+                building_data=combined_building_data,
+                retrofit_config=retrofit_config,
+                epistemic_df=fixed_epistemic_df,
+                n_epistemic_runs=n_epistemic_runs,
+                logger=logger,
+            )
+            
+            if fixed_df is not None:
+                fixed_df.to_csv(factor_file, index=False)
+                logger.info(f"Completed: {factor}")
+            else:
+                logger.warning(f"Failed: {factor}")
+                continue
+        
+        fixed_summary = compute_variance_summary(fixed_df, metric_cols)
+        fixed_summary['configuration'] = f'fixed_{factor}'
+        fixed_summary['fixed_factor'] = factor
+        results_summary.append(fixed_summary)
     
     # =========================================================
     # COMPILE SUMMARY
@@ -735,6 +1018,7 @@ if __name__ == "__main__":
     print(f"N postcodes: {args.n_postcodes if args.n_postcodes != -1 else 'all'}")
     print(f"N epistemic runs: {args.n_epistemic}")
     print(f"Random seed: {args.seed}")
+    print(f"Skip existing: {not args.force}")
     
     output_base_dir= os.path.join(args.output, args.batch_name) 
     run_sensitivity_test(
@@ -743,4 +1027,5 @@ if __name__ == "__main__":
         n_postcodes=args.n_postcodes,
         n_epistemic_runs=args.n_epistemic,
         random_seed=args.seed,
+        skip_existing=not args.force,
     )

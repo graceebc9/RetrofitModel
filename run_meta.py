@@ -15,14 +15,14 @@ import matplotlib.ticker as mtick
 
 # Update these paths for your environment
 SCENARIO_NAME = 'stock_summary'      # Just for folder naming
-INPUT_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/*csv'
-OUTPUT_BASE_DIR = '2_stock_results/stock_summary_new/'
-ERROR_LOG_FILE = '2_stock_results/stock_summary_new/processing_errors.txt'
+INPUT_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v10/NE/*csv'
+OUTPUT_BASE_DIR = '2_stock_summary_new/stock_summary_new/'
+ERROR_LOG_FILE = '2_stock_summary_new/stock_summary_new/processing_errors.txt'
 
 # HPC / Local path toggles
 is_hpc = is_running_on_hpc() 
 if is_hpc:
-    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/130_log_file.csv'
+    REFERENCE_FILE = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v10/NE/130_log_file.csv'
 else:
     # Example local path
     INPUT_PATTERN = '/Users/gracecolverd/RetrofitModel/1_intermediate_data_2D/retrofit_scenario/all/NE/*csv'
