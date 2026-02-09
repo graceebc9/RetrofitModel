@@ -87,7 +87,7 @@ else:
     ELEC_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_all_meters_electricity_2022.csv'
 
     scenarios = ['joint_heat_loft_decay','joint_heat_wall_decay', 'wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only' ]
-    job_name='v9'
+    job_name='v10'
     batch_size = 100
     log_size = 50
     n_monte_carlo = 3000

@@ -29,9 +29,9 @@ except ImportError:
 
 # --- Plot Generation Toggles ---
 PLOT_TOGGLES = {
-    'Median_Summary': False,        # The original "Median of Medians" bar chart
-    'Variance_Box': False,          # Box plot of Run Totals (P50 only)
-    'Variance_Bar': False,          # Bar chart of Run Totals (Mean +/- Std)
+    'Median_Summary': True,        # The original "Median of Medians" bar chart
+    'Variance_Box': True,          # Box plot of Run Totals (P50 only)
+    'Variance_Bar': True,          # Bar chart of Run Totals (Mean +/- Std)
     'Variance_Range': True,         # Bar chart of Run Totals (Mean with P5-P95 interval)
     'Risk_Comparison': True         # Compares Sum(P5) vs Sum(P50) vs Sum(P95) with Error Bars
 }
@@ -67,9 +67,9 @@ SCENARIO_DISPLAY_NAMES = {
 # --- Path config ---
 if is_hpc:
     if not is_epc:
-        LOG_FILE_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v9/NE/*csv'
+        LOG_FILE_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/retrofit_scenario/v10/NE/*csv'
     else:
-        LOG_FILE_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/v9_logs_with_epc/*csv'
+        LOG_FILE_PATTERN = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/0_intermediate_data_2D/v10_logs_with_epc/*csv'
 else: 
     if is_epc:
         LOG_FILE_PATTERN = '/Users/gracecolverd/RetrofitModel/intermediate_data_2D/retrofit_scenario/epc_merge/*csv'
@@ -204,9 +204,75 @@ def collect_data(file_pattern):
 # ==============================================================================
 
 def generate_median_plots(data_store, output_dir):
-    # (Same as before - omitted for brevity, but kept in execution flow)
-    # If you need this code block again, let me know. 
-    pass 
+    """
+    Generates Median of Medians plots AND saves data tables.
+    """
+    print(f"Generating Median Summary plots and tables...")
+    
+    for metric_name, info in METRICS_INFO.items():
+        bar_heights = []
+        lower_errors = []
+        upper_errors = []
+        valid_scenarios = []
+        
+        table_rows = []
+
+        for sc in SCENARIOS:
+            d = data_store[metric_name][sc]
+            if len(d['p50']) > 0:
+                med_p5  = np.median(d['p5'])
+                med_p50 = np.median(d['p50'])
+                med_p95 = np.median(d['p95'])
+
+
+
+                bar_heights.append(med_p50)
+                # Error bars are relative to the median for matplotlib
+                lower_errors.append(med_p50 - med_p5)
+                upper_errors.append(med_p95 - med_p50)
+                valid_scenarios.append(sc)
+
+                # Store data for table
+                table_rows.append({
+                    'Scenario_Name': SCENARIO_DISPLAY_NAMES.get(sc, sc),
+                    'Scenario_ID': sc,
+                    'Metric': metric_name,
+                    'Median_Lower_P5': med_p5,
+                    'Median_Central_P50': med_p50,
+                    'Median_Upper_P95': med_p95,
+                    'Sample_Count': len(d['p50'])
+                })
+
+        # --- Save Table ---
+        if table_rows:
+            df_table = pd.DataFrame(table_rows)
+            csv_name = f"{metric_name}_median_summary.csv"
+            df_table.to_csv(os.path.join(output_dir, csv_name), index=False)
+            print(f"Saved Table: {csv_name}")
+
+        # --- Plotting ---
+        if valid_scenarios:
+
+            plt.figure(figsize=(10, 6))
+            asymmetric_err = [lower_errors, upper_errors]
+            plt.bar(valid_scenarios, bar_heights, yerr=asymmetric_err, 
+                    capsize=5, color='cornflowerblue', alpha=0.8, edgecolor='black')
+            
+            plt.ylabel(info['ylabel'], fontweight='bold')
+            plt.xlabel('Scenario', fontweight='bold')
+            # plt.title Removed
+            
+            clean_labels = [SCENARIO_DISPLAY_NAMES.get(sc, sc) for sc in valid_scenarios]
+            plt.xticks(ticks=range(len(valid_scenarios)), labels=clean_labels, rotation=45, ha='right')
+            
+            ax = plt.gca()
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x):,}'))
+            
+            plt.grid(axis='y', linestyle='--', alpha=0.5)
+            plt.tight_layout()
+            
+            plt.savefig(os.path.join(output_dir, f"{metric_name}_median_plot.png"), dpi=300)
+            plt.close()
 
 def generate_variance_range_plots_range(df, v_name, output_dir):
     """ Standard P50 Variance Plot """

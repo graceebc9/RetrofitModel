@@ -514,6 +514,7 @@ Examples:
 # ==========================================
 # MAIN
 # ==========================================
+import os 
 
 def main():
     args = parse_args()
@@ -523,6 +524,7 @@ def main():
     # Determine output directory
     if args.output_dir:
         output_dir = Path(args.output_dir)
+        
         if not output_dir.exists():
             if args.plots_only or args.skip_processing:
                 print(f"Error: Output directory does not exist: {output_dir}")

@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A CULLEN-SL3-CPU
 #SBATCH -p icelake
-#SBATCH --time=01:45:00
+#SBATCH --time=03:45:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=NONE
@@ -31,11 +31,6 @@ cd $SLURM_SUBMIT_DIR
 # Create logs directory
 mkdir -p logs
 
-  
-# Log job info
-echo "Job started at: $(date)"
-echo "Running on node: $HOSTNAME"
-echo "Processing batch path: $batch_path"
-
+ 
 # Run the processing script
-python merge_epc.py "$batch_path"
+python merge_epc.py  

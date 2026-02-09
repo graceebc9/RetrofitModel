@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH -A CULLEN-SL3-CPU
 #SBATCH -p icelake
-#SBATCH --time=02:45:00
+#SBATCH --time=02:30:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=NONE
-#SBATCH --mem=50G
+#SBATCH --mem=70G
 #SBATCH --output=logs_slurm/rmodel_%A_%a.out
 #SBATCH --error=logs_slurm/rmodel_%A_%a.err
 
@@ -32,6 +32,7 @@ mkdir -p logs
 # Get the batch path for this array job from batch_paths.txt
 BATCH_PATHS_FILE="${SLURM_SUBMIT_DIR}/batch_paths.txt"
 batch_path=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$BATCH_PATHS_FILE")
+
 
 # Validate that we got a path
 if [ -z "$batch_path" ]; then
