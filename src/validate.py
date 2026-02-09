@@ -23,7 +23,7 @@ def analyze_building_stock(building_data: pd.DataFrame, logger: logging.Logger):
     logger.info("\n" + "=" * 70)
     logger.info("BUILDING STOCK ANALYSIS")
     logger.info("=" * 70)
-    logger.info(building_data.columns.tolist() ) 
+    # logger.info(building_data.columns.tolist() ) 
     
     logger.info(f"Total buildings: {len(building_data)}")
     
