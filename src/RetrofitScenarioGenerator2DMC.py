@@ -7,7 +7,7 @@ import logging
 
 # Import necessary components (Assuming these are correct)
 from .PreProcessRetrofit import vectorized_process_buildings 
-from .RetrofitModel2D import RetrofitModel2D    
+# from .RetrofitModel2D import RetrofitModel2D    
 
 logger = logging.getLogger(__name__)
 

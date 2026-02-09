@@ -11,6 +11,9 @@ from typing import Tuple
 
 allowed_personas = ['lower middle', 'struggling',  'deprived']
 allowed_personas = ['high_deprived']
+allowed_personas=['high_risk', 'medium_risk', 'middle risk']
+
+risk_profile = 'med-midd'
 
 def select_epc_algo(df_knapsack: pd.DataFrame, 
                          budget: float, 
@@ -38,6 +41,7 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
         logger.info('None in EPC range')
         raise Exception('None in epc range')
     
+    print('starting knapsack')
     # Filter 2: Personas (ensure input personas are stripped of trailing spaces just in case)
     df_knapsack[persona_col] = df_knapsack[persona_col].astype(str).str.strip()
     df_filtered = df_epc_filtered[df_epc_filtered[persona_col].isin(allowed_personas)].copy()
@@ -52,6 +56,7 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
              logger.warning(f"⚠️ ALL candidates filtered out! Check EPC values (found: {df_knapsack[epc_col].unique()}) and Personas.")
 
     if df_filtered.empty:
+        print('filtersd data empty')
         logger.info('Filtered df is empty')
         return pd.DataFrame(), budget
 
@@ -87,6 +92,7 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
         uprn_interventions = uprn_interventions[
             uprn_interventions[efficiency_column].notna()
         ]
+        
         
         if uprn_interventions.empty:
             continue
@@ -132,5 +138,6 @@ def select_epc_algo(df_knapsack: pd.DataFrame,
                 logger.info(f"  Cost per ton CO2 (Achieved): £{total_spent/total_co2:,.2f}")
         else:
             logger.warning("\n⚠️ No interventions selected (budget may be insufficient for any single project)")
+    
     
     return selected_df, remaining_budget

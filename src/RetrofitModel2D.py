@@ -85,6 +85,8 @@ class RetrofitModel2D:
  
     def __post_init__(self):
         """Validate inputs and apply Epistemic factors to internal configs."""
+        print(f">>> __post_init__ CALLED with epistemic_scenario keys: {self.epistemic_scenario.keys()}")
+        logger.info(f">>> __post_init__ CALLED")
         self.YEARS = 5 
         self.GAS_FACTOR= 0.18      
         self.ELEC_FACTOR = 0.19338  
@@ -105,7 +107,9 @@ class RetrofitModel2D:
         self.area_col = f'scaled_area_{area_choice_setting}'
         self.gas_col =f'gas_scaled_scaled_area_{area_choice_setting}'
         self.elec_col = f'elec_scaled_scaled_area_{area_choice_setting}'
-
+        
+        print('Pre updating the imporvement factors ')
+        
         # Create/Update RetrofitEnergy config
         if self.energy_config is None:
             self.energy_config = RetrofitEnergy(

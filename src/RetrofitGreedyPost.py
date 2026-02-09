@@ -66,12 +66,21 @@ def load_data(budgets, equity_weights, loft_val, base_path):
             pcts = results_df_temp.groupby('meta_socio_persona')['upn'].count() / results_df_temp.groupby('meta_socio_persona')['upn'].count().sum()
             
             equity_df_temp = pd.DataFrame({
-                'high_deprived_count': [counts.get('high_deprived', 0)],
-                'high_deprived_pct': [pcts.get('high_deprived', 0.0)],
-                'low_deprived_count': [counts.get('low_deprived', 0)],
-                'low_deprived_pct': [pcts.get('low_deprived', 0.0)],
-                'med_deprived_count': [counts.get('med_deprived', 0)],
-                'med_deprived_pct': [pcts.get('med_deprived', 0.0)]
+                'high_risk_count': [counts.get('high_risk', 0)],
+                'high_risk_pct': [pcts.get('high_risk', 0.0)],
+                
+                'med_risk_count': [counts.get('med_risk', 0)],
+                'med_risk_pct': [pcts.get('med_risk', 0.0)],
+ 
+                'middle_risk_count': [counts.get('middle_risk', 0)],
+                'middle_risk_pct': [pcts.get('middle_risk', 0.0)],
+                
+                'low_risk_count': [counts.get('low_risk', 0)],
+                'low_risk_pct': [pcts.get('low_risk', 0.0)],
+
+                 'v_low_risk_count': [counts.get('v_low_risk', 0)],
+                'v_low_risk_pct': [pcts.get('v_low_risk', 0.0)],
+ 
             })
             equity_df_temp['scenario'] = scenario_label
             equity_df_temp['budget'] = budget
@@ -137,137 +146,199 @@ def flatten_multiindex_cols(df):
                   for col in df.columns.values]
     return df
 
-# def aggregate_results(df):
-#     """Aggregate metrics across epistemic runs."""
-#     if df.empty:
-#         print("Warning: Results dataframe is empty. Cannot aggregate.")
-#         return pd.DataFrame()
-        
-#     # 1. Count number of buildings per scenario/epistemic run
-#     df['num_buildings'] = 1  # Each row is a building
-    
-#     # # 2. Calculate totals per epistemic run
-#     df_summary = df.groupby(['scenario']).agg({
-#         'total_capex': ['mean', 'sum'],  # mean per bldg, sum = total spent
-#         'total_co2_saved': 'sum',  # total CO2 saved across all bldgs
-#         'capex_per_net_ton': 'mean', # avg cost effectiveness
-#         'weighted_capex_per_net_ton': 'mean',  # avg weighted cost
-#         'remaining_funds': 'first',  # should be same for all in run
-#         'num_buildings': 'sum'  # total number of buildings retrofitted
-#     }).reset_index()
-    
-#     # Flatten column names (e.g., ('cost_of_intervention_mean', 'mean') -> 'cost_of_intervention_mean_mean')
-#     df_summary = flatten_multiindex_cols(df_summary)
-    
-#     # # 3. Now aggregate stats (mean, std) across all epistemic runs
-#     # agg_dict = {
-#     #     'total_capex_mean': ['mean', 'std'], # avg cost per building
-#     #     'total_capex_sum': ['mean', 'std'], # avg total budget spent
-#     #     'total_co2_saved_robust_sum': ['mean', 'std'], # avg total CO2 saved
-#     #     'capex_per_net_ton_mean': ['mean', 'std'], # avg cost effectiveness
-#     #     'weighted_capex_per_net_ton_mean': ['mean', 'std'], # avg weighted cost
-#     #     'remaining_funds_first': ['mean', 'std'], # avg remaining funds
-#     #     'num_buildings_sum': ['mean', 'std'] # avg number of buildings
-#     # }
-    
-#     # aggregated = df_summary.groupby('scenario').agg(agg_dict).reset_index()
-    
-#     # Fix: Flatten the final aggregated columns
-#     # aggregated = flatten_multiindex_cols(aggregated)
-    
-#     return df_summary
+
+
+import numpy as np
+import pandas as pd
+
 def aggregate_results(df):
     """
-    Aggregate metrics using Law of Total Variance for robust estimation.
+    Aggregates results using METHOD 2 (Ratio of Sums).
+    
+    Returns 3 Key Metrics, each with a Mean, Uncorrelated Std, and Correlated Std:
+    1. Efficiency (Capex per Net Ton) -> Calculated as Total Cost / Total Carbon
+    2. Total Capex -> Sum of costs
+    3. Total Carbon -> Sum of savings
     """
     if df.empty:
         print("Warning: Results dataframe is empty. Cannot aggregate.")
         return pd.DataFrame()
         
-    df = df.copy() # Prevent SettingWithCopy warnings
-    
-    # ---------------------------------------------------------
-    # 1. PRE-CALCULATION: PREPARE VARIANCES
-    # ---------------------------------------------------------
-    # Square the Stds to get Variances (because Var(A+B) = Var(A) + Var(B))    
-    # Capex Intensity
-    df['var_capex_per_net_ton'] = df['std_capex_per_net_ton'] ** 2
+    df = df.copy()
 
-    # Total Capex
+    # ---------------------------------------------------------
+    # 1. PRE-CALCULATION
+    # ---------------------------------------------------------
+    # Create Variance columns (Sigma^2) for the Uncorrelated path.
+    # (For Correlated path, we will just sum the Stds directly).
     df['var_total_capex'] = df['std_total_capex'] ** 2
-    # Total Carbon    
-    df['var_total_carbon'] = df['std_total_co2_saved'] ** 2
+    df['var_total_co2'] = df['std_total_co2_saved'] ** 2
 
     # ---------------------------------------------------------
-    # 2. DEFINE AGGREGATION
+    # 2. AGGREGATE (SUMMATION)
     # ---------------------------------------------------------
     agg_dict = {
-        'num_buildings_sum': ('upn', 'count'),
         
-        # --- CAPEX PER TON (INTENSITY METRIC) ---
-        # Component A: Central Tendency
-        'mean_capex_per_net_ton_group': ('mean_capex_per_net_ton', 'mean'),
-        # Component B: Internal Model Noise (Mean of Variances)
-        'within_group_var': ('var_capex_per_net_ton', 'mean'),
-        # Component C: Between-Building Spread (Variance of Means)
-        'between_group_var': ('mean_capex_per_net_ton', 'var'),
+        'upn':  'count', 
+        # 'num_buildings': ('upn', 'count'),
         
-        # --- TOTALS (VOLUME METRICS) ---
-        # For totals, variances simply sum up (assuming independence)
-        'total_capex_mean': ('mean_total_capex', 'sum'),
-        'total_capex_var_sum': ('var_total_capex', 'sum'),
+        # Means (Simple Sums)
+        'mean_total_capex': 'sum',
+        'mean_total_co2_saved': 'sum',
         
-        'total_co2_saved_mean': ('mean_total_co2_saved', 'sum'),
-        'total_carbon_var_sum' : ('var_total_carbon', 'sum'),
+        # Uncorrelated Uncertainty (Sum of Variances)
+        'var_total_capex': 'sum',
+        'var_total_co2': 'sum',
+        
+        # Correlated Uncertainty (Sum of Stds)
+        'std_total_capex': 'sum',
+        'std_total_co2_saved': 'sum'
     }
 
-    # Perform Groupby
-    df_summary = df.groupby(['scenario']).agg(**agg_dict).reset_index()
-    
+    df_agg = df.groupby('scenario').agg(agg_dict).reset_index()
+
     # ---------------------------------------------------------
-    # 3. POST-CALCULATION: REBUILD ROBUST METRICS
+    # 3. POST-CALCULATION
     # ---------------------------------------------------------
     
-    # --- A. Robust Capex Per Ton (Law of Total Variance) ---
-    # Total Variance = Mean(Internal Vars) + Variance(Means)
-    df_summary['total_variance_intensity'] = (
-        df_summary['within_group_var'].fillna(0) + 
-        df_summary['between_group_var'].fillna(0)
+    # === A. TOTALS (Capex & CO2) ===
+    
+    # 1. Uncorrelated Std = Sqrt(Sum of Variances)
+    df_agg['total_capex_std_uncorr'] = np.sqrt(df_agg['var_total_capex'])
+    df_agg['total_co2_std_uncorr'] = np.sqrt(df_agg['var_total_co2'])
+    
+    # 2. Correlated Std = Sum of Stds (Rename for clarity)
+    df_agg.rename(columns={
+        'std_total_capex': 'total_capex_std_corr',
+        'std_total_co2_saved': 'total_co2_std_corr'
+    }, inplace=True)
+    
+    # === B. EFFICIENCY (Capex per Net Ton) ===
+    
+    # 1. The Mean (Ratio of Sums)
+    # "How much is the whole portfolio costing per ton?"
+    df_agg['mean_capex_per_net_ton'] = df_agg['mean_total_capex'] / df_agg['mean_total_co2_saved']
+    
+    # 2. The Uncertainty (Error Propagation for Division)
+    # Formula: Z = X/Y -> Sigma_Z = Z * Sqrt( (Sigma_X/X)^2 + (Sigma_Y/Y)^2 )
+    
+    # ... Helper for Uncorrelated Path
+    cv_capex_u = df_agg['total_capex_std_uncorr'] / df_agg['mean_total_capex']
+    cv_co2_u   = df_agg['total_co2_std_uncorr'] / df_agg['mean_total_co2_saved']
+    
+    df_agg['std_capex_per_net_ton_uncorr'] = (
+        df_agg['mean_capex_per_net_ton'] * np.sqrt(cv_capex_u**2 + cv_co2_u**2)
     )
-    df_summary['total_std_intensity'] = np.sqrt(df_summary['total_variance_intensity'])
+
+    # ... Helper for Correlated Path
+    cv_capex_c = df_agg['total_capex_std_corr'] / df_agg['mean_total_capex']
+    cv_co2_c   = df_agg['total_co2_std_corr'] / df_agg['mean_total_co2_saved']
     
-    # Final Metric: Group Mean + Group Total Std
-    df_summary['robust_capex_per_net_ton'] = (
-        df_summary['mean_capex_per_net_ton_group'] + 
-        df_summary['total_std_intensity']
+    df_agg['std_capex_per_net_ton_corr'] = (
+        df_agg['mean_capex_per_net_ton'] * np.sqrt(cv_capex_c**2 + cv_co2_c**2)
     )
-    
-    # --- B. Robust Total Capex (Sum of Variances) ---
-    # Std of Sum = Sqrt(Sum of Variances)
-    df_summary['total_capex_std'] = np.sqrt(df_summary['total_capex_var_sum'])
-    df_summary['robust_total_capex'] = (
-        df_summary['total_capex_mean'] + 
-        df_summary['total_capex_std']
-    )
-    
-    # --- C. Robust Total Carbon (Sum of Variances) ---
-    # Std of Sum = Sqrt(Sum of Variances)
-    df_summary['total_carbon_std'] = np.sqrt(df_summary['total_carbon_var_sum'])
-    
-    # Note: For Carbon, "Conservative" usually means "Guaranteed Minimum Savings" (Mean - Std)
-    # whereas for Cost it means "Maximum Likely Cost" (Mean + Std).
-    # I've added both interpretations just in case.
-    df_summary['conservative_min_carbon_saved'] = (
-        df_summary['total_co2_saved_mean'] - df_summary['total_carbon_std']
-    )
-    
+
     # ---------------------------------------------------------
     # 4. CLEANUP
     # ---------------------------------------------------------
-    # Map to generic names if needed for downstream plotting
-    # df_summary['total_co2_saved'] = df_summary['total_co2_saved_mean']
+    # Select and order columns logically
+    cols_order = [
+        'scenario',
+        #   'upn',
+        'num_buildings_sum',
+        # 'num_buildings_sum',
+        # Efficiency
+        'mean_capex_per_net_ton', 
+        'std_capex_per_net_ton_uncorr', 
+        'std_capex_per_net_ton_corr',
+        
+        # Total Capex
+        'mean_total_capex', 
+        'total_capex_std_uncorr', 
+        'total_capex_std_corr',
+        
+        # Total Carbon
+        'mean_total_co2_saved', 
+        'total_co2_std_uncorr', 
+        'total_co2_std_corr'
+    ]
 
-    return df_summary
+    df_agg=df_agg.rename(columns={ "upn": 'num_buildings_sum' }  )
+    
+    
+    return df_agg[cols_order]
+
+# def aggregate_results(df):
+#     """
+#     Aggregate metrics for scenarios across buildings - sum up buildings in scenario A etx. 
+#     - for capex per ton: need weighted mean and weighted standard dev. cor and uncorr 
+#     - for sum metrics, no weighitng 
+#     """
+#     if df.empty:
+#         print("Warning: Results dataframe is empty. Cannot aggregate.")
+#         return pd.DataFrame()
+        
+#     df = df.copy() # Prevent SettingWithCopy warnings
+    
+#     # ---------------------------------------------------------
+#     # 1. PRE-CALCULATION: PREPARE VARIANCES
+#     # ---------------------------------------------------------
+#     # Square the Stds to get Variances (because Var(A+B) = Var(A) + Var(B))    
+#     # Capex Intensity
+#     df['var_capex_per_net_ton'] = df['std_capex_per_net_ton'] ** 2
+
+#     # Total Capex
+#     df['var_total_capex'] = df['std_total_capex'] ** 2
+#     # Total Carbon    
+#     df['var_total_co2'] = df['std_total_co2_saved'] ** 2
+
+#     # ---------------------------------------------------------
+#     # 2. DEFINE AGGREGATION
+#     # ---------------------------------------------------------
+#     agg_dict = {
+#         'num_buildings_sum': ('upn', 'count'),
+        
+#         # --- CAPEX PER TON (INTENSITY METRIC) ---
+#         # Component A: Central Tendency
+#         'mean_capex_per_net_ton_group': ('mean_capex_per_net_ton', 'mean'),
+#         # Component B: Internal Model Noise (Mean of Variances)
+#         'within_group_var': ('var_capex_per_net_ton', 'mean'),
+#         # Component C: Between-Building Spread (Variance of Means)
+#         'between_group_var': ('mean_capex_per_net_ton', 'var'),
+        
+#         # --- TOTALS (VOLUME METRICS) ---
+#         # For totals, variances simply sum up (assuming independence)
+#         'total_capex_mean': ('mean_total_capex', 'sum'),
+#         'total_capex_var_sum': ('var_total_capex', 'sum'),
+#         'total_capex_std_sum': ('std_total_capex', 'sum'),
+        
+#         'total_co2_saved_mean': ('mean_total_co2_saved', 'sum'),
+#         'total_co2_var_sum' : ('var_total_co2', 'sum'),
+#         'total_co2_std_sum': ('std_total_co2_saved', 'sum'),
+#     }
+
+#     # Perform Groupby
+#     df_summary = df.groupby(['scenario']).agg(**agg_dict).reset_index()
+    
+#     # ---------------------------------------------------------
+#     # 3. POST-CALCULATION: REBUILD ROBUST METRICS
+#     # ---------------------------------------------------------
+    
+#     # --- A. Robust Capex Per Ton (Law of Total Variance) ---
+#     # Total Variance = Mean(Internal Vars) + Variance(Means)
+#     df_summary['total_variance_intensity'] = (
+#         df_summary['within_group_var'].fillna(0) + 
+#         df_summary['between_group_var'].fillna(0)
+#     )
+#     df_summary['total_std_intensity'] = np.sqrt(df_summary['total_variance_intensity'])
+    
+ 
+#     df_summary['total_capex_std'] = np.sqrt(df_summary['total_capex_var_sum'])
+ 
+#     df_summary['total_co2_std'] = np.sqrt(df_summary['total_co2_var_sum'])
+    
+ 
+#     return df_summary
 
 
 def aggregate_equity(df, group_cols=['scenario']):
@@ -276,30 +347,26 @@ def aggregate_equity(df, group_cols=['scenario']):
         print("Warning: Equity dataframe is empty. Cannot aggregate.")
         return pd.DataFrame()
         
-    # agg_dict = {
-    #     'vulnerable_pct': ['mean', 'std'],
-    #     'equity_concentration': ['mean', 'std'],
-    #     'deprived_count': ['mean', 'std'],
-    #     'struggling_count': ['mean', 'std'],
-    #     'lower middle_count': ['mean', 'std'],
-    #     'upper middle_count': ['mean', 'std'],
-    #     'affluent_count': ['mean', 'std'],
-    #     'student_count': ['mean', 'std'],
-    #     'deprived_pct': ['mean', 'std'],
-    #     'struggling_pct': ['mean', 'std'],
-    #     'lower middle_pct': ['mean', 'std'],
-    #     'upper middle_pct': ['mean', 'std'],
-    #     'affluent_pct': ['mean', 'std'],
-    #     'student_pct': ['mean', 'std']
-    # }
+
     agg_dict = {
-        'high_deprived_pct': ['mean', 'std'],
+        
         'equity_concentration': ['mean', 'std'],
-        'high_deprived_count': ['mean', 'std'],
-        'med_deprived_count': ['mean', 'std'],
-        'med_deprived_pct': ['mean', 'std'],
-        'low_deprived_count': ['mean', 'std'],
-        'low_deprived_pct': ['mean', 'std'],
+        
+        'high_risk_pct': ['mean', 'std'],
+        'high_risk_count': ['mean', 'std'],
+        
+        'med_risk_count': ['mean', 'std'],
+        'med_risk_pct': ['mean', 'std'],
+
+         'middle_risk_pct': ['mean', 'std'],
+        'middle_risk_count': ['mean', 'std'],
+        
+        'low_risk_count': ['mean', 'std'],
+        'low_risk_pct': ['mean', 'std'],
+        'v_low_risk_count': ['mean', 'std'],
+        'v_low_risk_pct': ['mean', 'std'],
+        
+ 
         
     }
     aggregated = df.groupby(group_cols).agg(agg_dict).reset_index()
@@ -347,19 +414,22 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     # --- 3. Merge & Format ---
     comparison_df = results_agg.merge(equity_agg, on='scenario', how='left')
 
-    # Fix: Create scenario map with correct keys (matching the 'scenario' col)
+        
     scenario_map = {
-        f'budget_{b}_equity_{e}': f'${b/1e6:.0f}M, Equity={e}'
+        f'budget_{b/1e6:.0f}M_equity_{e}': f'£{b/1e6:.0f}M, Equity={e}'
         for b in BUDGETS
         for e in EQUITY_WEIGHTS
     }
-    
+        
     # Add clean labels for plotting
     comparison_df['scenario_label'] = comparison_df['scenario'].map(scenario_map)
+    print('scenario_map')
+    print(scenario_map)
     
-    # Fix: Sort the final dataframe based on parameter values for a logical order
-    # Create temporary sorting keys from the 'scenario' string
-    temp_map = {f'budget_{b}_equity_{e}': (e, b) for b in BUDGETS for e in EQUITY_WEIGHTS}
+    
+
+    
+    temp_map = {f'budget_{b/1e6:.0f}M_equity_{e}': (e, b) for b in BUDGETS for e in EQUITY_WEIGHTS}
     sort_keys = comparison_df['scenario'].map(temp_map)
     
     if sort_keys.notna().all():
@@ -391,15 +461,17 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
         'scenario_label',
         # 'total_co2_saved_sum'
         'total_co2_saved_mean',
-        'total_carbon_std',  
+        'total_co2_std',  
         'num_buildings_sum',
         'capex_per_net_ton_sigma', 
         'mean_capex_per_net_ton', 
         'std_capex_per_net_ton',
-        'high_deprived_pct_mean',
+        'high_risk_pct_mean',
         'equity_concentration_mean',
-        'med_deprived_pct_mean',
-        'low_deprived_pct_mean'
+        'med_risk_pct_mean',
+        'middle_risk_pct_mean',
+        'low_risk_pct_mean'
+        'v_low_risk_pct_mean'
     ]
     # rename 
     

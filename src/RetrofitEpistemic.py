@@ -22,11 +22,11 @@ FACTOR_DEFAULTS = {
     # 'regional_multipliers_uncertainty': 1.0,
     'age_band_multipliers_uncertainty': 1.0,
     'cost_scenario': 'central',
-    'external_wall_probability': 0.5,
-    # 'flat_fp_mean': 55,
-    # 'flat_fp_std': 8,
-    # 'flat_eff_mean': 0.75,
-    # 'flat_eff_std': 0.05,
+    # 'external_wall_probability': 0.5,
+    'flat_fp_mean': 55,
+    'flat_fp_std': 8,
+    'flat_eff_mean': 0.75,
+    'flat_eff_std': 0.05,
     'area_based_choice': 'mode',
 }
 

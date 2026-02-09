@@ -19,10 +19,19 @@ from typing import Dict
 # 'student': 1.0
 # }
 
+# EQUITY_WEIGHTS = {
+# 'high_deprived' : 0.4,
+# 'med_deprived': 0.7,
+# 'low_deprived': 1,
+# } 
+
+
 EQUITY_WEIGHTS = {
-'high_deprived' : 0.4,
-'med_deprived': 0.7,
-'low_deprived': 1,
+'high_risk' : 0.4,
+'med_risk': 0.6,
+'middle_risk': 0.8, 
+'low_risk': 1 , 
+'v_low_risk': 1,
 } 
 
 def calculate_social_equity_score(selected_df: pd.DataFrame) -> Dict:
@@ -48,7 +57,7 @@ def calculate_social_equity_score(selected_df: pd.DataFrame) -> Dict:
     total = len(selected_df)
     
     # Calculate % investment in vulnerable groups (deprived + struggling)
-    vulnerable_count = persona_counts.get('deprived', 0) + persona_counts.get('struggling', 0)
+    vulnerable_count = persona_counts.get('high_risk', 0) + persona_counts.get('med_risk', 0)
     vulnerable_pct = (vulnerable_count / total * 100) if total > 0 else 0
     
     # Calculate concentration index (Herfindahl index: 0 = perfect equality, 1 = concentrated)

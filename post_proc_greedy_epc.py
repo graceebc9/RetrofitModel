@@ -41,19 +41,140 @@ def format_budget_ticks(budget_m_values):
     return [f'{int(b)}' for b in budget_m_values]
 
 
-def calc_diff(df1, df2, column):
-    """Calculate absolute and percentage difference for a column between two dataframes."""
-    total_df1 = df1[column].sum()
-    total_df2 = df2[column].sum()
-    diff = total_df2 - total_df1
-    diff_pct = (diff / total_df1) * 100 if total_df1 != 0 else 0
-    return diff, diff_pct
+# def calc_diff(df1, df2, column):
+#     """Calculate absolute and percentage difference for a column between two dataframes."""
+#     total_df1 = df1[column].sum()
+#     total_df2 = df2[column].sum()
+#     diff = total_df2 - total_df1
+#     diff_pct = (diff / total_df1) * 100 if total_df1 != 0 else 0
+#     return diff, diff_pct
 
+
+# def aggregate_scenario_results(greedy_runs_folder, budgets, loft_probs, equity_factors,
+#                                 million_factor=1_000_000):
+#     """Loop through file structure, aggregate totals, and return a Meta DataFrame."""
+#     print('Starting aggregation...')
+#     meta_results = []
+
+#     for prob_loft in loft_probs:
+#         print(f'Processing loft probability: {prob_loft}')
+#         for budget in budgets:
+#             million_budget = budget / million_factor
+#             for equity_factor in equity_factors:
+#                 folder_name = f'budget_{int(million_budget)}M__loft_{prob_loft}__equity_{equity_factor}'
+#                 output_dir = os.path.join(greedy_runs_folder, folder_name)
+
+#                 selected_path = os.path.join(output_dir, 'selected_projects.csv')
+#                 epc_random_path = os.path.join(output_dir, 'epc_random_selection.csv')
+#                 print(selected_path)
+#                 if os.path.exists(selected_path) and os.path.exists(epc_random_path):
+#                     try:
+#                         df_opt = pd.read_csv(selected_path)
+#                         df_epc = pd.read_csv(epc_random_path)
+#                         print(df_opt.columns.tolist() ) 
+
+#                         row = {
+#                             'budget_raw': budget,
+#                             'budget_m': million_budget,
+#                             'loft_prob': prob_loft,
+#                             'equity_factor': equity_factor,
+#                             'scenario_id': folder_name
+#                         }
+
+#                         col = 'total_co2_saved'
+#                         diff, diff_pct = calc_diff(df_opt, df_epc, col)
+#                         row['co2_diff'] = diff
+#                         row['diff_pct'] = diff_pct
+#                         meta_results.append(row)
+
+#                     except Exception as e:
+#                         print(f'Error processing {folder_name}: {e}')
+#                 else:
+#                     print(f'Missing files in {folder_name}')
+
+#     meta_df = pd.DataFrame(meta_results)
+#     meta_df.to_csv('diff_epc_opt.csv', index=False)
+#     print('Results saved to diff_epc_opt.csv')
+#     return meta_df
+
+import pandas as pd
+import numpy as np
+import os
+
+def sum_portfolio_stats(df, prefix=''):
+    """
+    Aggregates a list of buildings into a portfolio total using Method 2 logic.
+    Returns Mean, Uncorrelated Std, and Correlated Std for Carbon.
+    """
+    if df.empty:
+        return {
+            f'{prefix}mean_co2': 0,
+            f'{prefix}std_co2_uncorr': 0,
+            f'{prefix}std_co2_corr': 0
+        }
+
+    # 1. Total Mean (Simple Sum)
+    total_mean = df['mean_total_co2_saved'].sum()
+
+    # 2. Uncorrelated Std (Square -> Sum -> Root)
+    # Assumes independence between buildings
+    var_sum = (df['std_total_co2_saved'] ** 2).sum()
+    std_uncorr = np.sqrt(var_sum)
+
+    # 3. Correlated Std (Sum -> Sum)
+    # Assumes worst-case perfect correlation (systemic risk)
+    std_corr = df['std_total_co2_saved'].sum()
+
+    return {
+        f'{prefix}mean_co2': total_mean,
+        f'{prefix}std_co2_uncorr': std_uncorr,
+        f'{prefix}std_co2_corr': std_corr
+    }
+
+import pandas as pd
+import numpy as np
+import os
+ 
+
+def calculate_robust_difference(stats_opt, stats_epc):
+    """
+    Calculates the Mean Difference and the Standard Deviation of that Difference.
+    Returns the Diff, the Uncertainty of the Diff, and the Z-Score (Significance).
+    """
+    # 1. Mean Difference (The Gain)
+    diff_mean = stats_opt['opt_mean_co2'] - stats_epc['epc_mean_co2']
+    
+    # 2. Uncertainty of Difference (Square, Sum, Root)
+    # Formula: Sigma_Diff = Sqrt( Sigma_Opt^2 + Sigma_Epc^2 )
+    
+    # ... Uncorrelated Path (Optimistic)
+    diff_std_uncorr = np.sqrt(
+        stats_opt['opt_std_co2_uncorr']**2 + stats_epc['epc_std_co2_uncorr']**2
+    )
+    
+    # ... Correlated Path (Pessimistic)
+    # We still combine the two portfolios using Sum of Squares, 
+    # because the *models* for Opt and EPC are distinct realizations.
+    diff_std_corr = np.sqrt(
+        stats_opt['opt_std_co2_corr']**2 + stats_epc['epc_std_co2_corr']**2
+    )
+    
+    # 3. Z-Scores (Signal to Noise)
+    # Avoid divide by zero
+    z_uncorr = diff_mean / diff_std_uncorr if diff_std_uncorr > 0 else 0
+    z_corr   = diff_mean / diff_std_corr   if diff_std_corr > 0 else 0
+    
+    return {
+        'diff_mean_co2': diff_mean,
+        'diff_std_uncorr': diff_std_uncorr,
+        'diff_std_corr': diff_std_corr,
+        'z_score_uncorr': z_uncorr,
+        'z_score_corr': z_corr
+    }
 
 def aggregate_scenario_results(greedy_runs_folder, budgets, loft_probs, equity_factors,
                                 million_factor=1_000_000):
-    """Loop through file structure, aggregate totals, and return a Meta DataFrame."""
-    print('Starting aggregation...')
+    print('Starting robust aggregation with significance testing...')
     meta_results = []
 
     for prob_loft in loft_probs:
@@ -61,6 +182,7 @@ def aggregate_scenario_results(greedy_runs_folder, budgets, loft_probs, equity_f
         for budget in budgets:
             million_budget = budget / million_factor
             for equity_factor in equity_factors:
+                
                 folder_name = f'budget_{int(million_budget)}M__loft_{prob_loft}__equity_{equity_factor}'
                 output_dir = os.path.join(greedy_runs_folder, folder_name)
 
@@ -71,7 +193,10 @@ def aggregate_scenario_results(greedy_runs_folder, budgets, loft_probs, equity_f
                     try:
                         df_opt = pd.read_csv(selected_path)
                         df_epc = pd.read_csv(epc_random_path)
-                        print(df_opt.columns.tolist() ) 
+
+                        # A. Get Totals
+                        stats_opt = sum_portfolio_stats(df_opt, prefix='opt_')
+                        stats_epc = sum_portfolio_stats(df_epc, prefix='epc_')
 
                         row = {
                             'budget_raw': budget,
@@ -80,22 +205,49 @@ def aggregate_scenario_results(greedy_runs_folder, budgets, loft_probs, equity_f
                             'equity_factor': equity_factor,
                             'scenario_id': folder_name
                         }
+                        row.update(stats_opt)
+                        row.update(stats_epc)
 
-                        col = 'total_co2_saved'
-                        diff, diff_pct = calc_diff(df_opt, df_epc, col)
-                        row['co2_diff'] = diff
-                        row['diff_pct'] = diff_pct
+                        # B. Calculate Robust Difference & Significance
+                        diff_stats = calculate_robust_difference(stats_opt, stats_epc)
+                        row.update(diff_stats)
+                        
+                        # C. Simple % Gain for reference
+                        if row['epc_mean_co2'] != 0:
+                            row['diff_pct'] = (row['diff_mean_co2'] / row['epc_mean_co2']) * 100
+                        else:
+                            row['diff_pct'] = 0
+
                         meta_results.append(row)
 
                     except Exception as e:
                         print(f'Error processing {folder_name}: {e}')
-                else:
-                    print(f'Missing files in {folder_name}')
 
-    meta_df = pd.DataFrame(meta_results)
-    meta_df.to_csv('diff_epc_opt.csv', index=False)
-    print('Results saved to diff_epc_opt.csv')
-    return meta_df
+    if meta_results:
+        meta_df = pd.DataFrame(meta_results)
+        
+        # Order columns logically for final report
+        cols = [
+            'budget_m', 'loft_prob', 'equity_factor', 
+            'diff_pct', 
+            'diff_mean_co2', 'diff_std_uncorr', 'diff_std_corr',
+            'z_score_uncorr', 'z_score_corr',
+            'opt_mean_co2', 'epc_mean_co2',
+            'scenario_id'
+        ]
+        # Safety check for missing columns
+        cols = [c for c in cols if c in meta_df.columns]
+        
+        output_filename = 'diff_epc_opt_robust_significance.csv'
+        meta_df = meta_df[cols]
+        meta_df.to_csv(output_filename, index=False)
+        print(f'Results saved to {output_filename}')
+        return meta_df
+    else:
+        print("No results found.")
+        return pd.DataFrame()
+    
+
 
 
 def create_all_configs_plot(df, output_dir):
@@ -272,48 +424,135 @@ def create_loft_comparison(df, output_dir):
     plt.close()
     print(f"✓ Saved: {filepath}")
 
-def create_pareto_frontier(df, output_dir, annotated=True):
-    """Create Pareto frontier plot with optional annotations."""
+# def create_pareto_frontier(df, output_dir, annotated=True):
+#     """Create Pareto frontier plot with optional annotations."""
+#     fig, ax = plt.subplots(figsize=(12, 8))
+
+#     # Plot all configurations with transparency
+#     for loft in sorted(df['loft_prob'].unique()):
+#         for eq in sorted(df['equity_factor'].unique()):
+#             subset = df[(df['loft_prob'] == loft) & (df['equity_factor'] == eq)].sort_values('budget_m')
+#             marker, _ = get_loft_style(loft)
+#             ax.plot(subset['budget_m'], subset['improvement_pct'],
+#                     marker=marker, alpha=0.2, linewidth=1,
+#                     color='gray', markersize=6)
+
+#     # Highlight Pareto frontier points
+#     pareto_points = df.loc[df.groupby('budget_m')['improvement_pct'].idxmax()].sort_values('budget_m')
+#     colors = plt.cm.viridis(np.linspace(0, 1, len(pareto_points)))
+
+#     for idx, (i, row) in enumerate(pareto_points.iterrows()):
+#         ax.scatter(row['budget_m'], row['improvement_pct'],
+#                    s=500, c=[colors[idx]], alpha=0.9,
+#                    edgecolors='black', linewidth=3, zorder=100)
+
+#         if annotated:
+#             ax.annotate(f"Equity: {row['equity_factor']}\nLoft: {row['loft_prob']}",
+#                         xy=(row['budget_m'], row['improvement_pct']),
+#                         xytext=(10, 10), textcoords='offset points',
+#                         fontsize=10, fontweight='bold',
+#                         bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow',
+#                                   alpha=0.8, edgecolor='black', linewidth=2))
+
+#     ax.set_xlabel(BUDGET_LABEL, fontsize=14, fontweight='bold')
+#     ax.set_ylabel(CO2_LABEL_PCT, fontsize=14, fontweight='bold')
+#     ax.axhline(y=0, color='red', linestyle='--', alpha=0.3, linewidth=2)
+#     ax.grid(True, alpha=0.3)
+#     ax.tick_params(labelsize=12)
+
+#     plt.tight_layout()
+#     suffix = 'annotated' if annotated else 'clean'
+#     filepath = os.path.join(output_dir, f'pareto_frontier_{suffix}.png')
+#     plt.savefig(filepath, dpi=300, bbox_inches='tight')
+#     plt.close()
+#     print(f"✓ Saved: {filepath}")
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+
+def create_pareto_frontier_robust(df, output_dir, annotated=True):
+    """
+    Create Pareto frontier plot using Robust Mean difference and Uncorrelated Std error bars.
+    """
+    # Configuration for axes labels
+    X_LABEL = 'Budget (£ Millions)'
+    Y_LABEL = 'Carbon Saved vs Random (Tonnes CO2e)'
+    
     fig, ax = plt.subplots(figsize=(12, 8))
 
-    # Plot all configurations with transparency
+    # 1. Plot all configurations as context (background, gray)
+    # We use the Mean Difference for the Y-axis
     for loft in sorted(df['loft_prob'].unique()):
         for eq in sorted(df['equity_factor'].unique()):
             subset = df[(df['loft_prob'] == loft) & (df['equity_factor'] == eq)].sort_values('budget_m')
-            marker, _ = get_loft_style(loft)
-            ax.plot(subset['budget_m'], subset['improvement_pct'],
-                    marker=marker, alpha=0.2, linewidth=1,
-                    color='gray', markersize=6)
+            
+            # Simple line plot for context (no error bars to avoid clutter)
+            ax.plot(subset['budget_m'], subset['diff_mean_co2'],
+                    alpha=0.15, linewidth=1, color='gray', zorder=1)
 
-    # Highlight Pareto frontier points
-    pareto_points = df.loc[df.groupby('budget_m')['improvement_pct'].idxmax()].sort_values('budget_m')
+    # 2. Identify and Plot Pareto Frontier (Best Mean Outcome per Budget)
+    # We find the row with the maximum Mean Difference for each budget level
+    pareto_points = df.loc[df.groupby('budget_m')['diff_mean_co2'].idxmax()].sort_values('budget_m')
+    
+    # Generate colors for the frontier points
     colors = plt.cm.viridis(np.linspace(0, 1, len(pareto_points)))
 
     for idx, (i, row) in enumerate(pareto_points.iterrows()):
-        ax.scatter(row['budget_m'], row['improvement_pct'],
-                   s=500, c=[colors[idx]], alpha=0.9,
-                   edgecolors='black', linewidth=3, zorder=100)
+        x = row['budget_m']
+        y = row['diff_mean_co2']
+        error = row['diff_std_corr']  
+        
+        # A. Plot the Error Bar (The "Std")
+        ax.errorbar(x, y, yerr=error, 
+                    fmt='none', ecolor='black', elinewidth=2, capsize=5, zorder=50)
 
+        # B. Plot the Point (The "Mean")
+        ax.scatter(x, y,
+                   s=300, c=[colors[idx]], alpha=0.9,
+                   edgecolors='black', linewidth=2, zorder=100, label='Pareto Optimal')
+
+        # C. Annotation (Optional)
         if annotated:
-            ax.annotate(f"Equity: {row['equity_factor']}\nLoft: {row['loft_prob']}",
-                        xy=(row['budget_m'], row['improvement_pct']),
-                        xytext=(10, 10), textcoords='offset points',
-                        fontsize=10, fontweight='bold',
-                        bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow',
-                                  alpha=0.8, edgecolor='black', linewidth=2))
+            # We add a z-score to the text to show statistical strength
+            # Z = Mean / Std
+            z_score = y / error if error > 0 else 0
+            
+            label_text = (f"Equity: {row['equity_factor']}\n"
+                          f"Loft: {row['loft_prob']}\n"
+                          f"σ: ±{error:.1f}")
 
-    ax.set_xlabel(BUDGET_LABEL, fontsize=14, fontweight='bold')
-    ax.set_ylabel(CO2_LABEL_PCT, fontsize=14, fontweight='bold')
-    ax.axhline(y=0, color='red', linestyle='--', alpha=0.3, linewidth=2)
-    ax.grid(True, alpha=0.3)
-    ax.tick_params(labelsize=12)
+            ax.annotate(label_text,
+                        xy=(x, y),
+                        xytext=(0, 25), textcoords='offset points',
+                        ha='center', va='bottom',
+                        fontsize=9, fontweight='bold',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                                  alpha=0.85, edgecolor='gray', linewidth=1))
+
+    # 3. Final Styling
+    ax.set_xlabel(X_LABEL, fontsize=12, fontweight='bold')
+    ax.set_ylabel(Y_LABEL, fontsize=12, fontweight='bold')
+    
+    # Add a horizontal line at 0 (The point where Optimization = Random)
+    ax.axhline(y=0, color='red', linestyle='--', alpha=0.5, linewidth=1.5, label='Random Baseline')
+    
+    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.tick_params(labelsize=10)
+    
+    # Title
+    plt.title(f'Pareto Frontier: Optimization Gain vs. Random Selection\n(Error bars represent site-specific uncertainty)', fontsize=14)
 
     plt.tight_layout()
+    
+    # Save
     suffix = 'annotated' if annotated else 'clean'
-    filepath = os.path.join(output_dir, f'pareto_frontier_{suffix}.png')
+    filepath = os.path.join(output_dir, f'pareto_frontier_robust_{suffix}.png')
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"✓ Saved: {filepath}")
+
 
 def create_cost_benefit_analysis(df, output_dir):
     """Create cost-benefit analysis scatter plot with CO2 in kilotonnes."""
@@ -484,13 +723,19 @@ def main():
     # =========================================================================
     RISK_PENALTY_SIGMA = 1.0
     SETTING_NAME = 'lcoal'
-    BASE_DIR = f'/Volumes/T9/2025_10_RetrofitModel/4_gredy_epc/risk_{RISK_PENALTY_SIGMA}/'
-    OUTPUT_DIR = '/Volumes/T9/2025_10_RetrofitModel/4_gredy_epc/meta_summary'
+    # BASE_DIR = f'/Volumes/T9/2025_10_RetrofitModel/4_gredy_epc/risk_{RISK_PENALTY_SIGMA}/'
+    # OUTPUT_DIR = '/Volumes/T9/2025_10_RetrofitModel/4_gredy_epc/meta_summary'
+
+    # BASE_DIR = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'  
+    BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results_epc/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
+    OUTPUT_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results_epc/meta_sumary'
 
     greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', SETTING_NAME)
     budgets = [1_000_000,25_000_000, 50_000_000, 100_000_000, 200_000_000, 500_000_000]
-    loft_probs = [0.95, 0.65]
+    # budgets = [25_000_000, 50_000_000,  ] 
+    loft_probs = [0.95]
     equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4]
+    # equity_factors = [0, 0.2, 0.4]
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -500,8 +745,8 @@ def main():
     df = aggregate_scenario_results(greedy_runs_folder, budgets, loft_probs, equity_factors)
 
     # Create improvement metrics (positive = optimization is better)
-    df['co2_improvement'] = -df['co2_diff']
-    df['improvement_pct'] = -df['diff_pct']
+    df['co2_improvement'] = df['diff_mean_co2']
+    df['improvement_pct'] = df['diff_pct']
 
     # Calculate global min/max for consistent color scales
     pct_vmin = df['improvement_pct'].min()
@@ -534,8 +779,8 @@ def main():
     create_loft_comparison(df, OUTPUT_DIR)
 
     # Figures 7-8: Pareto frontiers
-    create_pareto_frontier(df, OUTPUT_DIR, annotated=True)
-    create_pareto_frontier(df, OUTPUT_DIR, annotated=False)
+    create_pareto_frontier_robust(df, OUTPUT_DIR, annotated=True)
+    create_pareto_frontier_robust(df, OUTPUT_DIR, annotated=False)
 
     # Figure 9: Cost-benefit analysis
     create_cost_benefit_analysis(df, OUTPUT_DIR)

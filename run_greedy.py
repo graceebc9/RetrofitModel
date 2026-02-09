@@ -56,7 +56,7 @@ def add_equity_weight(scenario_df, equity_factor , capex_col='capex_per_net_ton'
     print('equity weight added')
     return scenario_df
 
-RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')  )  
+
 
 def main():
     """
@@ -64,11 +64,11 @@ def main():
     """
     # Configuration
     running_locally = not is_running_on_hpc()
-    
+    RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')  )  
 
     epc_yn = os.getenv('EPC_YN')
     if epc_yn =='Y':
-        print('Runnig greedy for EPC' ) 
+        print('Running greedy for EPC' ) 
         epc_run = True 
     else:
         epc_run = False 
@@ -83,25 +83,35 @@ def main():
 
 
     if running_locally:
-        BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
+        # BASE_DIR = '/Users/gracecolverd/RetrofitModel/test/greedy'
         
         setting_name = 'lcoal'
         # run_greedy_runs=True  
         # budgets = [1_000_000, 10_000_000, 100_000_000]
         budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000] 
         budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000,  100_000_000]
-        budgets = [ 1_000_000, 25_000_000, 50_000_000, 80_000_000,  100_000_000, 200_000_000]
+        budgets = [ 1_000_000,  25_000_000, 50_000_000, 80_000_000,  100_000_000, 200_000_000]
+        # budgets = [  1_000_000]
+        # budgets = [25_000_000]
         # budgets= [200_000_000]
-        # budgets = [ 500_000]
+        # budgets = [ 1_000_000, ]
         # budgets=[25_000_000]
         # budgets = [  50_000_000,80_000_000]
-        loft_probs = [0.95, 0.65 ]
-        loft_probs = [0.95 ]
+        loft_probs = [0.65, 0.95  ]
+        # loft_probs = [0.95 ]
         # loft_probs = [0.0, 1.0]
         
         
         
-        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2,1.4 ]
+        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.3, 1.4, 1.5, 1.6, 1.7]
+        # equity_factors = [ 1.3, 1.4, 1.5, 1.6, 1.7]
+        # equity_factors = [ 1.6, 1.7]
+        # equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1]
+        # equity_factors = [ 1.3, 1.4, 1.5]
+        # equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.4,  1.6]
+        # equity_factors = [0.2,  0.4, ]
+        
+                          
         # equity_factors = [0, 0.2]
         # equity_factors = [ 1.4  ]
         # equity_factors=[0.8] 
@@ -109,27 +119,42 @@ def main():
         # epc_run = True  
         epc_yn = os.getenv('EPC_YN')
         if epc_run:
-            INPUT_FILES_PATH=f'/Volumes/T9/2025_10_RetrofitModel/3_optimiseD_iroiities/epc/risk_sigma_{RISK_PENALTY_SIGMA}__processed_best_only/*'
+            # INPUT_FILES_PATH=f'/Volumes/T9/2025_10_RetrofitModel/3_optimised_epc/sigma_{RISK_PENALTY_SIGMA}__processed_best_only/*.csv'
+            INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
             # INPUT_FILES_PATH= '/Users/gracecolverd/Downloads/risk_sigma1_epc__processed_best_only/*csv'
-            BASE_DIR=f'/Volumes/T9/2025_10_RetrofitModel/4_gredy_epc/risk_{RISK_PENALTY_SIGMA}/'
+            BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results_epc/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
             # BASE_DIR = '/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/epc'
+
+            # INPUT_FILES_PATH = f'/Volumes/My Passport/retrofitModel_final/4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
+            # BASE_DIR =f'/Volumes/My Passport/retrofitModel_final/5_greedy_results_epc/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
+            
+
         else:
-            INPUT_FILES_PATH=f'/Volumes/T9/2025_10_RetrofitModel/3_optimiseD_iroiities/risk_sigma_{RISK_PENALTY_SIGMA}__processed_best_only/*.csv'
-            BASE_DIR=f'/Volumes/T9/2025_10_RetrofitModel/4_gredy/risk_{RISK_PENALTY_SIGMA}/'
+            # INPUT_FILES_PATH=f'/Volumes/T9/2025_10_RetrofitModel/3_optimiseD_iroiities/risk_sigma_{RISK_PENALTY_SIGMA}__processed_best_only/*.csv'
+            # BASE_DIR=f'/Volumes/T9/2025_10_RetrofitModel/4_gredy/risk_{RISK_PENALTY_SIGMA}/'
+            
+            INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
+            BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
+            
+            # INPUT_FILES_PATH = f'/Volumes/My Passport/retrofitModel_final/4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
+            # BASE_DIR =f'/Volumes/My Passport/retrofitModel_final/5_greedy_results/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
+            
 
     else:
-        BASE_DIR = os.getenv('BASE_DIR')
-        sigma_value = float(os.getenv('SIGMA')) 
+        
+        RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')) 
         
         if epc_run:
-            INPUT_FILES_PATH=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities_epc/risk_sigma_{sigma_value}/processed_best_only/*'
-            BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/epc/risk_sigma_{sigma_value}'
+            INPUT_FILES_PATH=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
+            BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/epc/risk_sigma_{RISK_PENALTY_SIGMA}'
         else:
-            INPUT_FILES_PATH=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities/risk_sigma_{sigma_value}/processed_best_only/*'
-            BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/all_domestic/risk_sigma_{sigma_value}'
+            # INPUT_FILES_PATH=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities/risk_sigma_{sigma_value}/processed_best_only/*'
+            INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA} /processed_best_only/*'
+            BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
+            # BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/all_domestic/risk_sigma_{sigma_value}'
 
         print(f'Starting {INPUT_FILES_PATH}') 
-        setting_name = 'v9'
+        setting_name = 'v10'
         run_g_yn=os.getenv('RUN_GREEDY_RUNS_YN') 
         
         if run_g_yn == 'N':
@@ -260,8 +285,8 @@ def main():
             
             
             print(f"After filtering: {len(df)} rows")
-            print('cols with personas')
-            print(df.columns.tolist() )
+        
+            
     
             for budget in budgets:
                 million_budget = str(budget/milion_factor).replace('.0','')
@@ -299,74 +324,74 @@ def main():
                     baseline_selection = df 
 
 
-                    try:
-                        print(f'Million biudget: {million_budget}')
-                        selected_projects_df, remaining_funds = true_greedy_knapsack(
-                            df_knapsack=baseline_selection,
-                            budget=budget,
-                            cost_column='mean_total_capex',
-                            efficiency_column='weighted_capex_per_net_ton' ,
-                            carbon_col='mean_total_co2_saved',
-                            logger=detail_logger, 
-                        )
-                        selected_projects_df['remaining_funds'] = remaining_funds
+                    # try:
+                    print(f'Million biudget: {million_budget}')
+                    selected_projects_df, remaining_funds = true_greedy_knapsack(
+                        df_knapsack=baseline_selection,
+                        budget=budget,
+                        cost_column='mean_total_capex',
+                        efficiency_column='weighted_capex_per_net_ton' ,
+                        carbon_col='mean_total_co2_saved',
+                        logger=detail_logger, 
+                    )
+                    selected_projects_df['remaining_funds'] = remaining_funds
 
-                        if baseline_selection.empty:
-                            raise Exception('Baselin results empty ')
-                   
-                        # Save results to CSV
-                        baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
-                        selected_path = os.path.join(output_dir, f'selected_projects.csv')
-                        
-                        baseline_selection.to_csv(baseline_path, index=False)
-                        selected_projects_df.to_csv(selected_path, index=False)
-                        print('selected_projects_df cols: ' , selected_projects_df.columns.tolist() ) 
-                        summary_logger.info(f"Baseline selection saved to: {baseline_path}")
-                        summary_logger.info(f"Selected projects results saved to: {selected_path}")
-                        print(f'budget: {budget}')
-                        print(f'Million biudget: {million_budget}')
-                        # Generate visualization
-                        summary_logger.info("\nGenerating visualization...")
-                        
-                        plot_greedy_distribution_analysis(
-                            baseline_df=baseline_selection,
-                            selected_df=selected_projects_df,
-                            scenario_name=f'budget_{million_budget}M__loft{prob_loft}__equity{equity_factor}',
-                            output_dir=output_dir,
-                            
-                        )
-                        
-                        summary_logger.info("Analysis complete!")
-                        print(f"✓ Results saved to: {output_dir}")
-
-                        if epc_run:
-                            epc_random_path = os.path.join(output_dir, f'epc_random_selection.csv')
-                            epc_random_selected_df, epc_random_remaining_budget = select_epc_algo( 
-                                                                            df_knapsack=baseline_selection,
-                                                                        budget=budget,
-                                                                        cost_column='total_capex',
-                                                                        efficiency_column='weighted_capex_per_net_ton' ,
-                                                                        carbon_col='total_co2_saved', 
-                                                                        logger=detail_logger)
-                            
-                            epc_random_selected_df['remaining_funds'] = epc_random_remaining_budget
-                            if epc_random_selected_df.empty:
-                                detail_logger.info('EPC selection empty')
-                                raise Exception('EPC selection empty')
-                            
-                            epc_random_selected_df.to_csv(epc_random_path, index=False) 
-                            summary_logger.info(f"EPC RAndom selection saved to: {epc_random_path}")
-
-                    except Exception as e:
-                        summary_logger.error(f"Error in analysis: {e}")
-                        print(f"✗ Error: {e}")
-                        import traceback
-                        traceback.print_exc()
+                    if baseline_selection.empty:
+                        raise Exception('Baselin results empty ')
+                
+                    # Save results to CSV
+                    baseline_path = os.path.join(output_dir, f'baseline_selection.csv')
+                    selected_path = os.path.join(output_dir, f'selected_projects.csv')
                     
-                    finally:
-                        # Clear handlers to avoid duplicate logging in next iteration
-                        summary_logger.handlers.clear()
-                        detail_logger.handlers.clear()
+                    baseline_selection.to_csv(baseline_path, index=False)
+                    selected_projects_df.to_csv(selected_path, index=False)
+                    print('selected_projects_df cols: ' , selected_projects_df.columns.tolist() ) 
+                    summary_logger.info(f"Baseline selection saved to: {baseline_path}")
+                    summary_logger.info(f"Selected projects results saved to: {selected_path}")
+                    print(f'budget: {budget}')
+                    print(f'Million biudget: {million_budget}')
+                    # Generate visualization
+                    summary_logger.info("\nGenerating visualization...")
+                    
+                    plot_greedy_distribution_analysis(
+                        baseline_df=baseline_selection,
+                        selected_df=selected_projects_df,
+                        scenario_name=f'budget_{million_budget}M__loft{prob_loft}__equity{equity_factor}',
+                        output_dir=output_dir,
+                        
+                    )
+                    
+                    summary_logger.info("Analysis complete!")
+                    print(f"✓ Results saved to: {output_dir}")
+
+                    if epc_run:
+                        epc_random_path = os.path.join(output_dir, f'epc_random_selection.csv')
+                        epc_random_selected_df, epc_random_remaining_budget = select_epc_algo( 
+                                                                        df_knapsack=baseline_selection,
+                                                                    budget=budget,
+                                                                    cost_column='mean_total_capex',
+                                                                    efficiency_column='weighted_capex_per_net_ton' ,
+                                                                    carbon_col='mean_total_co2_saved', 
+                                                                    logger=detail_logger)
+                        
+                        epc_random_selected_df['remaining_funds'] = epc_random_remaining_budget
+                        if epc_random_selected_df.empty:
+                            detail_logger.info('EPC selection empty')
+                            raise Exception('EPC selection empty')
+                        
+                        epc_random_selected_df.to_csv(epc_random_path, index=False) 
+                        summary_logger.info(f"EPC RAndom selection saved to: {epc_random_path}")
+
+                    # except Exception as e:
+                    #     summary_logger.error(f"Error in analysis: {e}")
+                    #     print(f"✗ Error: {e}")
+                    #     import traceback
+                    #     traceback.print_exc()
+                    
+                    # finally:
+                    #     # Clear handlers to avoid duplicate logging in next iteration
+                    #     summary_logger.handlers.clear()
+                    #     detail_logger.handlers.clear()
         
         print("\n" + "="*80)
         print("Greedy RUNS  COMPLETE!")
@@ -380,9 +405,10 @@ def main():
     print("\n" + "="*80)
     print("Start post process ") 
     print("="*80)
-    post_proc_meta=True  
+    post_proc_meta=True   
     post_proc_epc=True  
-    meta_epc=False  
+
+
     print('Part 3 ')
     if post_proc_meta: 
         for LOFT_VALUE in loft_probs:
@@ -410,6 +436,8 @@ def main():
 
     from src.metaGreedyVis import run_full_analysis_pipeline,  aggregate_scenario_results , plot_meta_comparisons , plot_targeting_heatmap
     
+
+    meta_epc=False 
     if meta_epc:
         meta_results = []
         # meta_df = aggregate_scenario_results(greedy_runs_folder, budgets, loft_probs, equity_factors)

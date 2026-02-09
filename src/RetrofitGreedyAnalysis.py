@@ -5,30 +5,36 @@ import seaborn as sns
 import os
 
 label_cleaner_map = {
-    'high_deprived':  'High Deprivation' , 
-    'med_deprived': 'Medium Deprivation', 
-    'low_deprived': 'Low Deprivation', 
+    'high_risk' : 'High Risk' , 
+    'med_risk': 'Medium Risk' , 
+    'middle_risk': 'Middle Risk' , 
+    'low_risk' : 'Low Risk', 
+    'v_low_risk': 'Very Low Risk', 
 }
 
-name_mapping = { 
-    0: "Struggling Lone Parents",
-    1: "Secure Established Families",
-    2: "Solvent Working Households",
-    3: "Modest Solo Dwellers",
-    4: "At-Risk Singles",
-    5: "Senior Citizens",
-    6: "Isolated and Deprived",
-    7: "Younger Strugglers",
-    8: "The Squeezed Middle"
-}
+from .personas import cluster_names 
+
+# name_mapping = { 
+#     0: "Struggling Lone Parents",
+#     1: "Secure Established Families",
+#     2: "Solvent Working Households",
+#     3: "Modest Solo Dwellers",
+#     4: "At-Risk Singles",
+#     5: "Senior Citizens",
+#     6: "Isolated and Deprived",
+#     7: "Younger Strugglers",
+#     8: "The Squeezed Middle"
+# }
 
 # total_co2_saved_col = 'total_co2_saved_sum'
-total_co2_saved_col = 'total_co2_saved_mean'
-total_co2_saved_col_std = 'total_carbon_std'
+total_co2_saved_col = 'mean_total_co2_saved'
+total_co2_saved_col_std ='total_co2_std_uncorr' 
+total_co2_full_corr =  'total_co2_std_corr'
 
 # capex_per_net_ton_mean_col = 'capex_per_net_ton_mean'
-capex_per_net_ton_mean_col = 'mean_capex_per_net_ton_group'
-capex_per_net_ton_std_col = 'total_std_intensity'
+capex_per_net_ton_mean_col = 'mean_capex_per_net_ton'
+capex_per_net_ton_std_col = 'std_capex_per_net_ton_corr'
+capex_per_net_ton_std_col_unorr = 'std_capex_per_net_ton_uncorr'
 
 
 
@@ -146,12 +152,20 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
     
     
     plot_carbon_savings_vs_equity(results_subset, equity_weights, budget_label, 
-                                  os.path.join(output_dir, f"1_carbon_vs_equity_{loft_val}_sigma_{sigma_val}.png"),
+                                  os.path.join(output_dir, f"1_carbon_vs_equity_{loft_val}_sigma_{sigma_val}_UNCORR.png"),
                                   y_axis_zero=y_axis_zero)
     
+    plot_carbon_savings_vs_equity(results_subset, equity_weights, budget_label, 
+                                  os.path.join(output_dir, f"1_carbon_vs_equity_{loft_val}_sigma_{sigma_val}_CORR.png"),
+                                  y_axis_zero=y_axis_zero, co2_std =total_co2_full_corr  )
+    
     plot_cost_effectiveness_vs_equity(results_subset, equity_weights, budget_label, 
-                                      os.path.join(output_dir, f"2_cost_effectiveness_vs_equity_{loft_val}_sigma_{sigma_val}.png"),
+                                      os.path.join(output_dir, f"2_cost_effectiveness_vs_equity_{loft_val}_sigma_{sigma_val}_CORR.png"),
                                       y_axis_zero=y_axis_zero)
+        
+    plot_cost_effectiveness_vs_equity(results_subset, equity_weights, budget_label, 
+                                      os.path.join(output_dir, f"2_cost_effectiveness_vs_equity_{loft_val}_sigma_{sigma_val}_UNCORR.png"),
+                                      y_axis_zero=y_axis_zero, capex_std = capex_per_net_ton_std_col_unorr)
     
     plot_vulnerable_coverage_vs_equity(equity_subset, equity_weights, budget_label, 
                                        os.path.join(output_dir, f"3_vulnerable_coverage_vs_equity_{loft_val}_sigma_{sigma_val}.png"),
@@ -165,7 +179,15 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
     
     plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors, budget_label, 
                       os.path.join(output_dir, f"6_pareto_front_{loft_val}_sigma_{sigma_val}.png"),
-                      y_axis_zero=y_axis_zero)
+                      y_axis_zero=y_axis_zero, 
+                         ycol=total_co2_saved_col,
+        ycol_std= total_co2_saved_col_std, )
+
+    plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors, budget_label, 
+                      os.path.join(output_dir, f"6_pareto_front_{loft_val}_sigma_{sigma_val}_FULLCORR.png"),
+                      y_axis_zero=y_axis_zero, 
+                         ycol=total_co2_saved_col,
+        ycol_std= total_co2_full_corr, )
     
     # plot_vulnerable_groups_coverage(equity_subset,
     #                                 os.path.join(output_dir, f"7_vulnerable_groups_coverage_{loft_val}_sigma_{sigma_val}.png"),
@@ -191,6 +213,7 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
         budget_label, 
         filename=   os.path.join(output_dir, f"10_pareto_bcounts_{loft_val}_sigma_{sigma_val}.png" ) , 
         x_col='num_buildings_sum', 
+        
         y_col=total_co2_saved_col,
         y_col_std= total_co2_saved_col_std, 
         x_label='Number of buildings',
@@ -200,9 +223,31 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
         y_axis_zero=False
         )
     
+    plot_pareto_front_flexi(
+        results_subset, 
+        equity_subset, 
+        scenarios, 
+        scenario_colors, 
+        budget_label, 
+        filename=   os.path.join(output_dir, f"10_pareto_bcounts_{loft_val}_sigma_{sigma_val}_FULLCORR.png" ) , 
+        x_col='num_buildings_sum', 
+        
+        y_col=total_co2_saved_col,
+        y_col_std= total_co2_full_corr, 
+        x_label='Number of buildings',
+        y_label='CO2 Saved (kton)',
+        x_scaler=1.0,
+        y_scaler=1e3, 
+        y_axis_zero=False
+        )
+    
     plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenarios, scenario_colors, budget_label,
-                                 os.path.join(output_dir, f"11_pareto_cost_eff__loft_{loft_val}_sigma_{sigma_val}.png") ,
+                                 os.path.join(output_dir, f"11_pareto_cost_eff__loft_{loft_val}_sigma_{sigma_val}_UNCORR.png") ,
                                 y_axis_zero=y_axis_zero)
+
+    plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenarios, scenario_colors, budget_label,
+                                 os.path.join(output_dir, f"11_pareto_cost_eff__loft_{loft_val}_sigma_{sigma_val}_CORR.png") ,
+                                y_axis_zero=y_axis_zero, capex_std = capex_per_net_ton_std_col_unorr)
 
 
 
@@ -271,7 +316,7 @@ def get_color_palette(n_colors):
         return ['#e74c3c', '#f39c12', '#27ae60'][:n_colors]
     else:
         # Use seaborn color palette for more colors
-        return sns.color_palette('Set2', n_colors).as_hex()
+        return sns.color_palette('Set3', n_colors).as_hex()
 
 def create_scenario_colors(scenarios, results_agg):
     """Create color mapping for scenarios based on equity weights"""
@@ -396,7 +441,7 @@ def plot_all_metrics(df, output_dir='scenario_plots', y_axis_zero=False):
 
 
 
-def plot_cost_effectiveness_vs_equity(results_subset, equity_weights, budget_label, filename, y_axis_zero=False):
+def plot_cost_effectiveness_vs_equity(results_subset, equity_weights, budget_label, filename, y_axis_zero=False, capex_col =capex_per_net_ton_mean_col, capex_std = capex_per_net_ton_std_col):
     """Plot 2: Cost Effectiveness vs Equity Weight"""
     fig, ax = plt.figure(figsize=(10, 6)), plt.gca()
     
@@ -405,8 +450,8 @@ def plot_cost_effectiveness_vs_equity(results_subset, equity_weights, budget_lab
         weights = subset['equity_weight'].values
         
         # *** UPDATED COLUMN NAMES ***
-        means = subset[capex_per_net_ton_mean_col].values
-        stds = subset[capex_per_net_ton_std_col].values
+        means = subset[capex_col].values
+        stds = subset[capex_std].values
         
         label = f'£{budget_val}' if len(results_subset['budget'].unique()) > 1 else None
         ax.errorbar(weights, means, fmt='o-', markersize=10, yerr= stds, 
@@ -430,7 +475,7 @@ def plot_cost_effectiveness_vs_equity(results_subset, equity_weights, budget_lab
     print(f"Saved: {filename}")
 
 
-def plot_carbon_savings_vs_equity(results_subset, equity_weights, budget_label, filename, budget_order=None, y_axis_zero=False):
+def plot_carbon_savings_vs_equity(results_subset, equity_weights, budget_label, filename, budget_order=None, y_axis_zero=False, co2_std =total_co2_saved_col_std):
     """
     Plot 1: Carbon Savings vs Equity Weight
     Args:
@@ -455,7 +500,7 @@ def plot_carbon_savings_vs_equity(results_subset, equity_weights, budget_label, 
         weights = subset['equity_weight'].values
         # Note: Ensure 'total_co2_saved_col' is defined globally
         means = subset[total_co2_saved_col].values / 1e3
-        stds = subset[total_co2_saved_col_std].values / 1e3
+        stds = subset[co2_std].values / 1e3
         # Plot
         label = f'£{budget_val}' if len(budgets_to_plot) > 1 else None
         ax.errorbar(weights, means, fmt='o-', markersize=10, yerr = stds, 
@@ -487,9 +532,11 @@ def plot_vulnerable_coverage_vs_equity(equity_subset, equity_weights, budget_lab
         subset = equity_subset[equity_subset['budget'] == budget_val]
         weights = subset['equity_weight'].values
         
+        print('subset')
+        print(subset.columns.tolist() )
         # *** These columns were simple strings, so NO change needed ***
-        means = subset['high_deprived_pct'].values * 100
-        # stds = subset['high_deprived_pct_std'].values * 100
+        means = subset['high_risk_pct'].values * 100
+        # stds = subset['high_risk_pct_std'].values * 100
         
         label = f'£{budget_val}' if len(equity_subset['budget'].unique()) > 1 else None
         ax.errorbar(weights, means,fmt='o-', markersize=10, 
@@ -878,7 +925,7 @@ def plot_count_by_group(selected_projects_df, scenario_colors, filename,
     for budget in budgets:
         plot_single_budget(selected_projects_df, budget)
 
-def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors, budget_label, filename, y_axis_zero=False):
+def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors, budget_label, filename, y_axis_zero=False, ycol= None ,ycol_std=None  ):
     """
     Plot 6: Pareto Front - Equity vs Carbon.
     
@@ -913,11 +960,12 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
             
             equity_row = equity_subset[equity_subset['scenario'] == scenario].iloc[0]
             results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
-            
-            vuln_means.append(equity_row['high_deprived_pct'] )
-            # vuln_stds.append(equity_row['high_deprived_pct_std'] )
-            co2_means.append(results_row[total_co2_saved_col] / 1e3)
-            co2_stds.append(results_row[total_co2_saved_col_std] / 1e3)
+            print('equity_row')
+            print(equity_row)
+            vuln_means.append(equity_row['high_risk_pct'] )
+            # vuln_stds.append(equity_row['high_risk_pct_std'] )
+            co2_means.append(results_row[ycol] / 1e3)
+            co2_stds.append(results_row[ycol_std] / 1e3)
             weights.append(equity_row['equity_weight'])
             colors.append(scenario_colors[scenario])
         
@@ -992,8 +1040,8 @@ def plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors,
     #         equity_row = budget_equity_subset[budget_equity_subset['scenario'] == scenario].iloc[0]
     #         results_row = budget_results_subset[budget_results_subset['scenario'] == scenario].iloc[0]
             
-    #         vuln_means_ind.append(equity_row['high_deprived_pct'] )
-    #         # vuln_stds_ind.append(equity_row['high_deprived_pct_std'] )
+    #         vuln_means_ind.append(equity_row['high_risk_pct'] )
+    #         # vuln_stds_ind.append(equity_row['high_risk_pct_std'] )
     #         co2_means_ind.append(results_row[total_co2_saved_col] / 1e3)
     #         co2_stds_ind.append(results_row[total_co2_saved_col_std] / 1e3)
     #         weights_ind.append(equity_row['equity_weight'])
@@ -1062,7 +1110,7 @@ def plot_vulnerable_groups_coverage(equity_subset, filename, y_axis_zero=False):
         width = 0.35
         
         # *** These columns were simple strings, so NO change needed ***
-        deprived_means = [equity_subset[equity_subset['scenario'] == s]['high_deprived_pct'].iloc[0] * 100 
+        deprived_means = [equity_subset[equity_subset['scenario'] == s]['high_risk_pct'].iloc[0] * 100 
                         for s in scenarios]
 
         
@@ -1108,7 +1156,7 @@ def plot_tradeoff_efficiency(results_subset, equity_subset, scenarios, scenario_
             base_scenario = sorted_scenarios[0]
             
             # *** UPDATED COLUMN NAMES ***
-            base_vuln = equity_subset[equity_subset['scenario'] == base_scenario]['high_deprived_pct'].iloc[0] 
+            base_vuln = equity_subset[equity_subset['scenario'] == base_scenario]['high_risk_pct'].iloc[0] 
             base_co2 = results_subset[results_subset['scenario'] == base_scenario][total_co2_saved_col].iloc[0] / 1e3
             
             tradeoff_scenarios = []
@@ -1120,7 +1168,7 @@ def plot_tradeoff_efficiency(results_subset, equity_subset, scenarios, scenario_
                 results_row = results_subset[results_subset['scenario'] == scenario].iloc[0]
                 
                 # *** UPDATED COLUMN NAMES ***
-                vuln_cov = equity_row['high_deprived_pct'] * 100
+                vuln_cov = equity_row['high_risk_pct'] * 100
                 co2_saved = results_row[total_co2_saved_col] / 1e3
                 
                 vuln_gain = vuln_cov - base_vuln
@@ -1186,7 +1234,7 @@ def plot_radar_chart(results_subset, equity_subset,  filename, scenario_colors):
         # *** UPDATED COLUMN NAMES for normalization ***
         norm_co2 = results_subset[total_co2_saved_col].max()
         norm_cost_eff = (1 / results_subset[capex_per_net_ton_mean_col]).max()
-        norm_vuln = equity_subset['high_deprived_pct'].max()
+        norm_vuln = equity_subset['high_risk_pct'].max()
         norm_equity = equity_subset['equity_concentration'].max()
         norm_buildings = results_subset['num_buildings_sum'].max()
 
@@ -1198,7 +1246,7 @@ def plot_radar_chart(results_subset, equity_subset,  filename, scenario_colors):
             # *** UPDATED COLUMN NAMES ***
             carbon_norm = results_row[total_co2_saved_col] / norm_co2
             cost_eff_norm = (1 / results_row[capex_per_net_ton_mean_col]) / norm_cost_eff
-            vuln_norm = equity_row['high_deprived_pct'] / norm_vuln
+            vuln_norm = equity_row['high_risk_pct'] / norm_vuln
             equity_norm = 1 - (equity_row['equity_concentration'] / norm_equity)
             buildings_norm = results_row['num_buildings_sum'] / norm_buildings
             
@@ -1235,7 +1283,7 @@ def plot_pareto_front_flexi(
     scenario_colors, 
     budget_label, 
     filename, 
-    x_col='high_deprived_pct', 
+    x_col='high_risk_pct', 
     y_col='total_co2_saved_col',
     y_col_std = '', 
     x_label='Vulnerable Coverage (%)',
@@ -1381,7 +1429,7 @@ def plot_pareto_front_flexi(
 
  
 
-def plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenarios, scenario_colors, budget_label, filename, y_axis_zero=False):
+def plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenarios, scenario_colors, budget_label, filename, y_axis_zero=False, capex_std = capex_per_net_ton_std_col) :
     """
     Plot: Pareto Front - Buildings Retrofitted vs Cost-Effectiveness
     
@@ -1427,7 +1475,7 @@ def plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenar
             buildings_means.append(results_row['num_buildings_sum'])
             
             cost_eff_means.append(results_row[capex_per_net_ton_mean_col])
-            cost_eff_stds.append(results_row[capex_per_net_ton_std_col])
+            cost_eff_stds.append(results_row[capex_std])
             weights.append(equity_row['equity_weight'])
             colors.append(scenario_colors[scenario])
         
