@@ -14,6 +14,57 @@ import numpy as np
 import os
 from datetime import datetime
 
+
+import logging 
+
+def analyze_building_stock(building_data: pd.DataFrame, logger: logging.Logger):
+    """Analyze building stock to understand factor applicability"""
+    
+    logger.info("\n" + "=" * 70)
+    logger.info("BUILDING STOCK ANALYSIS")
+    logger.info("=" * 70)
+    
+    logger.info(f"Total buildings: {len(building_data)}")
+    
+    # Wall types
+    if 'wall_type' in building_data.columns:
+        logger.info("\nWall Type Distribution:")
+        wall_dist = building_data['wall_type'].value_counts()
+        for wtype, count in wall_dist.items():
+            pct = count / len(building_data) * 100
+            logger.info(f"  {wtype}: {count} ({pct:.1f}%)")
+    
+    # Premise types
+    if 'premise_type' in building_data.columns:
+        logger.info("\nPremise Type Distribution:")
+        premise_dist = building_data['premise_type'].value_counts()
+        for ptype, count in premise_dist.items():
+            pct = count / len(building_data) * 100
+            logger.info(f"  {ptype}: {count} ({pct:.1f}%)")
+    
+    # Age bands
+    if 'age_band' in building_data.columns:
+        logger.info("\nAge Band Distribution:")
+        age_dist = building_data['age_band'].value_counts()
+        for age, count in age_dist.items():
+            pct = count / len(building_data) * 100
+            logger.info(f"  {age}: {count} ({pct:.1f}%)")
+    
+    # Check for wall installation eligibility
+    # (buildings that would actually get wall insulation measures)
+    if 'wall_type' in building_data.columns:
+        solid_walls = building_data[
+            building_data['wall_type'].str.contains('solid', case=False, na=False)
+        ]
+        cavity_walls = building_data[
+            building_data['wall_type'].str.contains('cavity', case=False, na=False)
+        ]
+        
+        logger.info(f"\nWall Insulation Eligibility:")
+        logger.info(f"  Solid walls (eligible for IWI/EWI): {len(solid_walls)} ({len(solid_walls)/len(building_data)*100:.1f}%)")
+        logger.info(f"  Cavity walls (eligible for CWI): {len(cavity_walls)} ({len(cavity_walls)/len(building_data)*100:.1f}%)")
+
+
 def validate(df, output_dir):
     # Create output directory if it doesn't exist
     output_dir = f'{output_dir}/validation_output'

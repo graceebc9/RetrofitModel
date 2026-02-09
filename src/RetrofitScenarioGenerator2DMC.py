@@ -9,6 +9,8 @@ import logging
 from .PreProcessRetrofit import vectorized_process_buildings 
 # from .RetrofitModel2D import RetrofitModel2D    
 
+from .validate import analyze_building_stock 
+
 logger = logging.getLogger(__name__)
 
 # setting this to be fixed to 0.5 
@@ -127,6 +129,7 @@ class RetrofitScenarioGenerator2DMC:
                 random_seed=random_seed,
                 prob_external =  extenral_wall_prob  
             )
+            analyze_building_stock(df_typ , logger )
         
             # This creates a NEW RetrofitModel instance for each Outer Loop run.
             # It FIXES the Epistemic factors for all N_aleatory runs within this model instance.
