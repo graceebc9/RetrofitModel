@@ -268,78 +268,7 @@ def aggregate_results(df):
     
     return df_agg[cols_order]
 
-# def aggregate_results(df):
-#     """
-#     Aggregate metrics for scenarios across buildings - sum up buildings in scenario A etx. 
-#     - for capex per ton: need weighted mean and weighted standard dev. cor and uncorr 
-#     - for sum metrics, no weighitng 
-#     """
-#     if df.empty:
-#         print("Warning: Results dataframe is empty. Cannot aggregate.")
-#         return pd.DataFrame()
-        
-#     df = df.copy() # Prevent SettingWithCopy warnings
-    
-#     # ---------------------------------------------------------
-#     # 1. PRE-CALCULATION: PREPARE VARIANCES
-#     # ---------------------------------------------------------
-#     # Square the Stds to get Variances (because Var(A+B) = Var(A) + Var(B))    
-#     # Capex Intensity
-#     df['var_capex_per_net_ton'] = df['std_capex_per_net_ton'] ** 2
-
-#     # Total Capex
-#     df['var_total_capex'] = df['std_total_capex'] ** 2
-#     # Total Carbon    
-#     df['var_total_co2'] = df['std_total_co2_saved'] ** 2
-
-#     # ---------------------------------------------------------
-#     # 2. DEFINE AGGREGATION
-#     # ---------------------------------------------------------
-#     agg_dict = {
-#         'num_buildings_sum': ('upn', 'count'),
-        
-#         # --- CAPEX PER TON (INTENSITY METRIC) ---
-#         # Component A: Central Tendency
-#         'mean_capex_per_net_ton_group': ('mean_capex_per_net_ton', 'mean'),
-#         # Component B: Internal Model Noise (Mean of Variances)
-#         'within_group_var': ('var_capex_per_net_ton', 'mean'),
-#         # Component C: Between-Building Spread (Variance of Means)
-#         'between_group_var': ('mean_capex_per_net_ton', 'var'),
-        
-#         # --- TOTALS (VOLUME METRICS) ---
-#         # For totals, variances simply sum up (assuming independence)
-#         'total_capex_mean': ('mean_total_capex', 'sum'),
-#         'total_capex_var_sum': ('var_total_capex', 'sum'),
-#         'total_capex_std_sum': ('std_total_capex', 'sum'),
-        
-#         'total_co2_saved_mean': ('mean_total_co2_saved', 'sum'),
-#         'total_co2_var_sum' : ('var_total_co2', 'sum'),
-#         'total_co2_std_sum': ('std_total_co2_saved', 'sum'),
-#     }
-
-#     # Perform Groupby
-#     df_summary = df.groupby(['scenario']).agg(**agg_dict).reset_index()
-    
-#     # ---------------------------------------------------------
-#     # 3. POST-CALCULATION: REBUILD ROBUST METRICS
-#     # ---------------------------------------------------------
-    
-#     # --- A. Robust Capex Per Ton (Law of Total Variance) ---
-#     # Total Variance = Mean(Internal Vars) + Variance(Means)
-#     df_summary['total_variance_intensity'] = (
-#         df_summary['within_group_var'].fillna(0) + 
-#         df_summary['between_group_var'].fillna(0)
-#     )
-#     df_summary['total_std_intensity'] = np.sqrt(df_summary['total_variance_intensity'])
-    
  
-#     df_summary['total_capex_std'] = np.sqrt(df_summary['total_capex_var_sum'])
- 
-#     df_summary['total_co2_std'] = np.sqrt(df_summary['total_co2_var_sum'])
-    
- 
-#     return df_summary
-
 
 def aggregate_equity(df, group_cols=['scenario']):
     """Aggregate equity metrics across epistemic runs."""
