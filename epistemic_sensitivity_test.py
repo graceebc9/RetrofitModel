@@ -1,4 +1,3 @@
-
 """
 Module: sensitivity_test_fixed.py
 
@@ -8,6 +7,8 @@ KEY FIX: Uses the SAME baseline LHS sample for all runs, only overwriting
 the fixed factor for each test. This isolates the effect of each factor properly.
 
 Previous bug: Generated new LHS samples for each run, making comparisons invalid.
+
+-- added random seed to sampler 
 
 Usage:
     python sensitivity_test_fixed.py
@@ -36,8 +37,8 @@ logger = logging.getLogger(__name__)
 # ========================================
 
 # Test configuration
-N_EPISTEMIC_RUNS = 20
 RANDOM_SEED_OUTER = 42
+
 SCENARIOS = ['wall_installation', 'loft_installation', 'heat_pump_only']
 
 # Paths 
@@ -49,10 +50,7 @@ onsud_path_base = '/home/gb669/rds/hpc-work/energy_map/data/onsud_files/Data'
 GAS_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_gas_2022.csv'
 ELEC_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_data/Postcode_level_all_meters_electricity_2022.csv'
 
-# First batch
-TEST_BATCH_PATH = 'batches/NE/batch_10.txt'
-TEST_ONSUD_PATH = 'batches/NE/onsud_10.csv'
-
+ 
 # Output directory
 OUTPUT_DIR = '5_sensitivity_results'
 
@@ -74,20 +72,19 @@ KEY_METRICS = [
 ]
 
 # Central/default values for each factor
+# SYNCHRONIZED with RetrofitEpistemic.py - only includes factors that are actually sampled
 FACTOR_DEFAULTS = {
     'time_scale_bias': 1.0,
     'decile_misclassification_bias': 0.0,
     'solid_wall_internal_improvement_factor': 0.10,
     'solid_wall_external_improvement_factor': 0.20,
-    'regional_multipliers_uncertainty': 1.0,
     'age_band_multipliers_uncertainty': 1.0,
     'cost_scenario': 'central',
-    'external_wall_probability': 0.5,
-    'flat_fp_mean': 55,
+    'area_based_choice': 'mode',
+        'flat_fp_mean': 55,
     'flat_fp_std': 8,
     'flat_eff_mean': 0.75,
     'flat_eff_std': 0.05,
-    'area_based_choice': 'mode',
 }
 
 # ========================================
@@ -118,7 +115,13 @@ def parse_args():
     parser.add_argument(
         '--batch', 
         type=str, 
-        default='batches/NE/batch_10.txt',
+        default='batches/NE/batch_110.txt',
+        help='Path to batch file (e.g., batches/NE/batch_10.txt)'
+    )
+    parser.add_argument(
+        '--batch_name', 
+        type=str, 
+        default='110',
         help='Path to batch file (e.g., batches/NE/batch_10.txt)'
     )
     parser.add_argument(
@@ -141,8 +144,14 @@ def parse_args():
     parser.add_argument(
         '--n-epistemic',
         type=int,
-        default=3,
-        help='Number of epistemic runs (default: 5)'
+        default=20,
+        help='Number of epistemic runs (default: 20)'
+    )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=42,
+        help='Random seed for reproducibility (default: 42)'
     )
     args = parser.parse_args()
     
@@ -276,6 +285,18 @@ def prepare_building_data(pc: str, data: dict, logger: logging.Logger) -> Option
             return None
     
     building_data['postcode'] = pc
+    
+    #filter out unknown typolgoyies 
+    building_data = building_data[building_data['premise_type']!='Unknown'] 
+    
+    excl_typs = [ 'Tall flats 6-15 storeys', 
+       'Very tall point block flats', 
+       'Domestic outbuilding',
+       'all_unknown_typology',
+         'Medium height flats 5-6 storeys', 
+       ] 
+    building_data = building_data[~building_data['premise_type'].isin(excl_typs) ] 
+    building_data = building_data[~building_data['premise_type'].isna()] 
     return building_data
 
 
@@ -288,7 +309,7 @@ def create_sampler_from_df(epistemic_df: pd.DataFrame) -> Callable:
     Create a sampler function that returns a pre-defined DataFrame.
     This ensures the SAME epistemic scenarios are used across runs.
     """
-    def fixed_sampler(n_runs: int) -> pd.DataFrame:
+    def fixed_sampler(n_runs: int, random_seed: int ) -> pd.DataFrame:
         # Ignore n_runs, return the pre-defined df
         return epistemic_df.copy()
     return fixed_sampler
@@ -390,6 +411,39 @@ def compute_variance_summary(df: pd.DataFrame, metric_cols: List[str]) -> Dict[s
 
 
 # ========================================
+# VALIDATION
+# ========================================
+
+def validate_factor_defaults(epistemic_df: pd.DataFrame, logger: logging.Logger) -> bool:
+    """
+    Validate that FACTOR_DEFAULTS matches the columns in the epistemic DataFrame.
+    Returns True if valid, False otherwise.
+    """
+    epistemic_cols = set(epistemic_df.columns)
+    default_factors = set(FACTOR_DEFAULTS.keys())
+    
+    missing_in_defaults = epistemic_cols - default_factors
+    missing_in_epistemic = default_factors - epistemic_cols
+    
+    is_valid = True
+    
+    if missing_in_defaults:
+        logger.warning(f"Factors in epistemic sample but NOT in FACTOR_DEFAULTS: {missing_in_defaults}")
+        logger.warning("These factors will NOT be tested in sensitivity analysis!")
+        is_valid = False
+    
+    if missing_in_epistemic:
+        logger.error(f"Factors in FACTOR_DEFAULTS but NOT in epistemic sample: {missing_in_epistemic}")
+        logger.error("These factors cannot be tested - they don't exist in the model!")
+        is_valid = False
+    
+    if is_valid:
+        logger.info(f"✓ FACTOR_DEFAULTS synchronized with epistemic sampler ({len(default_factors)} factors)")
+    
+    return is_valid
+
+
+# ========================================
 # MAIN SENSITIVITY TEST (CORRECTED)
 # ========================================
 
@@ -397,7 +451,8 @@ def run_sensitivity_test(
     batch_path: str,
     output_base_dir: str,
     n_postcodes: int,
-    n_epistemic_runs: int = 5,
+    n_epistemic_runs: int = 20,
+    random_seed: int = 42,
 ):
     """
     Run sensitivity analysis with CORRECTED methodology.
@@ -405,6 +460,10 @@ def run_sensitivity_test(
     KEY FIX: Generate ONE baseline LHS sample, then for each factor test,
     use the SAME sample with only that factor overwritten.
     """
+    
+    # Update global random seed
+    global RANDOM_SEED_OUTER
+    RANDOM_SEED_OUTER = random_seed
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     batch_label = os.path.basename(batch_path).replace('.txt', '')
@@ -422,11 +481,18 @@ def run_sensitivity_test(
     logger.info(f"Batch: {batch_path}")
     logger.info(f"N epistemic runs: {n_epistemic_runs}")
     logger.info(f"N postcodes: {n_postcodes if n_postcodes != -1 else 'all'}")
+    logger.info(f"Random seed: {random_seed}")
     logger.info(f"Output directory: {output_dir}")
     logger.info("")
     logger.info("METHODOLOGY: Same baseline LHS sample used for all runs.")
     logger.info("Each factor test overwrites ONLY that factor in the baseline sample.")
     logger.info("=" * 70)
+    
+    # Log factors being tested
+    logger.info(f"Factors to test ({len(FACTOR_DEFAULTS)}):")
+    for factor, default in FACTOR_DEFAULTS.items():
+        logger.info(f"  - {factor}: default = {default}")
+    logger.info("")
     
     # Load data
     data = load_test_data(batch_path, n_postcodes, logger)
@@ -457,11 +523,16 @@ def run_sensitivity_test(
     )
     
     # =========================================================
-    # KEY FIX: Generate ONE baseline epistemic sample
+    # KEY FIX: Generate ONE baseline epistemic sample with random_seed
     # =========================================================
     logger.info("Generating baseline epistemic sample (used for ALL runs)...")
-    np.random.seed(RANDOM_SEED_OUTER)
-    baseline_epistemic_df = generate_epistemic_scenarios_lhs(n_epistemic_runs)
+    baseline_epistemic_df = generate_epistemic_scenarios_lhs(
+        N_epistemic_runs=n_epistemic_runs,
+        random_seed=random_seed,  # FIX: Now passing random_seed
+    )
+    
+    # Validate factor synchronization
+    validate_factor_defaults(baseline_epistemic_df, logger)
     
     # Save baseline epistemic scenarios for reference
     baseline_epistemic_df.to_csv(f'{output_dir}/baseline_epistemic_scenarios.csv', index=False)
@@ -510,6 +581,11 @@ def run_sensitivity_test(
         logger.info("=" * 60)
         logger.info(f"Running with {factor} FIXED to {default_value}")
         logger.info("=" * 60)
+        
+        # Verify factor exists in baseline
+        if factor not in baseline_epistemic_df.columns:
+            logger.warning(f"Factor '{factor}' not in epistemic sample - skipping")
+            continue
         
         # KEY: Copy baseline and overwrite ONLY this factor
         fixed_epistemic_df = baseline_epistemic_df.copy()
@@ -617,7 +693,7 @@ def run_sensitivity_test(
         output_lines.append(f"{'Factor':<45} {'Var Reduction %':>12}")
         output_lines.append("-" * 50)
         
-        for _, row in metric_ranking.head(13).iterrows():
+        for _, row in metric_ranking.iterrows():
             pct = row['var_reduction_pct']
             flag = " ⚠️" if pct < 0 else ""
             output_lines.append(f"{row['factor']:<45} {pct:>11.1f}%{flag}")
@@ -658,10 +734,13 @@ if __name__ == "__main__":
     print(f"Output directory: {args.output}")
     print(f"N postcodes: {args.n_postcodes if args.n_postcodes != -1 else 'all'}")
     print(f"N epistemic runs: {args.n_epistemic}")
+    print(f"Random seed: {args.seed}")
     
+    output_base_dir= os.path.join(args.output, args.batch_name) 
     run_sensitivity_test(
         batch_path=args.batch,
-        output_base_dir=args.output,
+        output_base_dir=output_base_dir, 
         n_postcodes=args.n_postcodes,
         n_epistemic_runs=args.n_epistemic,
+        random_seed=args.seed,
     )
