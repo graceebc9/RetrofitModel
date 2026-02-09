@@ -53,12 +53,12 @@ def analyze_building_stock(building_data: pd.DataFrame, logger: logging.Logger):
     
     # Check for wall installation eligibility
     # (buildings that would actually get wall insulation measures)
-    if 'wall_type' in building_data.columns:
+    if 'inferred_wall_type' in building_data.columns:
         solid_walls = building_data[
-            building_data['wall_type'].str.contains('solid', case=False, na=False)
+            building_data['inferred_wall_type'].str.contains('solid', case=False, na=False)
         ]
         cavity_walls = building_data[
-            building_data['wall_type'].str.contains('cavity', case=False, na=False)
+            building_data['inferred_wall_type'].str.contains('cavity', case=False, na=False)
         ]
         
         logger.info(f"\nWall Insulation Eligibility:")
