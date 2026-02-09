@@ -1,7 +1,8 @@
 """
 Module: visualise_wall_results.py
-Purpose: Visualise the CSV outputs from wall_improvement_sweep_v3.py
+Purpose: Visualise the CSV outputs from param_sweep.py
 Fixes: Added .values to ax.plot calls to avoid pandas Multi-dimensional indexing errors.
+python vis_param_sweep.py --input-dir /home/gb669/rds/hpc-work/energy_map/RetrofitModel/wall_param_sweep_v10_n50_p10_v3/output --output-dir /home/gb669/rds/hpc-work/energy_map/RetrofitModel/wall_param_sweep_v10_n50_p10_v3/vis
 """
 
 import os
@@ -30,6 +31,13 @@ PALETTE = {
 
 # The thresholds drawn as horizontal lines
 THRESHOLDS = [1000, 2000, 3000]
+
+# Line styles for confidence levels
+CONFIDENCE_STYLES = {
+    'optimistic': {'linestyle': '--', 'alpha': 0.7, 'label_suffix': '(μ-σ optimistic)'},
+    'central':    {'linestyle': '-',  'alpha': 1.0, 'label_suffix': '(μ central)'},
+    'pessimistic': {'linestyle': ':', 'alpha': 0.7, 'label_suffix': '(μ+σ pessimistic)'},
+}
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Visualise Wall Sweep Results')
@@ -120,38 +128,87 @@ def plot_cost_efficiency_curve(df, output_path):
 def plot_viability_percentage(df, output_path):
     """
     Plot 2: What % of stock becomes viable (<£2000/tCO2) as factor increases?
+    Shows three confidence levels: optimistic (μ-σ), central (μ), pessimistic (μ+σ).
     """
     if df is None: return
 
-    fig, ax = plt.subplots(figsize=(10, 7))
+    # Check that at least one of the confidence columns exists
+    confidence_cols = {
+        'optimistic': 'optimistic_pct_below_2000',
+        'central': 'central_pct_below_2000',
+        'pessimistic': 'pessimistic_pct_below_2000',
+    }
     
-    threshold_col = 'pct_below_2000' # Ensure this column matches your CSV
-    if threshold_col not in df.columns:
-        print(f"Skipping Plot 2: {threshold_col} not found in data")
+    available = {k: v for k, v in confidence_cols.items() if v in df.columns}
+    if not available:
+        print(f"Skipping Plot 2: none of {list(confidence_cols.values())} found in data")
         return
 
-    # Internal Sweep
-    int_data = df[(df['sweep_type'] == 'internal') & (df['building_category'] == 'solid_wall_internal')].sort_values('internal_factor')
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7), sharey=True)
+
+    # --- Left panel: Internal Sweep ---
+    ax_int = axes[0]
+    int_data = df[
+        (df['sweep_type'] == 'internal') & 
+        (df['building_category'] == 'solid_wall_internal')
+    ].sort_values('internal_factor')
+
     if not int_data.empty:
-        ax.plot(int_data['internal_factor'].values, int_data[threshold_col].values, 
-                marker='o', color=PALETTE['solid_wall_internal'], label='Solid Wall (Internal)')
+        color = PALETTE['solid_wall_internal']
+        for level_key, col_name in available.items():
+            style = CONFIDENCE_STYLES[level_key]
+            ax_int.plot(
+                int_data['internal_factor'].values, 
+                int_data[col_name].values,
+                marker='o', markersize=4,
+                color=color,
+                linestyle=style['linestyle'],
+                alpha=style['alpha'],
+                linewidth=2,
+                label=style['label_suffix'],
+            )
 
-    # External Sweep
-    ext_data = df[(df['sweep_type'] == 'external') & (df['building_category'] == 'solid_wall_external')].sort_values('external_factor')
+    ax_int.axhline(50, color='gray', linestyle='--', alpha=0.4)
+    ax_int.text(ax_int.get_xlim()[0], 51, '50%', color='gray', fontsize=9)
+    ax_int.set_title("Solid Wall (Internal Insulation)", fontsize=14)
+    ax_int.set_xlabel("Internal Improvement Factor", fontsize=12)
+    ax_int.set_ylabel("% of Housing Stock < £2000/tCO2", fontsize=12)
+    ax_int.set_ylim(0, 100)
+    ax_int.legend(fontsize=10)
+
+    # --- Right panel: External Sweep ---
+    ax_ext = axes[1]
+    ext_data = df[
+        (df['sweep_type'] == 'external') & 
+        (df['building_category'] == 'solid_wall_external')
+    ].sort_values('external_factor')
+
     if not ext_data.empty:
-        ax.plot(ext_data['external_factor'].values, ext_data[threshold_col].values, 
-                marker='s', color=PALETTE['solid_wall_external'], label='Solid Wall (External)')
+        color = PALETTE['solid_wall_external']
+        for level_key, col_name in available.items():
+            style = CONFIDENCE_STYLES[level_key]
+            ax_ext.plot(
+                ext_data['external_factor'].values,
+                ext_data[col_name].values,
+                marker='s', markersize=4,
+                color=color,
+                linestyle=style['linestyle'],
+                alpha=style['alpha'],
+                linewidth=2,
+                label=style['label_suffix'],
+            )
 
-    ax.set_title(f"Market Viability: % of Buildings < £2000/tCO2", fontsize=16)
-    ax.set_xlabel("Improvement Factor", fontsize=14)
-    ax.set_ylabel("% of Housing Stock Viable", fontsize=14)
-    ax.set_ylim(0, 100)
-    ax.legend()
+    ax_ext.axhline(50, color='gray', linestyle='--', alpha=0.4)
+    ax_ext.set_title("Solid Wall (External Insulation)", fontsize=14)
+    ax_ext.set_xlabel("External Improvement Factor", fontsize=12)
+    ax_ext.set_ylim(0, 100)
+    ax_ext.legend(fontsize=10)
 
+    fig.suptitle("Market Viability: % of Buildings < £2000/tCO2 (5yr)", fontsize=16, y=1.02)
     plt.tight_layout()
-    plt.savefig(os.path.join(output_path, '2_viability_ramp.png'), dpi=300)
+    plt.savefig(os.path.join(output_path, '2_viability_ramp.png'), dpi=300, bbox_inches='tight')
     plt.close()
-    print("Generated Plot 2: Viability Ramp")
+    print("Generated Plot 2: Viability Ramp (optimistic / central / pessimistic)")
 
 def plot_gas_stratification(df, output_path):
     """
@@ -160,7 +217,7 @@ def plot_gas_stratification(df, output_path):
     """
     print('starting plot 3 .. ') 
     if df is None: 
-        print('df isu noen' ) 
+        print('df is None') 
         return
 
     # Filter for External Insulation sweep only, looking at Solid Wall External buildings
@@ -170,10 +227,10 @@ def plot_gas_stratification(df, output_path):
     ].copy()
     
     if subset.empty: 
-        print('subset emtpy' ) 
+        print('subset empty') 
         return
     
-    print('startging plot"') 
+    print('starting plot') 
     fig, ax = plt.subplots(figsize=(10, 7))
     
     # Create a sequential palette for gas deciles

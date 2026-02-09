@@ -1,7 +1,7 @@
 """
 Module: param_sweep.py
 
-Parameter sweep with CORRECT stratification and CORRECT epistemic aggregation:
+Parameter sweep with CORRECT stratification and Law of Total Variance aggregation:
 - Wall type: solid_wall vs cavity_wall
 - Insulation type (for solid walls): internal vs external from 'inferred_insulation_type'
 - Gas consumption decile
@@ -21,12 +21,16 @@ Two separate concepts:
    applied to cavity wall baseline savings. This is what we're sweeping to find
    break-even points.
 
-Epistemic aggregation method:
-- Inner (aleatoric): 5,000 samples per building per epistemic run
+Uncertainty aggregation method (Law of Total Variance):
+- Inner (aleatoric): 5,000 samples per building per epistemic run → mean and std
 - Outer (epistemic): N runs with different parameter draws
-- Per building: use p50 (median) of aleatoric distribution
-- Aggregate across epistemic runs: mean(p50) + 1*std(p50) = conservative estimate
-- Then compute summary statistics across buildings
+- Per building, combine using Law of Total Variance:
+    μ = E_θ[μ_θ]                          (mean of aleatoric means)
+    σ² = E_θ[σ²_θ] + Var_θ[μ_θ]          (mean of aleatoric variances + variance of aleatoric means)
+- Threshold crossings reported at three levels:
+    optimistic:  % of buildings where (μ - σ) < threshold
+    central:     % of buildings where μ < threshold
+    pessimistic: % of buildings where (μ + σ) < threshold
 """
 
 import os
@@ -62,9 +66,12 @@ ELEC_PATH='/home/gb669/rds/hpc-work/energy_map/data/input_data_sources/energy_da
 INTERNAL_WALL_FACTORS = [ 1.00, 2.00,  3.00, 4,  5,  6,   7, 8 ,  9 ,  10 ]
 EXTERNAL_WALL_FACTORS = [ 1.00,   2.00,  3.00, 4, 5,  6,  7,   8 ,  9 , 10 ]
 
-# Key metric - using p50 (median of aleatoric distribution)
-COST_PER_TCO2_METRIC = 'wall_installation_capex_per_net_ton_co2_wall_installation_p50'
+# Key metrics - aleatoric mean and std from model output
+COST_MEAN_COL = 'wall_installation_capex_per_net_ton_co2_wall_installation_mean'
+COST_STD_COL = 'wall_installation_capex_per_net_ton_co2_wall_installation_std'
 
+# Legacy reference (kept for compatibility checks)
+COST_PER_TCO2_METRIC = COST_MEAN_COL
 
 # Columns to preserve from input data
 PRESERVE_COLS = [
@@ -75,9 +82,6 @@ PRESERVE_COLS = [
 # Thresholds for break-even analysis (5-year £/tCO2)
 # Note: For 30-year equivalent, divide by 6
 ATTRACTIVE_THRESHOLDS_5YR = [500, 800, 1000, 1500, 2000]
-
-# Epistemic aggregation parameter
-N_STD_CONSERVATIVE = 1.0  # mean + N_STD * std for conservative estimate
 
 # ========================================
 # IMPORTS
@@ -103,9 +107,9 @@ from src.RetrofitConfig import RetrofitConfig
 # ========================================
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Wall improvement factor parameter sweep v4')
+    parser = argparse.ArgumentParser(description='Wall improvement factor parameter sweep v5 (Total Variance)')
     parser.add_argument('--batch', type=str, default='batches/NE/batch_10.txt', help='Path to batch file')
-    parser.add_argument('--output', type=str, default='wall_sweep_results_v6', help='Base output directory')
+    parser.add_argument('--output', type=str, default='wall_sweep_results_v7', help='Base output directory')
     parser.add_argument('--n-postcodes', type=int, default=100, help='Number of postcodes per batch (-1 for all)')
     parser.add_argument('--all', action='store_true', help='Process all postcodes in batch')
     parser.add_argument('--all-batches', action='store_true', help='Run across ALL batches')
@@ -116,8 +120,6 @@ def parse_args():
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--prob-external', type=float, default=0.5, 
                         help='Probability of external (vs internal) insulation for solid walls (default: 0.5)')
-    parser.add_argument('--n-std', type=float, default=1.0,
-                        help='Number of std devs to add for conservative estimate (default: 1.0)')
     args = parser.parse_args()
     
     if args.all:
@@ -238,35 +240,117 @@ def prepare_building_data(pc: str, data: dict, logger: logging.Logger) -> Option
 
 
 # ========================================
-# EPISTEMIC AGGREGATION
+# LAW OF TOTAL VARIANCE AGGREGATION
 # ========================================
 
-def compute_building_conservative_estimate(
-    df: pd.DataFrame, 
-    metric_col: str = COST_PER_TCO2_METRIC,
+def compute_building_total_variance(
+    df: pd.DataFrame,
+    mean_col: str = COST_MEAN_COL,
+    std_col: str = COST_STD_COL,
     building_id: str = 'upn',
-    n_std: float = 1.0,
-) -> pd.Series:
+) -> pd.DataFrame:
     """
-    For each building, compute conservative estimate: mean + n_std*std across epistemic runs.
+    For each building, combine aleatoric and epistemic uncertainty using
+    the Law of Total Variance.
+    
+    Given K epistemic runs per building, each producing (μ_θ, σ_θ):
+        Combined mean:     μ = (1/K) Σ μ_θ
+        Combined variance: σ² = (1/K) Σ σ²_θ  +  (1/K) Σ (μ_θ - μ)²
+                              = E[Var]          +  Var[E]
+                              = aleatoric_var   +  epistemic_var
     
     Args:
-        df: Results with multiple epistemic runs per building
-        metric_col: The p50 column from aleatoric distribution
+        df: Results with multiple epistemic runs per building.
+            Must contain mean_col and std_col per run.
+        mean_col: Column with aleatoric mean per run
+        std_col: Column with aleatoric std per run
         building_id: Column identifying unique buildings
-        n_std: Number of standard deviations to add (1.0 = conservative)
     
     Returns:
-        Series indexed by building_id with conservative estimate
+        DataFrame indexed by building_id with columns:
+        - combined_mean: total expectation
+        - combined_std: sqrt of total variance
+        - aleatoric_var: mean of within-run variances
+        - epistemic_var: variance of within-run means
+        - n_runs: number of epistemic runs for this building
     """
-    grouped = df.groupby(building_id)[metric_col]
+    # Compute variance column
+    df = df.copy()
+    df['_aleatoric_var'] = df[std_col] ** 2
     
-    means = grouped.mean()
-    stds = grouped.std().fillna(0)  # fillna for buildings with single run
+    grouped = df.groupby(building_id)
     
-    conservative = means + n_std * stds
+    # E[μ_θ] — mean of aleatoric means
+    combined_mean = grouped[mean_col].mean()
     
-    return conservative
+    # E[σ²_θ] — mean of aleatoric variances (aleatoric component)
+    aleatoric_var = grouped['_aleatoric_var'].mean()
+    
+    # Var[μ_θ] — variance of aleatoric means (epistemic component)
+    epistemic_var = grouped[mean_col].var(ddof=0).fillna(0)
+    
+    # Total variance
+    total_var = aleatoric_var + epistemic_var
+    combined_std = np.sqrt(total_var)
+    
+    n_runs = grouped[mean_col].count()
+    
+    result = pd.DataFrame({
+        'combined_mean': combined_mean,
+        'combined_std': combined_std,
+        'aleatoric_var': aleatoric_var,
+        'epistemic_var': epistemic_var,
+        'total_var': total_var,
+        'n_runs': n_runs,
+    })
+    
+    return result
+
+
+# ========================================
+# CONFIDENCE INTERVAL THRESHOLD CROSSINGS
+# ========================================
+
+def compute_threshold_crossings(
+    means: np.ndarray,
+    stds: np.ndarray,
+    threshold: float,
+) -> dict:
+    """
+    Compute % of buildings below threshold at three confidence levels.
+    
+    For each building with combined (μ, σ):
+        optimistic:  μ - σ < threshold  (best case)
+        central:     μ < threshold      (point estimate)
+        pessimistic: μ + σ < threshold  (worst case)
+    
+    Args:
+        means: Combined means per building
+        stds: Combined stds per building
+        threshold: £/tCO2 threshold
+    
+    Returns:
+        dict with optimistic/central/pessimistic percentages
+    """
+    means = np.asarray(means, dtype=float)
+    stds = np.asarray(stds, dtype=float)
+    n = len(means)
+    
+    if n == 0:
+        return {
+            'optimistic_pct': np.nan,
+            'central_pct': np.nan,
+            'pessimistic_pct': np.nan,
+        }
+    
+    optimistic = means - stds
+    pessimistic = means + stds
+    
+    return {
+        'optimistic_pct': (optimistic < threshold).mean() * 100,
+        'central_pct': (means < threshold).mean() * 100,
+        'pessimistic_pct': (pessimistic < threshold).mean() * 100,
+    }
 
 
 # ========================================
@@ -275,69 +359,94 @@ def compute_building_conservative_estimate(
 
 def compute_stats(
     df: pd.DataFrame, 
-    metric_col: str = COST_PER_TCO2_METRIC,
+    mean_col: str = COST_MEAN_COL,
+    std_col: str = COST_STD_COL,
     building_id: str = 'upn',
-    n_std: float = N_STD_CONSERVATIVE,
 ) -> dict:
     """
-    Compute statistics across buildings using conservative epistemic estimate.
+    Compute statistics across buildings using Law of Total Variance.
     
-    Per building: mean(p50) + n_std * std(p50) across epistemic runs
-    Then: distribution statistics across buildings
+    Per building: combine aleatoric and epistemic uncertainty.
+    Then: distribution statistics across building combined means,
+          and threshold crossings at three confidence levels (μ-σ / μ / μ+σ).
     """
     if df.empty:
-        return {
-            'n': 0, 'n_valid': 0,
-            'mean': np.nan, 'median': np.nan, 'std': np.nan,
-            'p10': np.nan, 'p25': np.nan, 'p75': np.nan, 'p90': np.nan,
-            'pct_below_1000': np.nan, 'pct_below_2000': np.nan,
-            'pct_below_3000': np.nan, 'pct_below_5000': np.nan,
-        }
+        return _empty_stats()
     
-    building_values = compute_building_conservative_estimate(
-        df, metric_col, building_id, n_std=n_std
+    # Check required columns exist
+    if mean_col not in df.columns or std_col not in df.columns:
+        return _empty_stats()
+    
+    # Combine uncertainty per building
+    building_stats = compute_building_total_variance(df, mean_col, std_col, building_id)
+    
+    if len(building_stats) == 0:
+        return _empty_stats()
+    
+    # Filter to valid buildings (positive mean, finite values)
+    valid_mask = (
+        np.isfinite(building_stats['combined_mean']) & 
+        np.isfinite(building_stats['combined_std']) &
+        (building_stats['combined_mean'] > 0) &
+        (building_stats['combined_mean'].abs() < 1e6)
     )
-    
-    if len(building_values) == 0:
-        return {
-            'n': 0, 'n_valid': 0,
-            'mean': np.nan, 'median': np.nan, 'std': np.nan,
-            'p10': np.nan, 'p25': np.nan, 'p75': np.nan, 'p90': np.nan,
-            'pct_below_1000': np.nan, 'pct_below_2000': np.nan,
-            'pct_below_3000': np.nan, 'pct_below_5000': np.nan,
-        }
-    
-    valid = building_values[np.isfinite(building_values) & (building_values.abs() < 1e6)]
+    valid = building_stats[valid_mask]
+    n_dropped = len(building_stats) - len(valid)
     
     if len(valid) == 0:
-        return {
-            'n': 0, 'n_valid': 0,
-            'mean': np.nan, 'median': np.nan, 'std': np.nan,
-            'p10': np.nan, 'p25': np.nan, 'p75': np.nan, 'p90': np.nan,
-            'pct_below_1000': np.nan, 'pct_below_2000': np.nan,
-            'pct_below_3000': np.nan, 'pct_below_5000': np.nan,
-        }
+        return _empty_stats()
     
-    return {
-        'n': len(building_values),
+    means = valid['combined_mean']
+    stds = valid['combined_std']
+    
+    # Basic distributional stats over per-building combined means
+    result = {
+        'n': len(building_stats),
         'n_valid': len(valid),
-        'mean': valid.mean(),
-        'median': valid.median(),
-        'std': valid.std(),
-        'p10': valid.quantile(0.10),
-        'p25': valid.quantile(0.25),
-        'p75': valid.quantile(0.75),
-        'p90': valid.quantile(0.90),
-        'pct_below_1000': (valid < 1000).mean() * 100,
-        'pct_below_2000': (valid < 2000).mean() * 100,
-        'pct_below_3000': (valid < 3000).mean() * 100,
-        'pct_below_5000': (valid < 5000).mean() * 100,
+        'n_dropped_non_positive': n_dropped,
+        'mean': means.mean(),
+        'median': means.median(),
+        'std': means.std(),
+        'p10': means.quantile(0.10),
+        'p25': means.quantile(0.25),
+        'p75': means.quantile(0.75),
+        'p90': means.quantile(0.90),
+        # Average uncertainty components
+        'avg_combined_std': stds.mean(),
+        'avg_aleatoric_std': np.sqrt(valid['aleatoric_var']).mean(),
+        'avg_epistemic_std': np.sqrt(valid['epistemic_var']).mean(),
+        'avg_n_runs': valid['n_runs'].mean(),
     }
+    
+    # Threshold crossings at three confidence levels: optimistic (μ-σ), central (μ), pessimistic (μ+σ)
+    for threshold in [500, 1000, 1500, 2000, 3000, 5000]:
+        crossings = compute_threshold_crossings(means.values, stds.values, threshold)
+        result[f'optimistic_pct_below_{threshold}'] = crossings['optimistic_pct']
+        result[f'central_pct_below_{threshold}'] = crossings['central_pct']
+        result[f'pessimistic_pct_below_{threshold}'] = crossings['pessimistic_pct']
+    
+    return result
+
+
+def _empty_stats() -> dict:
+    """Return an empty stats dictionary with consistent keys."""
+    result = {
+        'n': 0, 'n_valid': 0, 'n_dropped_non_positive': 0,
+        'mean': np.nan, 'median': np.nan, 'std': np.nan,
+        'p10': np.nan, 'p25': np.nan, 'p75': np.nan, 'p90': np.nan,
+        'avg_combined_std': np.nan, 'avg_aleatoric_std': np.nan,
+        'avg_epistemic_std': np.nan, 'avg_n_runs': np.nan,
+    }
+    for threshold in [500, 1000, 1500, 2000, 3000, 5000]:
+        result[f'optimistic_pct_below_{threshold}'] = np.nan
+        result[f'central_pct_below_{threshold}'] = np.nan
+        result[f'pessimistic_pct_below_{threshold}'] = np.nan
+    return result
 
 
 def compute_epistemic_sensitivity(
     df: pd.DataFrame, 
-    metric_col: str = COST_PER_TCO2_METRIC,
+    mean_col: str = COST_MEAN_COL,
     building_id: str = 'upn',
     epistemic_col: str = 'epistemic_run_id',
 ) -> dict:
@@ -351,9 +460,8 @@ def compute_epistemic_sensitivity(
     
     run_stats = []
     for run_id, run_df in df.groupby(epistemic_col):
-        # For each run, just use the p50 values directly (no cross-run aggregation)
-        values = run_df.groupby(building_id)[metric_col].first()  # Should be one per building per run
-        valid = values[np.isfinite(values) & (values.abs() < 1e6)]
+        values = run_df.groupby(building_id)[mean_col].first()
+        valid = values[np.isfinite(values) & (values > 0) & (values.abs() < 1e6)]
         
         if len(valid) > 0:
             run_stats.append({
@@ -404,8 +512,8 @@ def create_building_category(row) -> str:
 
 def aggregate_by_building_category(
     results_df: pd.DataFrame, 
-    metric_col: str,
-    n_std: float = N_STD_CONSERVATIVE,
+    mean_col: str = COST_MEAN_COL,
+    std_col: str = COST_STD_COL,
 ) -> pd.DataFrame:
     """Aggregate results by combined wall type + insulation type category."""
     
@@ -418,12 +526,10 @@ def aggregate_by_building_category(
         mask = results_df['building_category'] == category
         subset = results_df.loc[mask]
         
-        # Main stats (epistemic-aggregated with conservative estimate)
-        stats = compute_stats(subset, metric_col, n_std=n_std)
+        stats = compute_stats(subset, mean_col, std_col)
         stats['building_category'] = category
         
-        # Epistemic sensitivity
-        sensitivity = compute_epistemic_sensitivity(subset, metric_col)
+        sensitivity = compute_epistemic_sensitivity(subset, mean_col)
         stats.update(sensitivity)
         
         rows.append(stats)
@@ -433,8 +539,8 @@ def aggregate_by_building_category(
 
 def aggregate_by_gas_decile(
     results_df: pd.DataFrame, 
-    metric_col: str,
-    n_std: float = N_STD_CONSERVATIVE,
+    mean_col: str = COST_MEAN_COL,
+    std_col: str = COST_STD_COL,
 ) -> pd.DataFrame:
     """Aggregate results by gas consumption decile."""
     if 'avg_gas_percentile' not in results_df.columns:
@@ -452,10 +558,10 @@ def aggregate_by_gas_decile(
         mask = df['gas_decile_bin'] == decile
         subset = df.loc[mask]
         
-        stats = compute_stats(subset, metric_col, n_std=n_std)
+        stats = compute_stats(subset, mean_col, std_col)
         stats['gas_decile'] = decile
         
-        sensitivity = compute_epistemic_sensitivity(subset, metric_col)
+        sensitivity = compute_epistemic_sensitivity(subset, mean_col)
         stats.update(sensitivity)
         
         rows.append(stats)
@@ -465,8 +571,8 @@ def aggregate_by_gas_decile(
 
 def aggregate_by_premise_type(
     results_df: pd.DataFrame, 
-    metric_col: str,
-    n_std: float = N_STD_CONSERVATIVE,
+    mean_col: str = COST_MEAN_COL,
+    std_col: str = COST_STD_COL,
 ) -> pd.DataFrame:
     """Aggregate results by premise/building type."""
     if 'premise_type_filled' not in results_df.columns:
@@ -477,10 +583,10 @@ def aggregate_by_premise_type(
         mask = results_df['premise_type_filled'] == ptype
         subset = results_df.loc[mask]
         
-        stats = compute_stats(subset, metric_col, n_std=n_std)
+        stats = compute_stats(subset, mean_col, std_col)
         stats['premise_type_filled'] = ptype
         
-        sensitivity = compute_epistemic_sensitivity(subset, metric_col)
+        sensitivity = compute_epistemic_sensitivity(subset, mean_col)
         stats.update(sensitivity)
         
         rows.append(stats)
@@ -490,8 +596,8 @@ def aggregate_by_premise_type(
 
 def aggregate_category_by_gas_decile(
     results_df: pd.DataFrame, 
-    metric_col: str,
-    n_std: float = N_STD_CONSERVATIVE,
+    mean_col: str = COST_MEAN_COL,
+    std_col: str = COST_STD_COL,
 ) -> pd.DataFrame:
     """Cross-tabulation: building category x gas decile."""
     if 'avg_gas_percentile' not in results_df.columns:
@@ -512,7 +618,7 @@ def aggregate_category_by_gas_decile(
             mask = (df['building_category'] == category) & (df['gas_decile_bin'] == decile)
             if mask.sum() > 0:
                 subset = df.loc[mask]
-                stats = compute_stats(subset, metric_col, n_std=n_std)
+                stats = compute_stats(subset, mean_col, std_col)
                 stats['building_category'] = category
                 stats['gas_decile'] = decile
                 rows.append(stats)
@@ -522,8 +628,8 @@ def aggregate_category_by_gas_decile(
 
 def aggregate_category_by_premise(
     results_df: pd.DataFrame, 
-    metric_col: str,
-    n_std: float = N_STD_CONSERVATIVE,
+    mean_col: str = COST_MEAN_COL,
+    std_col: str = COST_STD_COL,
 ) -> pd.DataFrame:
     """Cross-tabulation: building category x premise type."""
     if 'premise_type_filled' not in results_df.columns:
@@ -539,7 +645,7 @@ def aggregate_category_by_premise(
             mask = (df['building_category'] == category) & (df['premise_type_filled'] == ptype)
             if mask.sum() > 0:
                 subset = df.loc[mask]
-                stats = compute_stats(subset, metric_col, n_std=n_std)
+                stats = compute_stats(subset, mean_col, std_col)
                 stats['building_category'] = category
                 stats['premise_type_filled'] = ptype
                 rows.append(stats)
@@ -626,7 +732,6 @@ class SweepConfig:
     random_sample: bool = False
     seed: int = 42
     prob_external: float = 0.5
-    n_std: float = 1.0  # For conservative epistemic aggregation
 
 
 @dataclass
@@ -728,7 +833,6 @@ def _trim_to_limit(
 
 def check_batch_complete(output_base_dir: str, batch_path: str) -> bool:
     """Check if a batch already has completed results in any sweep directory."""
-    # Extract batch number from path like 'batches/NE/batch_10.txt'
     batch_num = os.path.basename(batch_path).replace('batch_', '').replace('.txt', '')
     print(f'batch num {batch_num}') 
     batch_dir = output_base_dir
@@ -736,7 +840,6 @@ def check_batch_complete(output_base_dir: str, batch_path: str) -> bool:
     if not os.path.exists(batch_dir):
         return False
     
-    # Check for any sweep_* directory with required files
     required_files = ['sweep_by_building_category.csv', 'detailed_results.parquet']
     
     for item in os.listdir(batch_dir):
@@ -856,7 +959,6 @@ def run_sweep(
     n_epistemic_runs: int,
     epistemic_df: pd.DataFrame,
     logger: logging.Logger,
-    n_std: float = N_STD_CONSERVATIVE,
 ) -> Tuple[Optional[pd.DataFrame], List[dict]]:
     """Run a single parameter sweep iteration."""
     
@@ -873,8 +975,15 @@ def run_sweep(
         epistemic_df=epistemic_df,
     )
 
-    if results_df is None or COST_PER_TCO2_METRIC not in results_df.columns:
+    if results_df is None:
         logger.warning(f"No results for {sweep_params.sweep_type}_factor")
+        return None, []
+    
+    # Check both mean and std columns exist
+    if COST_MEAN_COL not in results_df.columns or COST_STD_COL not in results_df.columns:
+        logger.warning(
+            f"Missing required columns. Have: {[c for c in results_df.columns if 'cost' in c.lower() or 'co2' in c.lower()]}"
+        )
         return None, []
 
     # Tag results with sweep parameters
@@ -883,9 +992,7 @@ def run_sweep(
     results_df['sweep_type'] = sweep_params.sweep_type
 
     # Aggregate by building category
-    aggregated = _aggregate_and_log_results(
-        results_df, sweep_params, logger, n_std
-    )
+    aggregated = _aggregate_and_log_results(results_df, sweep_params, logger)
 
     return results_df, aggregated
 
@@ -894,25 +1001,25 @@ def _aggregate_and_log_results(
     results_df: pd.DataFrame,
     sweep_params: SweepParameters,
     logger: logging.Logger,
-    n_std: float = N_STD_CONSERVATIVE,
 ) -> List[dict]:
     """Aggregate results by building category and log summary."""
     
-    cat_stats = aggregate_by_building_category(results_df, COST_PER_TCO2_METRIC, n_std=n_std)
+    cat_stats = aggregate_by_building_category(results_df, COST_MEAN_COL, COST_STD_COL)
     aggregated = []
     
-    logger.info(f"  Results by building category (using mean + {n_std}*std conservative estimate):")
+    logger.info(f"  Results by building category (Law of Total Variance, μ ± σ thresholds):")
     for _, row in cat_stats.iterrows():
         row_dict = row.to_dict()
         row_dict['internal_factor'] = sweep_params.internal_factor
         row_dict['external_factor'] = sweep_params.external_factor
         row_dict['sweep_type'] = sweep_params.sweep_type
-        row_dict['n_std'] = n_std
         aggregated.append(row_dict)
         
         logger.info(
             f"    {row['building_category']}: n={row['n']}, "
-            f"median={row['median']:.0f}, pct<2000={row['pct_below_2000']:.1f}%"
+            f"median={row['median']:.0f}, "
+            f"central%<2000={row.get('central_pct_below_2000', np.nan):.1f}%, "
+            f"avg_std={row.get('avg_combined_std', np.nan):.0f}"
         )
     
     return aggregated
@@ -924,7 +1031,6 @@ def run_internal_sweep(
     n_epistemic_runs: int,
     epistemic_df: pd.DataFrame,
     logger: logging.Logger,
-    n_std: float = N_STD_CONSERVATIVE,
 ) -> Tuple[List[pd.DataFrame], List[dict]]:
     """Run sweep over internal wall improvement factors."""
     
@@ -932,7 +1038,7 @@ def run_internal_sweep(
     logger.info("SWEEP 1: INTERNAL WALL IMPROVEMENT FACTOR")
     logger.info("(External fixed at 0.20)")
     logger.info("Focus on: solid_wall_internal buildings")
-    logger.info(f"Epistemic aggregation: mean(p50) + {n_std}*std(p50)")
+    logger.info("Aggregation: Law of Total Variance, threshold crossings at μ-σ / μ / μ+σ")
     logger.info("=" * 70)
 
     all_detailed = []
@@ -947,7 +1053,7 @@ def run_internal_sweep(
         
         results_df, aggregated = run_sweep(
             building_data, retrofit_config, params,
-            n_epistemic_runs, epistemic_df, logger, n_std
+            n_epistemic_runs, epistemic_df, logger,
         )
         
         if results_df is not None:
@@ -963,7 +1069,6 @@ def run_external_sweep(
     n_epistemic_runs: int,
     epistemic_df: pd.DataFrame,
     logger: logging.Logger,
-    n_std: float = N_STD_CONSERVATIVE,
 ) -> Tuple[List[pd.DataFrame], List[dict]]:
     """Run sweep over external wall improvement factors."""
     
@@ -971,7 +1076,7 @@ def run_external_sweep(
     logger.info("SWEEP 2: EXTERNAL WALL IMPROVEMENT FACTOR")
     logger.info("(Internal fixed at 0.10)")
     logger.info("Focus on: solid_wall_external buildings")
-    logger.info(f"Epistemic aggregation: mean(p50) + {n_std}*std(p50)")
+    logger.info("Aggregation: Law of Total Variance, threshold crossings at μ-σ / μ / μ+σ")
     logger.info("=" * 70)
 
     all_detailed = []
@@ -986,7 +1091,7 @@ def run_external_sweep(
         
         results_df, aggregated = run_sweep(
             building_data, retrofit_config, params,
-            n_epistemic_runs, epistemic_df, logger, n_std
+            n_epistemic_runs, epistemic_df, logger,
         )
         
         if results_df is not None:
@@ -1005,7 +1110,6 @@ def save_results(
     all_detailed_results: List[pd.DataFrame],
     output_dir: str,
     logger: logging.Logger,
-    n_std: float = N_STD_CONSERVATIVE,
 ) -> pd.DataFrame:
     """Save sweep results to disk."""
     
@@ -1021,9 +1125,9 @@ def save_results(
         full_results = pd.concat(all_detailed_results, ignore_index=True)
         full_results.to_parquet(f'{output_dir}/detailed_results.parquet')
         logger.info(f"Saved: detailed_results.parquet ({len(full_results)} rows)")
-        generate_additional_summaries(full_results, output_dir, logger, n_std)
+        generate_additional_summaries(full_results, output_dir, logger)
 
-    print_summary_tables(results_df, logger, n_std)
+    print_summary_tables(results_df, logger)
     return results_df
 
 
@@ -1038,14 +1142,15 @@ def setup_output_directory(output_base_dir: str) -> Tuple[str, str]:
 def log_run_header(config: SweepConfig, n_batches: int, logger: logging.Logger) -> None:
     """Log the run configuration header."""
     logger.info("=" * 70)
-    logger.info("WALL IMPROVEMENT FACTOR PARAMETER SWEEP v4")
+    logger.info("WALL IMPROVEMENT FACTOR PARAMETER SWEEP v5 (Total Variance)")
     logger.info("=" * 70)
     logger.info(f"Number of batches: {n_batches}")
     logger.info(f"Postcodes per batch: {config.n_postcodes if config.n_postcodes != -1 else 'all'}")
     logger.info(f"Max buildings: {config.max_buildings if config.max_buildings else 'no limit'}")
     logger.info(f"Internal factors: {INTERNAL_WALL_FACTORS}")
     logger.info(f"External factors: {EXTERNAL_WALL_FACTORS}")
-    logger.info(f"Epistemic aggregation: mean(p50) + {config.n_std}*std(p50)")
+    logger.info(f"Aggregation: Law of Total Variance (aleatoric + epistemic)")
+    logger.info(f"Threshold method: confidence intervals (μ-σ / μ / μ+σ)")
     logger.info(f"Note: £/tCO2 is over 5-year horizon")
 
 
@@ -1053,17 +1158,17 @@ def generate_additional_summaries(
     full_results: pd.DataFrame, 
     output_dir: str, 
     logger: logging.Logger,
-    n_std: float = N_STD_CONSERVATIVE,
 ) -> None:
     """Generate additional stratified summary CSVs."""
     
-    metric = COST_PER_TCO2_METRIC
+    mean_col = COST_MEAN_COL
+    std_col = COST_STD_COL
     
     # By building category x gas decile
     logger.info("Generating building category x gas decile summaries...")
     cat_gas_results = []
     for (int_f, ext_f, sweep), group in full_results.groupby(['internal_factor', 'external_factor', 'sweep_type']):
-        cross_stats = aggregate_category_by_gas_decile(group, metric, n_std=n_std)
+        cross_stats = aggregate_category_by_gas_decile(group, mean_col, std_col)
         if not cross_stats.empty:
             cross_stats['internal_factor'] = int_f
             cross_stats['external_factor'] = ext_f
@@ -1079,7 +1184,7 @@ def generate_additional_summaries(
     logger.info("Generating building category x premise type summaries...")
     cat_premise_results = []
     for (int_f, ext_f, sweep), group in full_results.groupby(['internal_factor', 'external_factor', 'sweep_type']):
-        cross_stats = aggregate_category_by_premise(group, metric, n_std=n_std)
+        cross_stats = aggregate_category_by_premise(group, mean_col, std_col)
         if not cross_stats.empty:
             cross_stats['internal_factor'] = int_f
             cross_stats['external_factor'] = ext_f
@@ -1094,7 +1199,7 @@ def generate_additional_summaries(
     # By gas decile only
     gas_results = []
     for (int_f, ext_f, sweep), group in full_results.groupby(['internal_factor', 'external_factor', 'sweep_type']):
-        gas_stats = aggregate_by_gas_decile(group, metric, n_std=n_std)
+        gas_stats = aggregate_by_gas_decile(group, mean_col, std_col)
         if not gas_stats.empty:
             gas_stats['internal_factor'] = int_f
             gas_stats['external_factor'] = ext_f
@@ -1109,7 +1214,7 @@ def generate_additional_summaries(
     # By premise type only
     premise_results = []
     for (int_f, ext_f, sweep), group in full_results.groupby(['internal_factor', 'external_factor', 'sweep_type']):
-        premise_stats = aggregate_by_premise_type(group, metric, n_std=n_std)
+        premise_stats = aggregate_by_premise_type(group, mean_col, std_col)
         if not premise_stats.empty:
             premise_stats['internal_factor'] = int_f
             premise_stats['external_factor'] = ext_f
@@ -1131,7 +1236,7 @@ def generate_additional_summaries(
         
         for category in group['building_category'].unique():
             subset = group[group['building_category'] == category]
-            sensitivity = compute_epistemic_sensitivity(subset, metric)
+            sensitivity = compute_epistemic_sensitivity(subset, mean_col)
             if sensitivity:
                 sensitivity['internal_factor'] = int_f
                 sensitivity['external_factor'] = ext_f
@@ -1143,27 +1248,43 @@ def generate_additional_summaries(
         epistemic_df = pd.DataFrame(epistemic_summary)
         epistemic_df.to_csv(f'{output_dir}/epistemic_sensitivity.csv', index=False)
         logger.info(f"Saved: epistemic_sensitivity.csv")
+    
+    # Per-building combined uncertainty (new output)
+    logger.info("Generating per-building uncertainty decomposition...")
+    building_uncertainty = []
+    for (int_f, ext_f, sweep), group in full_results.groupby(['internal_factor', 'external_factor', 'sweep_type']):
+        bld_stats = compute_building_total_variance(group, mean_col, std_col)
+        bld_stats = bld_stats.reset_index()
+        bld_stats['internal_factor'] = int_f
+        bld_stats['external_factor'] = ext_f
+        bld_stats['sweep_type'] = sweep
+        building_uncertainty.append(bld_stats)
+    
+    if building_uncertainty:
+        bld_df = pd.concat(building_uncertainty, ignore_index=True)
+        bld_df.to_parquet(f'{output_dir}/building_uncertainty.parquet')
+        logger.info(f"Saved: building_uncertainty.parquet ({len(bld_df)} rows)")
 
 
 def print_summary_tables(
     results_df: pd.DataFrame, 
     logger: logging.Logger,
-    n_std: float = N_STD_CONSERVATIVE,
 ) -> None:
     """Print nicely formatted summary tables."""
     
     logger.info("\n" + "=" * 100)
-    logger.info(f"SUMMARY TABLES (£/tCO2 over 5 years, conservative estimate: mean + {n_std}*std)")
+    logger.info("SUMMARY TABLES (£/tCO2 over 5 years, Law of Total Variance, μ ± σ thresholds)")
     logger.info("=" * 100)
     
-    # INTERNAL SWEEP - focus on solid_wall_internal
-    print("\n" + "=" * 110)
+    # INTERNAL SWEEP
+    print("\n" + "=" * 140)
     print("INTERNAL WALL IMPROVEMENT SWEEP")
     print("(External factor fixed at 0.20)")
-    print(f"Epistemic aggregation: mean(p50) + {n_std}*std(p50) per building")
-    print("=" * 110)
-    print(f"{'Factor':<8} {'Building Category':<25} {'N':>6} {'Median':>12} {'Mean':>12} {'P25':>10} {'P75':>10} {'%<2000':>8}")
-    print("-" * 110)
+    print("Aggregation: Law of Total Variance per building, threshold crossings at μ-σ (optimistic) / μ (central) / μ+σ (pessimistic)")
+    print("=" * 140)
+    print(f"{'Factor':<8} {'Building Category':<25} {'N':>6} {'Median':>10} {'Mean':>10} {'P25':>8} {'P75':>8} "
+          f"{'Opt%<2k':>8} {'Cen%<2k':>8} {'Pes%<2k':>8} {'AvgStd':>8}")
+    print("-" * 140)
     
     internal_df = results_df[results_df['sweep_type'] == 'internal']
     for factor in sorted(internal_df['internal_factor'].unique()):
@@ -1175,21 +1296,25 @@ def print_summary_tables(
             mean = row.get('mean', np.nan)
             p25 = row.get('p25', np.nan)
             p75 = row.get('p75', np.nan)
-            pct2000 = row.get('pct_below_2000', np.nan)
+            opt_pct = row.get('optimistic_pct_below_2000', np.nan)
+            cen_pct = row.get('central_pct_below_2000', np.nan)
+            pes_pct = row.get('pessimistic_pct_below_2000', np.nan)
+            avg_std = row.get('avg_combined_std', np.nan)
             
-            # Highlight the relevant category
             highlight = " <--" if cat == 'solid_wall_internal' else ""
-            print(f"{factor:<8.2f} {cat:<25} {n:>6} {median:>12.0f} {mean:>12.0f} {p25:>10.0f} {p75:>10.0f} {pct2000:>7.1f}%{highlight}")
-        print("-" * 110)
+            print(f"{factor:<8.2f} {cat:<25} {n:>6} {median:>10.0f} {mean:>10.0f} {p25:>8.0f} {p75:>8.0f} "
+                  f"{opt_pct:>7.1f}% {cen_pct:>7.1f}% {pes_pct:>7.1f}% {avg_std:>8.0f}{highlight}")
+        print("-" * 140)
     
-    # EXTERNAL SWEEP - focus on solid_wall_external
-    print("\n" + "=" * 110)
+    # EXTERNAL SWEEP
+    print("\n" + "=" * 140)
     print("EXTERNAL WALL IMPROVEMENT SWEEP")
     print("(Internal factor fixed at 0.10)")
-    print(f"Epistemic aggregation: mean(p50) + {n_std}*std(p50) per building")
-    print("=" * 110)
-    print(f"{'Factor':<8} {'Building Category':<25} {'N':>6} {'Median':>12} {'Mean':>12} {'P25':>10} {'P75':>10} {'%<2000':>8}")
-    print("-" * 110)
+    print("Aggregation: Law of Total Variance per building, threshold crossings at μ-σ (optimistic) / μ (central) / μ+σ (pessimistic)")
+    print("=" * 140)
+    print(f"{'Factor':<8} {'Building Category':<25} {'N':>6} {'Median':>10} {'Mean':>10} {'P25':>8} {'P75':>8} "
+          f"{'Opt%<2k':>8} {'Cen%<2k':>8} {'Pes%<2k':>8} {'AvgStd':>8}")
+    print("-" * 140)
     
     external_df = results_df[results_df['sweep_type'] == 'external']
     for factor in sorted(external_df['external_factor'].unique()):
@@ -1201,65 +1326,85 @@ def print_summary_tables(
             mean = row.get('mean', np.nan)
             p25 = row.get('p25', np.nan)
             p75 = row.get('p75', np.nan)
-            pct2000 = row.get('pct_below_2000', np.nan)
+            opt_pct = row.get('optimistic_pct_below_2000', np.nan)
+            cen_pct = row.get('central_pct_below_2000', np.nan)
+            pes_pct = row.get('pessimistic_pct_below_2000', np.nan)
+            avg_std = row.get('avg_combined_std', np.nan)
             
-            # Highlight the relevant category
             highlight = " <--" if cat == 'solid_wall_external' else ""
-            print(f"{factor:<8.2f} {cat:<25} {n:>6} {median:>12.0f} {mean:>12.0f} {p25:>10.0f} {p75:>10.0f} {pct2000:>7.1f}%{highlight}")
-        print("-" * 110)
+            print(f"{factor:<8.2f} {cat:<25} {n:>6} {median:>10.0f} {mean:>10.0f} {p25:>8.0f} {p75:>8.0f} "
+                  f"{opt_pct:>7.1f}% {cen_pct:>7.1f}% {pes_pct:>7.1f}% {avg_std:>8.0f}{highlight}")
+        print("-" * 140)
     
-    # FOCUSED SUMMARY - just the relevant categories
-    print("\n" + "=" * 90)
+    # FOCUSED SUMMARY
+    print("\n" + "=" * 100)
     print("FOCUSED SUMMARY: Relevant Building Categories Only")
-    print(f"(Conservative estimate: mean + {n_std}*std across epistemic runs)")
-    print("=" * 90)
+    print("Opt = μ-σ (optimistic), Cen = μ (central), Pes = μ+σ (pessimistic)")
+    print("=" * 100)
     
     print("\nINTERNAL FACTOR SWEEP (solid_wall_internal buildings):")
-    print(f"{'Factor':<10} {'N':>8} {'Median £/tCO2':>15} {'% < £2000':>12} {'% < £3000':>12}")
-    print("-" * 60)
+    print(f"{'Factor':<10} {'N':>6} {'Median':>10} {'AvgStd':>10} "
+          f"{'Opt%<£2k':>10} {'Cen%<£2k':>10} {'Pes%<£2k':>10}")
+    print("-" * 70)
     solid_int = internal_df[internal_df['building_category'] == 'solid_wall_internal']
     for factor in sorted(solid_int['internal_factor'].unique()):
-        row = solid_int[solid_int['internal_factor'] == factor].iloc[0] if len(solid_int[solid_int['internal_factor'] == factor]) > 0 else None
-        if row is not None:
-            print(f"{factor:<10.2f} {row['n']:>8} {row['median']:>15.0f} {row['pct_below_2000']:>11.1f}% {row['pct_below_3000']:>11.1f}%")
+        rows = solid_int[solid_int['internal_factor'] == factor]
+        if len(rows) > 0:
+            row = rows.iloc[0]
+            print(f"{factor:<10.2f} {row['n']:>6} {row['median']:>10.0f} "
+                  f"{row.get('avg_combined_std', np.nan):>10.0f} "
+                  f"{row.get('optimistic_pct_below_2000', np.nan):>9.1f}% "
+                  f"{row.get('central_pct_below_2000', np.nan):>9.1f}% "
+                  f"{row.get('pessimistic_pct_below_2000', np.nan):>9.1f}%")
     
     print("\nEXTERNAL FACTOR SWEEP (solid_wall_external buildings):")
-    print(f"{'Factor':<10} {'N':>8} {'Median £/tCO2':>15} {'% < £2000':>12} {'% < £3000':>12}")
-    print("-" * 60)
+    print(f"{'Factor':<10} {'N':>6} {'Median':>10} {'AvgStd':>10} "
+          f"{'Opt%<£2k':>10} {'Cen%<£2k':>10} {'Pes%<£2k':>10}")
+    print("-" * 70)
     solid_ext = external_df[external_df['building_category'] == 'solid_wall_external']
     for factor in sorted(solid_ext['external_factor'].unique()):
-        row = solid_ext[solid_ext['external_factor'] == factor].iloc[0] if len(solid_ext[solid_ext['external_factor'] == factor]) > 0 else None
-        if row is not None:
-            print(f"{factor:<10.2f} {row['n']:>8} {row['median']:>15.0f} {row['pct_below_2000']:>11.1f}% {row['pct_below_3000']:>11.1f}%")
+        rows = solid_ext[solid_ext['external_factor'] == factor]
+        if len(rows) > 0:
+            row = rows.iloc[0]
+            print(f"{factor:<10.2f} {row['n']:>6} {row['median']:>10.0f} "
+                  f"{row.get('avg_combined_std', np.nan):>10.0f} "
+                  f"{row.get('optimistic_pct_below_2000', np.nan):>9.1f}% "
+                  f"{row.get('central_pct_below_2000', np.nan):>9.1f}% "
+                  f"{row.get('pessimistic_pct_below_2000', np.nan):>9.1f}%")
     
     # Break-even analysis
-    print("\n" + "=" * 90)
+    print("\n" + "=" * 100)
     print("BREAK-EVEN ANALYSIS (50% of buildings below threshold)")
+    print("Reports factor at which each confidence level crosses 50%")
     print("Note: Values are 5-year £/tCO2. Divide by 6 for ~30-year equivalent.")
-    print("=" * 90)
+    print("=" * 100)
     
     for threshold in ATTRACTIVE_THRESHOLDS_5YR:
-        pct_col = f'pct_below_{threshold}' if f'pct_below_{threshold}' in results_df.columns else None
+        opt_col = f'optimistic_pct_below_{threshold}'
+        cen_col = f'central_pct_below_{threshold}'
+        pes_col = f'pessimistic_pct_below_{threshold}'
         
-        # Internal
-        if pct_col and len(solid_int) > 0 and pct_col in solid_int.columns:
-            above_50 = solid_int[solid_int[pct_col] >= 50]
-            if not above_50.empty:
-                min_factor = above_50['internal_factor'].min()
-                print(f"  Internal solid wall @ £{threshold}/tCO2 (5yr): factor >= {min_factor:.2f}")
-            else:
-                print(f"  Internal solid wall @ £{threshold}/tCO2 (5yr): not achieved in range")
+        print(f"\n  Threshold: £{threshold}/tCO2 (5yr)")
         
-        # External
-        if pct_col and len(solid_ext) > 0 and pct_col in solid_ext.columns:
-            above_50 = solid_ext[solid_ext[pct_col] >= 50]
-            if not above_50.empty:
-                min_factor = above_50['external_factor'].min()
-                print(f"  External solid wall @ £{threshold}/tCO2 (5yr): factor >= {min_factor:.2f}")
-            else:
-                print(f"  External solid wall @ £{threshold}/tCO2 (5yr): not achieved in range")
-        
-        print()
+        for label, data, factor_col, cols in [
+            ('Internal solid wall', solid_int, 'internal_factor', (opt_col, cen_col, pes_col)),
+            ('External solid wall', solid_ext, 'external_factor', (opt_col, cen_col, pes_col)),
+        ]:
+            if len(data) == 0:
+                continue
+            
+            factors = []
+            for level_name, col in zip(['optimistic', 'central', 'pessimistic'], cols):
+                if col in data.columns:
+                    above_50 = data[data[col] >= 50]
+                    if not above_50.empty:
+                        min_f = above_50[factor_col].min()
+                        factors.append(f"{level_name}={min_f:.0f}")
+                    else:
+                        max_val = data[col].max()
+                        factors.append(f"{level_name}=n/a (max {max_val:.0f}%)")
+            
+            print(f"    {label}: {' | '.join(factors)}")
 
 
 # ========================================
@@ -1275,8 +1420,7 @@ def run_parameter_sweep(
     random_sample: bool = False,
     seed: int = 42,
     prob_external: float = 0.5,
-    n_std: float = 1.0,
-     skip_existing: bool = True,  # NEW
+    skip_existing: bool = True,
 ) -> Optional[pd.DataFrame]:
     """
     Run wall improvement factor parameter sweep across building data.
@@ -1285,9 +1429,11 @@ def run_parameter_sweep(
     1. Internal wall factors (with external fixed at 0.20)
     2. External wall factors (with internal fixed at 0.10)
     
-    Epistemic aggregation:
-    - Per building: mean(p50) + n_std * std(p50) across epistemic runs
-    - Then compute summary statistics across buildings
+    Uncertainty aggregation (Law of Total Variance):
+    - Per building: combine aleatoric (mean, std) across epistemic runs
+        μ = E_θ[μ_θ],  σ² = E_θ[σ²_θ] + Var_θ[μ_θ]
+    - Threshold crossings at three confidence levels:
+        optimistic (μ-σ), central (μ), pessimistic (μ+σ)
     
     Returns aggregated results by building category.
     """
@@ -1314,7 +1460,6 @@ def run_parameter_sweep(
         random_sample=random_sample,
         seed=seed,
         prob_external=prob_external,
-        n_std=n_std,
     )
 
     # Setup
@@ -1344,22 +1489,22 @@ def run_parameter_sweep(
         }
     )
     
-    epistemic_df = generate_epistemic_scenarios_lhs(n_epistemic_runs, random_seed = seed)
+    epistemic_df = generate_epistemic_scenarios_lhs(n_epistemic_runs, random_seed=seed)
 
     # Run sweeps
     internal_detailed, internal_agg = run_internal_sweep(
-        building_data, retrofit_config, n_epistemic_runs, epistemic_df, logger, n_std
+        building_data, retrofit_config, n_epistemic_runs, epistemic_df, logger,
     )
     
     external_detailed, external_agg = run_external_sweep(
-        building_data, retrofit_config, n_epistemic_runs, epistemic_df, logger, n_std
+        building_data, retrofit_config, n_epistemic_runs, epistemic_df, logger,
     )
 
     # Combine and save
     all_detailed = internal_detailed + external_detailed
     all_aggregated = internal_agg + external_agg
     
-    return save_results(all_aggregated, all_detailed, output_dir, logger, n_std)
+    return save_results(all_aggregated, all_detailed, output_dir, logger)
 
 
 # ========================================
@@ -1383,7 +1528,7 @@ if __name__ == "__main__":
     print(f"Max buildings: {args.max_buildings if args.max_buildings else 'no limit'}")
     print(f"N epistemic runs: {args.n_epistemic}")
     print(f"Prob external insulation: {args.prob_external} (for solid wall internal/external split)")
-    print(f"Conservative estimate: mean(p50) + {args.n_std}*std(p50)")
+    print(f"Aggregation: Law of Total Variance, threshold crossings at μ ± σ")
     
     run_parameter_sweep(
         batch_paths=batch_paths,
@@ -1394,5 +1539,4 @@ if __name__ == "__main__":
         random_sample=args.random_sample,
         seed=args.seed,
         prob_external=args.prob_external,
-        n_std=args.n_std,
     )
