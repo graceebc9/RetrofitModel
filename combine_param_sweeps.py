@@ -207,18 +207,53 @@ def process_all_parquets(
     return n_processed
 
 
+def _filter_valid_buildings(df):
+    """Filter to valid buildings (positive mean, finite).
+    
+    Returns (valid_means, valid_stds, valid_df, n_dropped).
+    """
+    means = df['combined_mean']
+    stds = df['combined_std']
+
+    valid_mask = (
+        np.isfinite(means) &
+        np.isfinite(stds) &
+        (means > 0) &
+        (means.abs() < 1e6)
+    )
+    valid_means = means[valid_mask]
+    valid_stds = stds[valid_mask]
+    valid_df = df[valid_mask]
+    n_dropped = len(means) - len(valid_means)
+
+    return valid_means, valid_stds, valid_df, n_dropped
+
+
 def _compute_group_stats(valid_means, valid_stds, valid_df):
     """Compute the standard set of stats for a group of buildings.
+    
+    Includes:
+    - Distributional stats on combined_mean (median, percentiles)
+    - median_optimistic: median of per-building (μ - σ)
+    - median_pessimistic: median of per-building (μ + σ)
+    - Threshold crossings at optimistic/central/pessimistic
+    - Average uncertainty decomposition
     
     Returns a dict of stats, or None if no valid data.
     """
     if len(valid_means) == 0:
         return None
 
+    # Per-building optimistic/pessimistic values
+    optimistic_values = valid_means - valid_stds
+    pessimistic_values = valid_means + valid_stds
+
     result = {
         'n_valid': len(valid_means),
         'mean': valid_means.mean(),
         'median': valid_means.median(),
+        'median_optimistic': optimistic_values.median(),
+        'median_pessimistic': pessimistic_values.median(),
         'std': valid_means.std(),
         'p10': valid_means.quantile(0.10),
         'p25': valid_means.quantile(0.25),
@@ -243,25 +278,6 @@ def _compute_group_stats(valid_means, valid_stds, valid_df):
     return result
 
 
-def _filter_valid_buildings(df):
-    """Filter to valid buildings (positive mean, finite). Returns (valid_means, valid_stds, valid_df, n_dropped)."""
-    means = df['combined_mean']
-    stds = df['combined_std']
-
-    valid_mask = (
-        np.isfinite(means) &
-        np.isfinite(stds) &
-        (means > 0) &
-        (means.abs() < 1e6)
-    )
-    valid_means = means[valid_mask]
-    valid_stds = stds[valid_mask]
-    valid_df = df[valid_mask]
-    n_dropped = len(means) - len(valid_means)
-
-    return valid_means, valid_stds, valid_df, n_dropped
-
-
 def compute_final_statistics(
     reduced_csv_path: Path,
     output_dir: Path,
@@ -269,13 +285,15 @@ def compute_final_statistics(
 ) -> pd.DataFrame:
     """Compute final aggregated statistics from reduced data.
     
-    Produces three output CSVs:
+    Produces four output CSVs:
     - sweep_by_building_category.csv: per factor x building_category
     - category_x_gas_decile.csv: per factor x building_category x avg_gas_percentile
     - category_x_premise_type.csv: per factor x building_category x premise_type_filled
+    - premise_x_gas_decile.csv: per factor x building_category x premise_type_filled x avg_gas_percentile
     
     For each group:
-    - Cross-building summary stats on combined means (median, percentiles)
+    - Cross-building summary stats (median, percentiles)
+    - median_optimistic / median_pessimistic (median of per-building μ±σ)
     - Threshold crossings at three confidence levels (μ-σ / μ / μ+σ)
     - Average uncertainty decomposition
     """
@@ -293,6 +311,7 @@ def compute_final_statistics(
     all_results = []
     all_gas_results = []
     all_premise_results = []
+    all_premise_gas_results = []
     
     for int_f, ext_f, sweep in tqdm(sweep_params, desc="Aggregating"):
         buildings = []
@@ -311,6 +330,12 @@ def compute_final_statistics(
         
         df = pd.concat(buildings, ignore_index=True)
         
+        sweep_keys = {
+            'internal_factor': int_f,
+            'external_factor': ext_f,
+            'sweep_type': sweep,
+        }
+        
         for category in df['building_category'].dropna().unique():
             cat_df = df[df['building_category'] == category]
             
@@ -322,9 +347,7 @@ def compute_final_statistics(
             
             # --- Main results (sweep_by_building_category) ---
             result = {
-                'internal_factor': int_f,
-                'external_factor': ext_f,
-                'sweep_type': sweep,
+                **sweep_keys,
                 'building_category': category,
                 'n': len(cat_df),
                 'n_dropped_non_positive': n_dropped,
@@ -340,16 +363,13 @@ def compute_final_statistics(
                     g_stats = _compute_group_stats(g_means, g_stds, g_df)
                     if g_stats is None:
                         continue
-                    gas_row = {
-                        'internal_factor': int_f,
-                        'external_factor': ext_f,
-                        'sweep_type': sweep,
+                    all_gas_results.append({
+                        **sweep_keys,
                         'building_category': category,
                         'gas_decile': gas_val,
                         'n': len(gas_sub),
                         **g_stats,
-                    }
-                    all_gas_results.append(gas_row)
+                    })
             
             # --- Premise type breakdown (category_x_premise_type) ---
             if 'premise_type_filled' in valid_df.columns:
@@ -359,16 +379,30 @@ def compute_final_statistics(
                     p_stats = _compute_group_stats(p_means, p_stds, p_df)
                     if p_stats is None:
                         continue
-                    prem_row = {
-                        'internal_factor': int_f,
-                        'external_factor': ext_f,
-                        'sweep_type': sweep,
+                    all_premise_results.append({
+                        **sweep_keys,
                         'building_category': category,
                         'premise_type_filled': ptype,
                         'n': len(prem_sub),
                         **p_stats,
-                    }
-                    all_premise_results.append(prem_row)
+                    })
+                    
+                    # --- Premise x gas decile (premise_x_gas_decile) ---
+                    if 'avg_gas_percentile' in p_df.columns:
+                        for gas_val in p_df['avg_gas_percentile'].dropna().unique():
+                            pg_sub = p_df[p_df['avg_gas_percentile'] == gas_val]
+                            pg_means, pg_stds, pg_df, _ = _filter_valid_buildings(pg_sub)
+                            pg_stats = _compute_group_stats(pg_means, pg_stds, pg_df)
+                            if pg_stats is None:
+                                continue
+                            all_premise_gas_results.append({
+                                **sweep_keys,
+                                'building_category': category,
+                                'premise_type_filled': ptype,
+                                'gas_decile': gas_val,
+                                'n': len(pg_sub),
+                                **pg_stats,
+                            })
     
     # Save main results
     results_df = pd.DataFrame(all_results)
@@ -387,6 +421,12 @@ def compute_final_statistics(
     premise_path = output_dir / 'category_x_premise_type.csv'
     premise_df.to_csv(premise_path, index=False)
     print(f"Saved: {premise_path} ({len(premise_df)} rows)")
+    
+    # Save premise x gas decile results
+    premise_gas_df = pd.DataFrame(all_premise_gas_results)
+    premise_gas_path = output_dir / 'premise_x_gas_decile.csv'
+    premise_gas_df.to_csv(premise_gas_path, index=False)
+    print(f"Saved: {premise_gas_path} ({len(premise_gas_df)} rows)")
     
     return results_df
 
