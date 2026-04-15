@@ -1,4 +1,3 @@
- 
 # ==============================================================================
 # 0. IMPORTS
 # ==============================================================================
@@ -12,7 +11,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
  
-from .RetrofitGreedyAnalysis import plot_greedy_compairosn_main, plot_carbon_by_persona, plot_count_by_group,  plot_metric_by_group
+from .RetrofitGreedyAnalysis import plot_greedy_comparison_main, plot_carbon_by_persona, plot_count_by_group,  plot_metric_by_group
  
 from .Sankey import run_sankey_greedy 
 
@@ -151,14 +150,22 @@ def flatten_multiindex_cols(df):
 import numpy as np
 import pandas as pd
 
-def aggregate_results(df):
+def aggregate_results(df, rho=0.5):
     """
     Aggregates results using METHOD 2 (Ratio of Sums).
     
-    Returns 3 Key Metrics, each with a Mean, Uncorrelated Std, and Correlated Std:
+    Returns 3 Key Metrics, each with Uncorrelated, Correlated, and Partially Correlated (rho) Std:
     1. Efficiency (Capex per Net Ton) -> Calculated as Total Cost / Total Carbon
     2. Total Capex -> Sum of costs
     3. Total Carbon -> Sum of savings
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Input dataframe with project-level data
+    rho : float, default=0.5
+        Correlation parameter (0 = uncorrelated, 1 = fully correlated)
+        Used to calculate partially correlated uncertainty
     """
     if df.empty:
         print("Warning: Results dataframe is empty. Cannot aggregate.")
@@ -213,6 +220,17 @@ def aggregate_results(df):
         'std_total_co2_saved': 'total_co2_std_corr'
     }, inplace=True)
     
+    # 3. Partially Correlated Std = Interpolation between uncorrelated and correlated
+    # Formula: σ_partial = √[(1-ρ)·σ_uncorr² + ρ·σ_corr²]
+    df_agg['total_capex_std_partial'] = np.sqrt(
+        (1 - rho) * df_agg['total_capex_std_uncorr']**2 + 
+        rho * df_agg['total_capex_std_corr']**2
+    )
+    df_agg['total_co2_std_partial'] = np.sqrt(
+        (1 - rho) * df_agg['total_co2_std_uncorr']**2 + 
+        rho * df_agg['total_co2_std_corr']**2
+    )
+    
     # === B. EFFICIENCY (Capex per Net Ton) ===
     
     # 1. The Mean (Ratio of Sums)
@@ -222,7 +240,7 @@ def aggregate_results(df):
     # 2. The Uncertainty (Error Propagation for Division)
     # Formula: Z = X/Y -> Sigma_Z = Z * Sqrt( (Sigma_X/X)^2 + (Sigma_Y/Y)^2 )
     
-    # ... Helper for Uncorrelated Path
+    # ... Uncorrelated Path
     cv_capex_u = df_agg['total_capex_std_uncorr'] / df_agg['mean_total_capex']
     cv_co2_u   = df_agg['total_co2_std_uncorr'] / df_agg['mean_total_co2_saved']
     
@@ -230,12 +248,20 @@ def aggregate_results(df):
         df_agg['mean_capex_per_net_ton'] * np.sqrt(cv_capex_u**2 + cv_co2_u**2)
     )
 
-    # ... Helper for Correlated Path
+    # ... Correlated Path
     cv_capex_c = df_agg['total_capex_std_corr'] / df_agg['mean_total_capex']
     cv_co2_c   = df_agg['total_co2_std_corr'] / df_agg['mean_total_co2_saved']
     
     df_agg['std_capex_per_net_ton_corr'] = (
         df_agg['mean_capex_per_net_ton'] * np.sqrt(cv_capex_c**2 + cv_co2_c**2)
+    )
+    
+    # ... Partially Correlated Path (using rho)
+    cv_capex_p = df_agg['total_capex_std_partial'] / df_agg['mean_total_capex']
+    cv_co2_p   = df_agg['total_co2_std_partial'] / df_agg['mean_total_co2_saved']
+    
+    df_agg['std_capex_per_net_ton_partial'] = (
+        df_agg['mean_capex_per_net_ton'] * np.sqrt(cv_capex_p**2 + cv_co2_p**2)
     )
 
     # ---------------------------------------------------------
@@ -244,27 +270,28 @@ def aggregate_results(df):
     # Select and order columns logically
     cols_order = [
         'scenario',
-        #   'upn',
         'num_buildings_sum',
-        # 'num_buildings_sum',
-        # Efficiency
+        
+        # Efficiency - all three correlation assumptions
         'mean_capex_per_net_ton', 
         'std_capex_per_net_ton_uncorr', 
+        'std_capex_per_net_ton_partial',
         'std_capex_per_net_ton_corr',
         
-        # Total Capex
+        # Total Capex - all three correlation assumptions
         'mean_total_capex', 
-        'total_capex_std_uncorr', 
+        'total_capex_std_uncorr',
+        'total_capex_std_partial', 
         'total_capex_std_corr',
         
-        # Total Carbon
+        # Total Carbon - all three correlation assumptions
         'mean_total_co2_saved', 
-        'total_co2_std_uncorr', 
+        'total_co2_std_uncorr',
+        'total_co2_std_partial',
         'total_co2_std_corr'
     ]
 
-    df_agg=df_agg.rename(columns={ "upn": 'num_buildings_sum' }  )
-    
+    df_agg = df_agg.rename(columns={"upn": 'num_buildings_sum'})
     
     return df_agg[cols_order]
 
@@ -308,9 +335,25 @@ def aggregate_equity(df, group_cols=['scenario']):
 # 4. MAIN EXECUTION
 # ==============================================================================
 
-def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH ):
+def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH, RHO=0.5):
     """
     Main function to run the data loading, aggregation, and plotting.
+    
+    Parameters:
+    -----------
+    BUDGETS : list
+        List of budget values to analyze
+    EQUITY_WEIGHTS : list
+        List of equity weights to analyze
+    LOFT_VALUE : float
+        Loft value parameter
+    BASE_PATH : str
+        Base path for input data
+    OUTPUT_PATH : str
+        Path for output files
+    RHO : float, default=0.5
+        Correlation parameter (0 = uncorrelated, 1 = fully correlated)
+        Controls the partial correlation calculation
     """
     # --- 1. Load Data ---
     equity_df, results_df = load_data(
@@ -325,12 +368,13 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
         print("Critical error: No data was loaded. Exiting.")
         return
 
-    # --- 2. Aggregate Data --- - this calcs the aggregations per scenario 
-    results_agg = aggregate_results(results_df)
+    # --- 2. Aggregate Data with rho parameter ---
+    results_agg = aggregate_results(results_df, rho=RHO)
+    print(f'\nUsing correlation parameter ρ = {RHO}')
     print('results cols ')
     print(results_agg.columns.tolist() )
-    # equity_agg = aggregate_equity(equity_df)
-    equity_agg= equity_df
+    
+    equity_agg = equity_df
 
     if results_agg.empty or equity_agg.empty:
         print("Critical error: Aggregation failed. Exiting.")
@@ -382,27 +426,28 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
 
     # --- 4. Print Summary ---
     print("\n" + "=" * 80)
-    print("EQUITY WEIGHTING COMPARISON SUMMARY (MEAN ACROSS EPISTEMIC RUNS)")
+    print(f"EQUITY WEIGHTING COMPARISON SUMMARY (ρ = {RHO})")
     print("=" * 80)
     # Define columns to display for a cleaner summary
     
     display_cols = [
         'scenario_label',
-        # 'total_co2_saved_sum'
-        'total_co2_saved_mean',
-        'total_co2_std',  
+        'mean_total_co2_saved',
+        'total_co2_std_uncorr',
+        'total_co2_std_partial',
+        'total_co2_std_corr',
         'num_buildings_sum',
-        'capex_per_net_ton_sigma', 
         'mean_capex_per_net_ton', 
-        'std_capex_per_net_ton',
+        'std_capex_per_net_ton_uncorr',
+        'std_capex_per_net_ton_partial',
+        'std_capex_per_net_ton_corr',
         'high_risk_pct_mean',
         'equity_concentration_mean',
         'med_risk_pct_mean',
         'middle_risk_pct_mean',
-        'low_risk_pct_mean'
+        'low_risk_pct_mean',
         'v_low_risk_pct_mean'
     ]
-    # rename 
     
     # Filter for columns that actually exist in the final dataframe
     display_cols = [col for col in display_cols if col in comparison_df.columns]
@@ -412,53 +457,53 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
     else:
         print("Could not find key columns to display in summary.")
     print("\n")
-    # save compariosn df 
-    comparison_df.to_csv(f'{OUTPUT_PATH}/comparison_df.csv', index=False)
+    # save comparison df 
+    comparison_df.to_csv(f'{OUTPUT_PATH}/comparison_df_rho_{RHO}.csv', index=False)
 
     # --- 5. Plot Results ---
     print(f"--- Generating plots in: {OUTPUT_PATH} ---")
-    scenario_colors = plot_greedy_compairosn_main(comparison_df, output_dir=OUTPUT_PATH, y_axis_zero=True , loft_val=LOFT_VALUE)
+    scenario_colors = plot_greedy_comparison_main(comparison_df, output_dir=OUTPUT_PATH, y_axis_zero=True, loft_val=LOFT_VALUE, rho=RHO)
 
          
     plot_carbon_by_persona(results_df, scenario_colors, 
-                           os.path.join(OUTPUT_PATH, f"12_carbon_per_persona_loft_{LOFT_VALUE}.png") 
-                           , y_axis_zero=True)
+                           os.path.join(OUTPUT_PATH, f"12_carbon_per_persona_loft_{LOFT_VALUE}.png"), 
+                           y_axis_zero=True)
 
     plot_metric_by_group(results_df, scenario_colors, 
-                         filename=os.path.join(OUTPUT_PATH, f"12b_carbon_metapersona__loft_{LOFT_VALUE}.png")  , 
-                         value_col='mean_total_co2_saved' ,
+                         filename=os.path.join(OUTPUT_PATH, f"12b_carbon_metapersona__loft_{LOFT_VALUE}.png"), 
+                         value_col='mean_total_co2_saved',
                          metric_stat='sum',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
                          ylabel='Total Carbon Saved (Ton)', 
-                         title='Distribution of Total Carbon Ton by Persona',
+                        #  title='Distribution of Total Carbon Ton by Persona',
                          y_axis_zero=True)
 
     plot_metric_by_group(results_df, scenario_colors, 
-                         filename=os.path.join(OUTPUT_PATH, f"13_mean_cost_per_Ton_per_persona_loft_{LOFT_VALUE}.png")  , 
+                         filename=os.path.join(OUTPUT_PATH, f"13_mean_cost_per_Ton_per_persona_loft_{LOFT_VALUE}.png"), 
                          value_col='mean_capex_per_net_ton',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
                          ylabel='Total Cost per Ton Saved (£)',
-                         title='Distribution of Total Cost per Ton by Persona',
+                        #  title='Distribution of Total Cost per Ton by Persona',
                          y_axis_zero=True)
     
     plot_metric_by_group(results_df, scenario_colors, 
-                         filename=os.path.join(OUTPUT_PATH, f"13BB_sigma_cost_per_Ton_per_persona_loft_{LOFT_VALUE}.png")  , 
+                         filename=os.path.join(OUTPUT_PATH, f"13BB_sigma_cost_per_Ton_per_persona_loft_{LOFT_VALUE}.png"), 
                          value_col='capex_per_net_ton_sigma',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
                          ylabel='Total Cost per Ton Saved (£)',
-                         title='Distribution of Total Cost per Ton by Persona',
+                        #  title='Distribution of Total Cost per Ton by Persona',
                          y_axis_zero=True)
     
     plot_metric_by_group(results_df, scenario_colors, 
-                         filename=os.path.join(OUTPUT_PATH, f"14_cost_per_intervention_prr_persona__loft_{LOFT_VALUE}.png")  , 
+                         filename=os.path.join(OUTPUT_PATH, f"14_cost_per_intervention_prr_persona__loft_{LOFT_VALUE}.png"), 
                          value_col='mean_total_capex',
                          group_col='meta_socio_persona',
                          xlabel='Socio-economic Persona',
                          ylabel='Total Cost per Intervention (£)',
-                         title='Distribution of Total Cost per Intervention by Persona',
+                        #  title='Distribution of Total Cost per Intervention by Persona',
                          y_axis_zero=True)
     
     plot_count_by_group(results_df, scenario_colors, 
@@ -466,11 +511,7 @@ def post_proc_greedy(BUDGETS, EQUITY_WEIGHTS, LOFT_VALUE, BASE_PATH, OUTPUT_PATH
                        group_col='meta_socio_persona',
                        xlabel='Socio-economic Persona',
                        ylabel='Number of Projects',
-                       title='Distribution of Project Count by Persona',
+                    #    title='Distribution of Project Count by Persona',
                        y_axis_zero=True)
 
     print("✓ Plotting complete.")
-
-
-
- 
