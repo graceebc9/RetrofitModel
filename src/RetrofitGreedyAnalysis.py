@@ -18,12 +18,13 @@ from .personas import cluster_names
 total_co2_saved_col = 'mean_total_co2_saved'
 total_co2_saved_col_std ='total_co2_std_uncorr' 
 total_co2_full_corr =  'total_co2_std_corr'
+total_co2_std_partial = 'total_co2_std_partial'
 
 # capex_per_net_ton_mean_col = 'capex_per_net_ton_mean'
 capex_per_net_ton_mean_col = 'mean_capex_per_net_ton'
 capex_per_net_ton_std_col = 'std_capex_per_net_ton_corr'
 capex_per_net_ton_std_col_unorr = 'std_capex_per_net_ton_uncorr'
-
+capex_per_net_ton_std_partial = 'std_capex_per_net_ton_partial' 
 
 
 scenario_label_map = {
@@ -104,7 +105,7 @@ def get_sorted_budget_list(df, budget_col='budget'):
 
  
 # plot main 
-def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val = None  ):
+def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val = None , rho=None  ):
     """
     Main plotting function.
     
@@ -146,6 +147,10 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
     plot_carbon_savings_vs_equity(results_subset, equity_weights, budget_label, 
                                   os.path.join(output_dir, f"1_carbon_vs_equity_{loft_val}_CORR.png"),
                                   y_axis_zero=y_axis_zero, co2_std =total_co2_full_corr  )
+
+    plot_carbon_savings_vs_equity(results_subset, equity_weights, budget_label, 
+                                  os.path.join(output_dir, f"1_carbon_vs_equity_{loft_val}_PARTIAL_CORR_{rho}.png"),
+                                  y_axis_zero=y_axis_zero, co2_std =total_co2_std_partial  )
     
     plot_cost_effectiveness_vs_equity(results_subset, equity_weights, budget_label, 
                                       os.path.join(output_dir, f"2_cost_effectiveness_vs_equity_{loft_val}_CORR.png"),
@@ -176,6 +181,12 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
                       y_axis_zero=y_axis_zero, 
                          ycol=total_co2_saved_col,
         ycol_std= total_co2_full_corr, )
+    
+    plot_pareto_front(results_subset, equity_subset, scenarios, scenario_colors, budget_label, 
+                      os.path.join(output_dir, f"6_pareto_front_{loft_val}_partialLCORR_{rho}.png"),
+                      y_axis_zero=y_axis_zero, 
+                         ycol=total_co2_saved_col,
+        ycol_std= total_co2_std_partial, )
     
  
     
@@ -223,6 +234,23 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
         y_scaler=1e3, 
         y_axis_zero=False
         )
+
+    plot_pareto_front_flexi(
+        results_subset, 
+        equity_subset, 
+        scenarios, 
+        scenario_colors, 
+        budget_label, 
+        filename=   os.path.join(output_dir, f"10_pareto_bcounts_{loft_val}_PARTIALCORR_{rho}.png" ) , 
+        x_col='num_buildings_sum', 
+        y_col=total_co2_saved_col,
+        y_col_std= total_co2_std_partial, 
+        x_label='Number of buildings',
+        y_label='CO2 Saved (kton)',
+        x_scaler=1.0,
+        y_scaler=1e3, 
+        y_axis_zero=False
+        )
     
     plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenarios, scenario_colors, budget_label,
                                  os.path.join(output_dir, f"11_pareto_cost_eff__loft_{loft_val}_UNCORR.png") ,
@@ -231,6 +259,11 @@ def plot_greedy_compairosn_main(df_raw, output_dir, y_axis_zero=False, loft_val 
     plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenarios, scenario_colors, budget_label,
                                  os.path.join(output_dir, f"11_pareto_cost_eff__loft_{loft_val}_CORR.png") ,
                                 y_axis_zero=y_axis_zero, capex_std = capex_per_net_ton_std_col_unorr)
+
+
+    plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenarios, scenario_colors, budget_label,
+                                 os.path.join(output_dir, f"11_pareto_cost_eff__loft_{loft_val}_PARITLACORR_{rho}.png") ,
+                                y_axis_zero=y_axis_zero, capex_std = capex_per_net_ton_std_partial)
 
 
 
@@ -1361,7 +1394,7 @@ def plot_pareto_retrofit_carbon_by_costeff(results_subset, equity_subset, scenar
         
         ax_all.plot(buildings_means_sorted, cost_eff_means_sorted , '--', alpha=0.5, linewidth=2, label=f'Budget {budget_val}')
 
-
+        
         # # Plot the line for this budget on the master plot
         # # We label the line with the Budget Value so the legend identifies the curve
         # ax_all.errorbar(buildings_means_sorted, cost_eff_means_sorted, yerr=cost_eff_stds_sorted, 

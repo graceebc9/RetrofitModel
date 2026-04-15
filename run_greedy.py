@@ -38,6 +38,10 @@ from src.GreedyEpcVis import run_epc_vis
 
 milion_factor = 1_000_000
 
+
+RHO=0.45 
+
+
 def load_data_simple(files):
     res = [] 
     for f in files:
@@ -90,21 +94,21 @@ def main():
         # budgets = [1_000_000, 10_000_000, 100_000_000]
         budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000] 
         budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000,  100_000_000]
-        budgets = [ 1_000_000,  25_000_000, 50_000_000, 80_000_000,  100_000_000, 200_000_000]
-        budgets = [  50_000_000]
-        # budgets = [25_000_000]
-        # budgets= [200_000_000]
+        budgets = [ 1_000_000,  25_000_000, 50_000_000,  100_000_000, 200_000_000]
+        
+        
+        budgets= [200_000_000]
         # budgets = [ 1_000_000, ]
         # budgets=[25_000_000]
         # budgets = [  50_000_000,80_000_000]
         loft_probs = [0.65, 0.95  ]
-        loft_probs = [0.95 ]
+        # loft_probs = [0.95 ]
         # loft_probs = [0.0, 1.0]
         
         
         
-        equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.3, 1.4, 1.5, 1.6]
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.3]
+        # equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.3]
         # equity_factors = [ 1.3, 1.4, 1.5, 1.6, 1.7]
         # equity_factors = [ 1.6, 1.7]
         # equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2 ]
@@ -335,6 +339,9 @@ def main():
                         carbon_col='mean_total_co2_saved',
                         logger=detail_logger, 
                     )
+
+                    
+                    
                     selected_projects_df['remaining_funds'] = remaining_funds
 
                     if baseline_selection.empty:
@@ -420,7 +427,7 @@ def main():
 
             # Ensure output directory exists
             os.makedirs(OUTPUT_PATH, exist_ok=True)
-            post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH)
+            post_proc_greedy(budgets, equity_factors, LOFT_VALUE, greedy_runs_folder, OUTPUT_PATH, RHO=RHO)
         
     if post_proc_epc:
         if epc_run:
