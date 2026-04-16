@@ -5,15 +5,15 @@ combine_sweep_results.py - Memory-efficient combination of parquet files WITH vi
 Updated to use Law of Total Variance for uncertainty aggregation and
 confidence interval threshold crossings (μ-σ / μ / μ+σ).
 
+Now includes building census logging at raw and filtered stages for paper reporting.
+
 Usage:
     # Full pipeline (process + plot)
     python combine_sweep_results.py
     
     # Plots only from existing results
     python combine_sweep_results.py --plots-only --output-dir wall_param_sweep/results/combined_12:34:56
-    
-    
-    
+
     python combine_param_sweeps.py --results-dir /home/gb669/rds/hpc-work/energy_map/RetrofitModel/wall_param_sweep_v10_n50_p10_v3/results  --output-dir /home/gb669/rds/hpc-work/energy_map/RetrofitModel/wall_param_sweep_v10_n50_p10_v3/output
 """
 
@@ -91,6 +91,258 @@ def normalize_building_category(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         df['building_category'] = df['building_category'].replace(CATEGORY_MAP)
     return df
+
+
+# ==========================================
+# BUILDING CENSUS FUNCTIONS
+# ==========================================
+
+def _add_total_row(df: pd.DataFrame, count_col: str = 'n_distinct_upns') -> pd.DataFrame:
+    """Append a total row summing the count column."""
+    total = pd.DataFrame([{
+        **{c: 'TOTAL' if df[c].dtype == object else '' for c in df.columns if c != count_col},
+        count_col: df[count_col].sum(),
+    }])
+    return pd.concat([df, total], ignore_index=True)
+
+
+def compute_building_census(
+    df: pd.DataFrame,
+    stage_label: str,
+    output_dir: Path,
+    attrition_ref: Optional[dict] = None,
+) -> dict:
+    """Compute and save building census tables (distinct UPN counts) for all typology groupings.
+    
+    Args:
+        df: DataFrame with at least 'upn' and 'building_category' columns.
+        stage_label: 'raw' or 'filtered' — used in filenames.
+        output_dir: Directory to save CSVs.
+        attrition_ref: If provided (dict of group_key -> n_distinct_upns from raw stage),
+                       an 'attrition' and 'attrition_pct' column is added to filtered tables.
+    
+    Returns:
+        dict mapping group_key tuples to n_distinct_upns (for use as attrition_ref in
+        a subsequent filtered call).
+    """
+    census_dir = output_dir / 'census'
+    census_dir.mkdir(exist_ok=True)
+    
+    upn_col = 'upn'
+    ref_lookup = {}  # returned for attrition tracking
+    
+    # ---- 1. By building_category ----
+    grp1 = (
+        df.groupby('building_category')[upn_col]
+        .nunique()
+        .reset_index()
+        .rename(columns={upn_col: 'n_distinct_upns'})
+        .sort_values('building_category')
+    )
+    for _, row in grp1.iterrows():
+        ref_lookup[('category', row['building_category'])] = row['n_distinct_upns']
+    
+    if attrition_ref:
+        grp1['n_raw_upns'] = grp1['building_category'].map(
+            lambda c: attrition_ref.get(('category', c), np.nan)
+        )
+        grp1['n_dropped'] = grp1['n_raw_upns'] - grp1['n_distinct_upns']
+        grp1['pct_retained'] = (grp1['n_distinct_upns'] / grp1['n_raw_upns'] * 100).round(1)
+    
+    grp1 = _add_total_row(grp1)
+    path1 = census_dir / f'census_{stage_label}_by_category.csv'
+    grp1.to_csv(path1, index=False)
+    print(f"  Census saved: {path1} ({len(grp1) - 1} categories + total)")
+    
+    # ---- 2. By building_category × avg_gas_percentile ----
+    if 'avg_gas_percentile' in df.columns:
+        grp2 = (
+            df.groupby(['building_category', 'avg_gas_percentile'])[upn_col]
+            .nunique()
+            .reset_index()
+            .rename(columns={upn_col: 'n_distinct_upns'})
+            .sort_values(['building_category', 'avg_gas_percentile'])
+        )
+        for _, row in grp2.iterrows():
+            ref_lookup[('cat_gas', row['building_category'], row['avg_gas_percentile'])] = row['n_distinct_upns']
+        
+        if attrition_ref:
+            grp2['n_raw_upns'] = grp2.apply(
+                lambda r: attrition_ref.get(('cat_gas', r['building_category'], r['avg_gas_percentile']), np.nan),
+                axis=1,
+            )
+            grp2['n_dropped'] = grp2['n_raw_upns'] - grp2['n_distinct_upns']
+            grp2['pct_retained'] = (grp2['n_distinct_upns'] / grp2['n_raw_upns'] * 100).round(1)
+        
+        grp2 = _add_total_row(grp2)
+        path2 = census_dir / f'census_{stage_label}_by_category_x_gas.csv'
+        grp2.to_csv(path2, index=False)
+        print(f"  Census saved: {path2} ({len(grp2) - 1} groups + total)")
+    
+    # ---- 3. By building_category × premise_type_filled ----
+    if 'premise_type_filled' in df.columns:
+        grp3 = (
+            df.groupby(['building_category', 'premise_type_filled'])[upn_col]
+            .nunique()
+            .reset_index()
+            .rename(columns={upn_col: 'n_distinct_upns'})
+            .sort_values(['building_category', 'premise_type_filled'])
+        )
+        for _, row in grp3.iterrows():
+            ref_lookup[('cat_prem', row['building_category'], row['premise_type_filled'])] = row['n_distinct_upns']
+        
+        if attrition_ref:
+            grp3['n_raw_upns'] = grp3.apply(
+                lambda r: attrition_ref.get(('cat_prem', r['building_category'], r['premise_type_filled']), np.nan),
+                axis=1,
+            )
+            grp3['n_dropped'] = grp3['n_raw_upns'] - grp3['n_distinct_upns']
+            grp3['pct_retained'] = (grp3['n_distinct_upns'] / grp3['n_raw_upns'] * 100).round(1)
+        
+        grp3 = _add_total_row(grp3)
+        path3 = census_dir / f'census_{stage_label}_by_category_x_premise.csv'
+        grp3.to_csv(path3, index=False)
+        print(f"  Census saved: {path3} ({len(grp3) - 1} groups + total)")
+    
+    # ---- 4. Summary to console ----
+    total_upns = df[upn_col].nunique()
+    print(f"\n  [{stage_label.upper()} CENSUS] Total distinct UPNs: {total_upns:,}")
+    for _, row in grp1[grp1['building_category'] != 'TOTAL'].iterrows():
+        pct = row['n_distinct_upns'] / total_upns * 100
+        print(f"    {row['building_category']}: {row['n_distinct_upns']:,} ({pct:.1f}%)")
+    
+    return ref_lookup
+
+
+def compute_building_census_chunked(
+    csv_path: Path,
+    stage_label: str,
+    output_dir: Path,
+    attrition_ref: Optional[dict] = None,
+    chunksize: int = 200_000,
+) -> dict:
+    """Memory-efficient census from a large CSV, reading in chunks.
+    
+    Collects sets of unique UPNs per group across chunks, then counts.
+    """
+    census_dir = output_dir / 'census'
+    census_dir.mkdir(exist_ok=True)
+    
+    # Accumulators: group_key -> set of UPNs
+    by_cat = {}
+    by_cat_gas = {}
+    by_cat_prem = {}
+    
+    cols_needed = ['upn', 'building_category']
+    # Peek at columns to know what's available
+    sample = pd.read_csv(csv_path, nrows=1)
+    has_gas = 'avg_gas_percentile' in sample.columns
+    has_prem = 'premise_type_filled' in sample.columns
+    if has_gas:
+        cols_needed.append('avg_gas_percentile')
+    if has_prem:
+        cols_needed.append('premise_type_filled')
+    
+    for chunk in tqdm(
+        pd.read_csv(csv_path, chunksize=chunksize, usecols=cols_needed),
+        desc=f"Census ({stage_label})",
+    ):
+        for _, row in chunk.iterrows():
+            upn = row['upn']
+            cat = row['building_category']
+            
+            if pd.isna(cat):
+                continue
+            
+            # By category
+            by_cat.setdefault(cat, set()).add(upn)
+            
+            # By category × gas
+            if has_gas and pd.notna(row.get('avg_gas_percentile')):
+                gas = row['avg_gas_percentile']
+                by_cat_gas.setdefault((cat, gas), set()).add(upn)
+            
+            # By category × premise
+            if has_prem and pd.notna(row.get('premise_type_filled')):
+                prem = row['premise_type_filled']
+                by_cat_prem.setdefault((cat, prem), set()).add(upn)
+    
+    # Build DataFrames and save
+    ref_lookup = {}
+    
+    # ---- 1. By category ----
+    rows1 = []
+    for cat, upns in sorted(by_cat.items()):
+        n = len(upns)
+        rows1.append({'building_category': cat, 'n_distinct_upns': n})
+        ref_lookup[('category', cat)] = n
+    grp1 = pd.DataFrame(rows1)
+    
+    if attrition_ref:
+        grp1['n_raw_upns'] = grp1['building_category'].map(
+            lambda c: attrition_ref.get(('category', c), np.nan)
+        )
+        grp1['n_dropped'] = grp1['n_raw_upns'] - grp1['n_distinct_upns']
+        grp1['pct_retained'] = (grp1['n_distinct_upns'] / grp1['n_raw_upns'] * 100).round(1)
+    
+    grp1 = _add_total_row(grp1)
+    path1 = census_dir / f'census_{stage_label}_by_category.csv'
+    grp1.to_csv(path1, index=False)
+    print(f"  Census saved: {path1} ({len(grp1) - 1} categories + total)")
+    
+    # ---- 2. By category × gas ----
+    if by_cat_gas:
+        rows2 = []
+        for (cat, gas), upns in sorted(by_cat_gas.items()):
+            n = len(upns)
+            rows2.append({'building_category': cat, 'avg_gas_percentile': gas, 'n_distinct_upns': n})
+            ref_lookup[('cat_gas', cat, gas)] = n
+        grp2 = pd.DataFrame(rows2)
+        
+        if attrition_ref:
+            grp2['n_raw_upns'] = grp2.apply(
+                lambda r: attrition_ref.get(('cat_gas', r['building_category'], r['avg_gas_percentile']), np.nan),
+                axis=1,
+            )
+            grp2['n_dropped'] = grp2['n_raw_upns'] - grp2['n_distinct_upns']
+            grp2['pct_retained'] = (grp2['n_distinct_upns'] / grp2['n_raw_upns'] * 100).round(1)
+        
+        grp2 = _add_total_row(grp2)
+        path2 = census_dir / f'census_{stage_label}_by_category_x_gas.csv'
+        grp2.to_csv(path2, index=False)
+        print(f"  Census saved: {path2} ({len(grp2) - 1} groups + total)")
+    
+    # ---- 3. By category × premise ----
+    if by_cat_prem:
+        rows3 = []
+        for (cat, prem), upns in sorted(by_cat_prem.items()):
+            n = len(upns)
+            rows3.append({'building_category': cat, 'premise_type_filled': prem, 'n_distinct_upns': n})
+            ref_lookup[('cat_prem', cat, prem)] = n
+        grp3 = pd.DataFrame(rows3)
+        
+        if attrition_ref:
+            grp3['n_raw_upns'] = grp3.apply(
+                lambda r: attrition_ref.get(('cat_prem', r['building_category'], r['premise_type_filled']), np.nan),
+                axis=1,
+            )
+            grp3['n_dropped'] = grp3['n_raw_upns'] - grp3['n_distinct_upns']
+            grp3['pct_retained'] = (grp3['n_distinct_upns'] / grp3['n_raw_upns'] * 100).round(1)
+        
+        grp3 = _add_total_row(grp3)
+        path3 = census_dir / f'census_{stage_label}_by_category_x_premise.csv'
+        grp3.to_csv(path3, index=False)
+        print(f"  Census saved: {path3} ({len(grp3) - 1} groups + total)")
+    
+    # ---- Console summary ----
+    total_upns = len(set().union(*by_cat.values())) if by_cat else 0
+    print(f"\n  [{stage_label.upper()} CENSUS] Total distinct UPNs: {total_upns:,}")
+    for cat in sorted(by_cat.keys()):
+        n = len(by_cat[cat])
+        pct = n / total_upns * 100 if total_upns > 0 else 0
+        print(f"    {cat}: {n:,} ({pct:.1f}%)")
+    
+    return ref_lookup
 
 
 # ==========================================
@@ -250,6 +502,7 @@ def _compute_group_stats(valid_means, valid_stds, valid_df):
 
     result = {
         'n_valid': len(valid_means),
+        'n_distinct_upns': valid_df['upn'].nunique(),
         'mean': valid_means.mean(),
         'median': valid_means.median(),
         'median_optimistic': optimistic_values.median(),
@@ -281,6 +534,7 @@ def _compute_group_stats(valid_means, valid_stds, valid_df):
 def compute_final_statistics(
     reduced_csv_path: Path,
     output_dir: Path,
+    raw_census_ref: Optional[dict] = None,
     chunksize: int = 100_000,
 ) -> pd.DataFrame:
     """Compute final aggregated statistics from reduced data.
@@ -291,8 +545,12 @@ def compute_final_statistics(
     - category_x_premise_type.csv: per factor x building_category x premise_type_filled
     - premise_x_gas_decile.csv: per factor x building_category x premise_type_filled x avg_gas_percentile
     
+    Also runs a filtered building census (after validity filtering) with attrition
+    tracking relative to the raw census.
+    
     For each group:
     - Cross-building summary stats (median, percentiles)
+    - n_distinct_upns: number of unique buildings in the group
     - median_optimistic / median_pessimistic (median of per-building μ±σ)
     - Threshold crossings at three confidence levels (μ-σ / μ / μ+σ)
     - Average uncertainty decomposition
@@ -312,6 +570,9 @@ def compute_final_statistics(
     all_gas_results = []
     all_premise_results = []
     all_premise_gas_results = []
+    
+    # Collect all valid buildings for the filtered census
+    filtered_buildings_rows = []
     
     for int_f, ext_f, sweep in tqdm(sweep_params, desc="Aggregating"):
         buildings = []
@@ -340,6 +601,14 @@ def compute_final_statistics(
             cat_df = df[df['building_category'] == category]
             
             valid_means, valid_stds, valid_df, n_dropped = _filter_valid_buildings(cat_df)
+            
+            # Accumulate valid buildings for filtered census
+            # (use only first sweep param combo to avoid double-counting across sweeps)
+            if len(valid_df) > 0:
+                filtered_buildings_rows.append(valid_df[
+                    [c for c in ['upn', 'building_category', 'avg_gas_percentile', 'premise_type_filled']
+                     if c in valid_df.columns]
+                ])
             
             stats = _compute_group_stats(valid_means, valid_stds, valid_df)
             if stats is None:
@@ -403,6 +672,17 @@ def compute_final_statistics(
                                 'n': len(pg_sub),
                                 **pg_stats,
                             })
+    
+    # --- Filtered building census ---
+    if filtered_buildings_rows:
+        print("\n--- Filtered Building Census (after validity filtering) ---")
+        filtered_all = pd.concat(filtered_buildings_rows, ignore_index=True).drop_duplicates(subset=['upn'])
+        compute_building_census(
+            filtered_all,
+            stage_label='filtered',
+            output_dir=output_dir,
+            attrition_ref=raw_census_ref,
+        )
     
     # Save main results
     results_df = pd.DataFrame(all_results)
@@ -522,9 +802,9 @@ def print_summary(results_df: pd.DataFrame):
 
     # Internal sweep
     print("\nINTERNAL FACTOR SWEEP (solid_wall_internal buildings):")
-    print(f"{'Factor':<10} {'N':>6} {'Median':>10} {'AvgStd':>10} "
+    print(f"{'Factor':<10} {'N':>6} {'UPNs':>8} {'Median':>10} {'AvgStd':>10} "
           f"{'Opt%<£2k':>10} {'Cen%<£2k':>10} {'Pes%<£2k':>10}")
-    print("-" * 80)
+    print("-" * 90)
     
     internal = results_df[
         (results_df['sweep_type'] == 'internal') &
@@ -532,7 +812,9 @@ def print_summary(results_df: pd.DataFrame):
     ].sort_values('internal_factor')
     
     for _, row in internal.iterrows():
-        print(f"{row['internal_factor']:<10.2f} {row['n']:>6.0f} {row['median']:>10.0f} "
+        print(f"{row['internal_factor']:<10.2f} {row['n']:>6.0f} "
+              f"{row.get('n_distinct_upns', np.nan):>8.0f} "
+              f"{row['median']:>10.0f} "
               f"{row.get('avg_combined_std', np.nan):>10.0f} "
               f"{row.get('optimistic_pct_below_2000', np.nan):>9.1f}% "
               f"{row.get('central_pct_below_2000', np.nan):>9.1f}% "
@@ -540,9 +822,9 @@ def print_summary(results_df: pd.DataFrame):
 
     # External sweep
     print("\nEXTERNAL FACTOR SWEEP (solid_wall_external buildings):")
-    print(f"{'Factor':<10} {'N':>6} {'Median':>10} {'AvgStd':>10} "
+    print(f"{'Factor':<10} {'N':>6} {'UPNs':>8} {'Median':>10} {'AvgStd':>10} "
           f"{'Opt%<£2k':>10} {'Cen%<£2k':>10} {'Pes%<£2k':>10}")
-    print("-" * 80)
+    print("-" * 90)
     
     external = results_df[
         (results_df['sweep_type'] == 'external') &
@@ -550,7 +832,9 @@ def print_summary(results_df: pd.DataFrame):
     ].sort_values('external_factor')
     
     for _, row in external.iterrows():
-        print(f"{row['external_factor']:<10.2f} {row['n']:>6.0f} {row['median']:>10.0f} "
+        print(f"{row['external_factor']:<10.2f} {row['n']:>6.0f} "
+              f"{row.get('n_distinct_upns', np.nan):>8.0f} "
+              f"{row['median']:>10.0f} "
               f"{row.get('avg_combined_std', np.nan):>10.0f} "
               f"{row.get('optimistic_pct_below_2000', np.nan):>9.1f}% "
               f"{row.get('central_pct_below_2000', np.nan):>9.1f}% "
@@ -767,7 +1051,14 @@ def main():
         if not reduced_csv.exists():
             print(f"Error: Reduced CSV not found: {reduced_csv}")
             sys.exit(1)
-        results_df = compute_final_statistics(reduced_csv, output_dir)
+        
+        # Raw census from existing reduced CSV
+        print("\n--- Raw Building Census (all reduced buildings) ---")
+        raw_census_ref = compute_building_census_chunked(
+            reduced_csv, stage_label='raw', output_dir=output_dir
+        )
+        
+        results_df = compute_final_statistics(reduced_csv, output_dir, raw_census_ref=raw_census_ref)
         print_summary(results_df)
     else:
         print("\n=== FULL PROCESSING MODE ===")
@@ -777,7 +1068,13 @@ def main():
             print("No files processed!")
             return
 
-        results_df = compute_final_statistics(reduced_csv, output_dir)
+        # Raw census from freshly created reduced CSV
+        print("\n--- Raw Building Census (all reduced buildings) ---")
+        raw_census_ref = compute_building_census_chunked(
+            reduced_csv, stage_label='raw', output_dir=output_dir
+        )
+
+        results_df = compute_final_statistics(reduced_csv, output_dir, raw_census_ref=raw_census_ref)
         print_summary(results_df)
 
         # Convert to parquet for efficient downstream use
