@@ -200,6 +200,24 @@ def multichoice_knapsack(
                 "abatement": round(grp[carbon_col].sum(), 2),
             }
 
+
+    # Per-intervention breakdown
+    percntile_col = "avg_gas_percentile"
+    percentile_breakdown = {}
+    if percntile_col in selected_df.columns:
+        print('col present') 
+        for intv, grp in selected_df.groupby(percntile_col):
+            percentile_breakdown[intv] = {
+                "buildings": len(grp),
+                "spend": round(grp[cost_col].sum(), 0),
+                "abatement": round(grp[carbon_col].sum(), 2),
+            }
+    else:
+        import sys 
+        print('missing percentile')
+        sys.exit() 
+
+
     stats = {
         "status": status,
         "solve_time_s": round(solve_time, 2),
@@ -223,6 +241,7 @@ def multichoice_knapsack(
         ),
         "persona_breakdown": persona_breakdown,
         "intervention_breakdown": intervention_breakdown,
+        "percentile_breakdown": percentile_breakdown , 
     }
 
     if logger:

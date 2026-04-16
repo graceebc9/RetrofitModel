@@ -388,6 +388,50 @@ def plot_tradeoff_scatter(pareto_summaries_df, output_dir, loft_val):
     print(f"  Saved {os.path.basename(path)}")
 
 
+
+def plot_decile_distribution_shifts(results_df, output_dir, loft_val, budget_filter=None):
+    """
+    Plots how the distribution of a metric (e.g., carbon saved) shifts 
+    across avg_gas_percentile deciles for different equity floors.
+    """
+    if results_df.empty or 'avg_gas_percentile' not in results_df.columns:
+        print("  ⚠️ Column 'avg_gas_percentile' missing. Skipping decile plots.")
+        return
+
+    # If a specific budget is provided, filter; otherwise loop through all
+    budgets = [budget_filter] if budget_filter else sorted(results_df['budget'].unique())
+
+    for budget in budgets:
+        df_b = results_df[results_df['budget'] == budget].copy()
+        
+        # Aggregate carbon saved by decile and equity floor
+        # We sum the carbon to see the "Total Impact" per decile
+        dist_df = df_b.groupby(['equity_floor_pct', 'avg_gas_percentile'])['mean_total_co2_saved'].sum().reset_index()
+
+        plt.figure(figsize=(12, 6))
+        sns.lineplot(
+            data=dist_df, 
+            x='avg_gas_percentile', 
+            y='mean_total_co2_saved', 
+            hue='equity_floor_pct', 
+            marker='o',
+            palette='viridis'
+        )
+
+        plt.title(f'Carbon Distribution Shift by Decile (Budget £{budget/1e6:.0f}M)')
+        plt.xlabel('Gas Percentile Decile (1 = Lowest, 10 = Highest)')
+        plt.ylabel('Total CO₂ Abatement (tonnes)')
+        plt.xticks(range(1, 11))
+        plt.grid(True, alpha=0.3)
+        plt.legend(title='Equity Floor %', bbox_to_anchor=(1.05, 1), loc='upper left')
+        
+        budget_label = f"{budget/1e6:.0f}".replace('.', '_')
+        path = os.path.join(output_dir, f'05_decile_shift_budget_{budget_label}M_loft_{loft_val}.png')
+        plt.savefig(path, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"  Saved {os.path.basename(path)}")
+
+
 def plot_intervention_by_persona_per_budget(
     results_df, output_dir, loft_val, equity_floors,
     metric='count',
@@ -594,6 +638,48 @@ def plot_intervention_by_persona_per_budget(
         plt.close(fig)
         print(f"  Saved {os.path.basename(path)}")
 
+def plot_decile_persona_interaction(results_df, output_dir, loft_val):
+    """
+    Visualizes the count of buildings at the intersection of 
+    Gas Decile and Persona, faceted by Equity Floor.
+    """
+    if 'avg_gas_percentile' not in results_df.columns or 'meta_socio_persona' not in results_df.columns:
+        print("  ⚠️ Missing decile or persona columns. Skipping interaction plot.")
+        return
+
+    budgets = sorted(results_df['budget'].unique())
+    persona_order = ['high_risk', 'med_risk', 'middle_risk', 'low_risk', 'v_low_risk']
+
+    for budget in budgets:
+        df_b = results_df[results_df['budget'] == budget].copy()
+        
+        # We use a FacetGrid to see how the interaction changes as Equity Floor increases
+        g = sns.FacetGrid(
+            df_b, 
+            col="equity_floor_pct", 
+            hue="meta_socio_persona", 
+            hue_order=persona_order,
+            col_wrap=3, 
+            height=4, 
+            aspect=1.2,
+            palette='Set2'
+        )
+        
+        # Use a countplot-style histogram across deciles
+        g.map(sns.histplot, "avg_gas_percentile", bins=np.arange(1, 12) - 0.5, element="step", alpha=0.5)
+        
+        g.set_axis_labels("Gas Decile", "Count of Buildings")
+        g.add_legend(title="Persona")
+        g.set_titles("Equity Floor: {col_name}%")
+        
+        plt.subplots_adjust(top=0.9)
+        budget_label = f"{budget/1e6:.0f}".replace('.', '_')
+        g.fig.suptitle(f'Decile vs Persona Interaction — Budget £{budget/1e6:.0f}M (Loft {loft_val})', fontsize=16)
+        
+        path = os.path.join(output_dir, f'06_interaction_decile_persona_budget_{budget_label}M.png')
+        g.savefig(path, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"  Saved {os.path.basename(path)}")
 
 # ==============================================================================
 # 5. MAIN EXECUTION
@@ -722,6 +808,10 @@ def post_proc_pareto(
     plot_pareto_front_overlay(pareto_summaries_df, OUTPUT_PATH, LOFT_VALUE)
     plot_cpex_vs_equity_overlay(pareto_summaries_df, OUTPUT_PATH, LOFT_VALUE)
     plot_tradeoff_scatter(pareto_summaries_df, OUTPUT_PATH, LOFT_VALUE)
+
+    # New: Decile Distribution Shifts
+    plot_decile_distribution_shifts(results_df, OUTPUT_PATH, LOFT_VALUE)
+    plot_decile_persona_interaction(results_df, OUTPUT_PATH, LOFT_VALUE)
 
     for metric in ('count', 'carbon', 'spend'):
         plot_intervention_by_persona_per_budget(

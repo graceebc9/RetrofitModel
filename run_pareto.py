@@ -92,6 +92,7 @@ def stratified_sample_buildings(
     postcode_col='postcode',
     persona_col='meta_socio_persona',
     intervention_col='intervention',
+    decile_col = 'avg_gas_percentile',
     min_per_stratum=1,
     seed=42,
     logger=None,
@@ -449,6 +450,54 @@ def plot_pareto_summary(all_stats, baseline_stats, output_dir, budget):
         except Exception as e:
             print(f"  Plot {plot_idx} failed: {e}")
 
+
+ 
+
+    # 1. Define deciles 1-10 and a color palette
+    deciles_order = list(range(1, 11))
+    # Use a sequential colormap (like YlGnBu or viridis) to represent the 1-10 scale
+    decile_colors = plt.cm.viridis(np.linspace(0, 1, 10))
+    
+
+    for plot_idx, (key, ylabel, divisor, suffix) in enumerate([
+        ('buildings', 'Number of buildings retrofitted', 1,   'decile_buildings'),
+        ('spend',     'Spend (£M)',                     1e6, 'decile_spend'),
+        ('abatement', 'CO₂ abatement (tonnes)',         1,   'decile_abatement'),
+    ], start=3):
+        try:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            x = np.arange(len(eq_floors))
+            bottom = np.zeros(len(eq_floors))
+            width = 0.75
+
+            # 2. Iterate over deciles 1 through 10
+            for i, d in enumerate(deciles_order):
+                # Pulling from s['avg_gas_percentile'] which now contains decile keys (1, 2, etc.)
+                vals = [s['percentile_breakdown'].get(d, {}).get(key, 0) / divisor
+                        for s in feasible]
+                
+                ax.bar(x, vals, width, bottom=bottom,
+                    label=f'Decile {d}',
+                    color=decile_colors[i],
+                    edgecolor='white', linewidth=0.5)
+                
+                bottom += np.array(vals)
+
+            ax.set_xticks(x)
+            ax.set_xticklabels([f'{e:.0f}%' for e in eq_floors], rotation=45)
+            ax.set_xlabel('Equity floor', fontsize=11)
+            ax.set_ylabel(ylabel, fontsize=11)
+            ax.set_title(f'Decile Split — {key.title()} — Budget £{budget/1e6:.1f}M',
+                        fontsize=13, fontweight='bold')
+            
+            # Place legend on the side because 10 decile labels take up space
+            ax.legend(title='Gas Decile', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+            ax.grid(axis='y', alpha=0.3)
+            
+            save_fig(fig, suffix)
+        except Exception as e:
+            print(f"  Plot {plot_idx} failed: {e}")
+    
     # Plot 6: Intervention mix
     try:
         all_interventions = set()
@@ -570,12 +619,13 @@ def run_pareto(
             selected_path = os.path.join(output_dir, f'selected_projects_eq{eq_label}.csv')
             selected_df.to_csv(selected_path, index=False)
             try:
-                plot_greedy_distribution_analysis(
-                    baseline_df=df_buildings,
-                    selected_df=selected_df,
-                    scenario_name=f'pareto_eq{eq_label}_loft{loft_prob}',
-                    output_dir=output_dir,
-                )
+                None
+                # plot_greedy_distribution_analysis(
+                #     baseline_df=df_buildings,
+                #     selected_df=selected_df,
+                #     scenario_name=f'pareto_eq{eq_label}_loft{loft_prob}',
+                #     output_dir=output_dir,
+                # )
             except Exception as e:
                 print(f"  Plot failed for eq={eps}: {e}")
 
@@ -712,7 +762,7 @@ def main():
         setting_name = f'{setting_name}_TEST'
 
     input_files = glob.glob(INPUT_FILES_PATH)
-    pareto_runs_folder = os.path.join(BASE_DIR, 'pareto_runs', setting_name)
+    pareto_runs_folder = os.path.join(BASE_DIR, 'pareto_runs', setting_name, f'samples_{str(TEST_SAMPLE_SIZE)}'  )
 
     print("\n" + "=" * 80)
     print("PARETO KNAPSACK ANALYSIS — ε-CONSTRAINT ON EQUITY SPEND")
