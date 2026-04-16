@@ -10,8 +10,11 @@ Key changes from previous version:
     "at least X% of total spend must go to high/med risk personas".
   - Sweeps equity_floor_pct to trace the Pareto front.
   - Saves per-sweep results + Pareto summary.
-  - NEW: skips a (budget, loft_prob) combination if pareto_summary.csv
+  - Skips a (budget, loft_prob) combination if pareto_summary.csv
     already exists for it (unless FORCE_RERUN=Y).
+  - NEW: TEST_MODE support — run on a stratified sample of buildings
+    (stratified jointly on persona and intervention-package menu) to
+    sanity-check the pipeline end-to-end before kicking off a full run.
 """
 
 import os
@@ -34,7 +37,7 @@ from src.utils import is_running_on_hpc
 from src.EPCAlgo import select_epc_algo
 from src.GreedyEpcVis import run_epc_vis
 from src.PostPareto import post_proc_pareto
-from src.ParetoUtills import * 
+from src.ParetoUtills import *
 
 from src.ParetoKnapsack import (
     multichoice_knapsack,
@@ -52,6 +55,22 @@ RHO = 0.45
 # FORCE_RERUN=Y to redo completed runs. Default is to skip.
 FORCE_RERUN = os.getenv("FORCE_RERUN", "N").upper() == "Y"
 
+# ---------------------------------------------------------------------------
+# TEST MODE
+# ---------------------------------------------------------------------------
+# TEST_MODE=Y       → run on a small stratified sample of buildings.
+# TEST_SAMPLE_SIZE  → target number of buildings in the sample (default 500).
+# TEST_MIN_PER_STRATUM → at least this many buildings per (persona, menu)
+#                        stratum, subject to availability (default 1).
+# TEST_SEED         → RNG seed for reproducibility (default 42).
+#
+# Outputs go to a separate folder (suffix `_TEST`) so they never clobber
+# a real run. Budgets are also scaled down (see `_scale_budgets_for_test`).
+TEST_MODE = os.getenv("TEST_MODE", "N").upper() == "Y"
+TEST_SAMPLE_SIZE = int(os.getenv("TEST_SAMPLE_SIZE", "500"))
+TEST_MIN_PER_STRATUM = int(os.getenv("TEST_MIN_PER_STRATUM", "1"))
+TEST_SEED = int(os.getenv("TEST_SEED", "42"))
+
 
 def load_data_simple(files):
     res = []
@@ -62,6 +81,217 @@ def load_data_simple(files):
 
 
 # ============================================================================
+# STRATIFIED SAMPLING FOR TEST MODE
+# ============================================================================
+
+def stratified_sample_buildings(
+    df,
+    personas,
+    target_n,
+    upn_col='upn',
+    postcode_col='postcode',
+    persona_col='meta_socio_persona',
+    intervention_col='intervention',
+    min_per_stratum=1,
+    seed=42,
+    logger=None,
+):
+    """
+    Draw a stratified sample of *buildings* (UPNs), jointly stratified on:
+      - persona (from the personas table, joined on postcode), and
+      - intervention-package menu (the set of interventions available
+        for that building in `df`).
+
+    Parameters
+    ----------
+    df : DataFrame
+        The package-level frame (one row per UPN × intervention).
+    personas : DataFrame
+        Personas keyed by postcode.
+    target_n : int
+        Target sample size in *buildings* (UPNs). The realised sample
+        may be slightly larger because each stratum contributes at
+        least `min_per_stratum` buildings (when available).
+    upn_col, postcode_col, persona_col, intervention_col : str
+        Column names.
+    min_per_stratum : int
+        Minimum buildings per stratum when the stratum is non-empty.
+    seed : int
+        RNG seed.
+    logger : logging.Logger or None
+
+    Returns
+    -------
+    sampled_df : DataFrame
+        All rows of `df` whose UPN is in the sampled set.
+    sample_info : dict
+        Diagnostics: stratum counts, realised sample size, etc.
+    """
+    rng = np.random.default_rng(seed)
+
+    def _log(msg):
+        print(msg)
+        if logger is not None:
+            logger.info(msg)
+
+    # 1. Build per-building stratum labels.
+    #    menu = sorted tuple of distinct interventions available to that UPN.
+    menus = (
+        df.groupby(upn_col)[intervention_col]
+          .apply(lambda s: tuple(sorted(s.unique())))
+          .rename('menu')
+    )
+
+    # One postcode per UPN (collisions should already have been dropped
+    # upstream, but take the first as a defensive fallback).
+    upn_postcode = (
+        df[[upn_col, postcode_col]]
+          .drop_duplicates(subset=[upn_col])
+          .set_index(upn_col)[postcode_col]
+    )
+
+    building_df = pd.concat([menus, upn_postcode], axis=1).reset_index()
+
+    # Attach persona via postcode.
+    personas_small = personas[[postcode_col, persona_col]].drop_duplicates(
+        subset=[postcode_col]
+    )
+    building_df = building_df.merge(personas_small, on=postcode_col, how='left')
+
+    n_missing_persona = building_df[persona_col].isna().sum()
+    if n_missing_persona > 0:
+        _log(f"  [sampler] {n_missing_persona} buildings have no persona "
+             f"(postcode not in personas table) — excluded from sample.")
+        building_df = building_df.dropna(subset=[persona_col])
+
+    n_buildings_total = len(building_df)
+    if n_buildings_total == 0:
+        raise ValueError("No buildings left to sample after persona join.")
+
+    if target_n >= n_buildings_total:
+        _log(f"  [sampler] Requested {target_n} ≥ available "
+             f"{n_buildings_total}; returning all buildings.")
+        sampled_upns = building_df[upn_col].tolist()
+    else:
+        # 2. Form strata.
+        building_df['_stratum'] = list(
+            zip(building_df[persona_col], building_df['menu'])
+        )
+        strata_sizes = building_df['_stratum'].value_counts()
+        n_strata = len(strata_sizes)
+        _log(f"  [sampler] {n_strata} non-empty (persona × menu) strata "
+             f"across {n_buildings_total:,} buildings.")
+
+        # 3. Proportional allocation with a floor.
+        #    Each stratum gets at least min(min_per_stratum, stratum_size).
+        #    The remainder is distributed proportionally to stratum size.
+        floor_alloc = {
+            s: min(min_per_stratum, sz) for s, sz in strata_sizes.items()
+        }
+        floor_total = sum(floor_alloc.values())
+
+        if floor_total >= target_n:
+            # Floors alone already hit (or exceed) target. Keep floors;
+            # realised sample size will be ~floor_total.
+            alloc = floor_alloc
+        else:
+            remainder = target_n - floor_total
+            # Remaining headroom per stratum after the floor:
+            headroom = {s: sz - floor_alloc[s] for s, sz in strata_sizes.items()}
+            total_headroom = sum(headroom.values())
+
+            if total_headroom == 0:
+                alloc = floor_alloc
+            else:
+                # Proportional split of the remainder over headroom.
+                raw = {
+                    s: remainder * (headroom[s] / total_headroom)
+                    for s in strata_sizes.index
+                }
+                # Round down, then distribute leftover by largest fractional
+                # part (Hamilton / largest-remainder method).
+                floored = {s: int(np.floor(v)) for s, v in raw.items()}
+                leftover = remainder - sum(floored.values())
+                fracs = sorted(
+                    raw.items(),
+                    key=lambda kv: kv[1] - np.floor(kv[1]),
+                    reverse=True,
+                )
+                for s, _ in fracs[:leftover]:
+                    floored[s] += 1
+
+                alloc = {
+                    s: floor_alloc[s] + floored[s]
+                    for s in strata_sizes.index
+                }
+                # Clamp to stratum size (defensive).
+                alloc = {
+                    s: min(alloc[s], strata_sizes[s])
+                    for s in strata_sizes.index
+                }
+
+        # 4. Draw per stratum.
+        sampled_upns = []
+        for stratum, n_take in alloc.items():
+            if n_take <= 0:
+                continue
+            upns_in_stratum = building_df.loc[
+                building_df['_stratum'] == stratum, upn_col
+            ].to_numpy()
+            if len(upns_in_stratum) <= n_take:
+                picked = upns_in_stratum
+            else:
+                picked = rng.choice(upns_in_stratum, size=n_take, replace=False)
+            sampled_upns.extend(picked.tolist())
+
+        _log(f"  [sampler] Target {target_n} buildings → realised "
+             f"{len(sampled_upns):,} buildings across "
+             f"{sum(1 for v in alloc.values() if v > 0)} strata.")
+
+    sampled_upns_set = set(sampled_upns)
+    sampled_df = df[df[upn_col].isin(sampled_upns_set)].copy()
+
+    # Diagnostics
+    persona_counts = (
+        building_df[building_df[upn_col].isin(sampled_upns_set)]
+        [persona_col].value_counts().to_dict()
+    )
+    _log(f"  [sampler] Persona breakdown in sample: {persona_counts}")
+    _log(f"  [sampler] Sampled rows: {len(sampled_df):,} "
+         f"(from {len(df):,}); sampled UPNs: "
+         f"{sampled_df[upn_col].nunique():,}")
+
+    sample_info = {
+        'target_n': target_n,
+        'realised_n_buildings': sampled_df[upn_col].nunique(),
+        'realised_n_rows': len(sampled_df),
+        'persona_breakdown': persona_counts,
+        'seed': seed,
+    }
+    return sampled_df, sample_info
+
+
+def _scale_budgets_for_test(budgets, n_sampled, n_total):
+    """
+    Scale budgets proportionally to the sample fraction so the test run
+    is solvable quickly but still exercises the constraint. A floor of
+    £100k ensures we don't collapse to a trivial budget.
+    """
+    if n_total == 0:
+        return budgets
+    frac = n_sampled / n_total
+    scaled = [max(100_000, int(b * frac)) for b in budgets]
+    # Deduplicate while preserving order.
+    seen = set()
+    out = []
+    for b in scaled:
+        if b not in seen:
+            seen.add(b)
+            out.append(b)
+    return out
+
+
+# ============================================================================
 # SKIP-IF-EXISTS
 # ============================================================================
 
@@ -69,19 +299,6 @@ def run_is_complete(output_dir: str, equity_floors: list) -> bool:
     """
     Return True if a (budget, loft_prob) run has already produced its
     expected outputs in `output_dir`.
-
-    Completeness criteria (all must hold):
-      - pareto_summary.csv exists and is non-empty
-      - pareto_full.json exists and is non-empty
-      - baseline_preselect.csv exists
-      - pareto_summary.csv has at least one row with status in
-        ('Optimal', 'Not Solved') — i.e. the sweep produced at least
-        one feasible solution (not just an error file).
-
-    We do NOT require every equity floor to be present, because the
-    sweep legitimately short-circuits once infeasibility is hit. We
-    do require the *first* equity floor (usually 0%) to be present,
-    since that should always be feasible.
     """
     summary_path = os.path.join(output_dir, 'pareto_summary.csv')
     full_path = os.path.join(output_dir, 'pareto_full.json')
@@ -108,7 +325,6 @@ def run_is_complete(output_dir: str, equity_floors: list) -> bool:
     if feasible.empty:
         return False
 
-    # Require the lowest equity floor to be present (always should be feasible).
     if equity_floors and 'equity_floor_pct' in summary_df.columns:
         if equity_floors[0] not in summary_df['equity_floor_pct'].values:
             return False
@@ -142,7 +358,6 @@ def _get_cmap(name, n):
     try:
         return plt.colormaps.get_cmap(name).resampled(n)
     except AttributeError:
-        # Older matplotlib
         return plt.cm.get_cmap(name, n)
 
 
@@ -306,6 +521,7 @@ def setup_loggers(output_dir, million_budget, prob_loft):
 
 def run_pareto(
     df_all_packages,
+    df_buildings,
     budget,
     equity_floors,
     high_equity_personas,
@@ -355,7 +571,7 @@ def run_pareto(
             selected_df.to_csv(selected_path, index=False)
             try:
                 plot_greedy_distribution_analysis(
-                    baseline_df=df_buildings,     # ← CHANGED
+                    baseline_df=df_buildings,
                     selected_df=selected_df,
                     scenario_name=f'pareto_eq{eq_label}_loft{loft_prob}',
                     output_dir=output_dir,
@@ -451,8 +667,14 @@ def main():
 
     run_g_yn = os.getenv('RUN_GREEDY_RUNS_YN')
     run_greedy_runs = run_g_yn != 'N'
-    
-    
+
+    if TEST_MODE:
+        print("\n" + "!" * 80)
+        print(f"!! TEST_MODE ENABLED — stratified sample of "
+              f"~{TEST_SAMPLE_SIZE} buildings (seed={TEST_SEED})")
+        print(f"!! Outputs will be written to a separate `_TEST` folder.")
+        print("!" * 80)
+
     # Configuration
     if running_locally:
         setting_name = 'local'
@@ -466,7 +688,7 @@ def main():
         else:
             INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_1.0/processed_best_only/*'
             INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/12_v2_greedy/1_all_interventions/risk_sigma_1.0/processed_all_scenarios/*'
-            
+
             BASE_DIR = '/Volumes/T9/2025_10_RetrofitModel/12_v2_greedy/2_greedy_results/NE/all_domestic'
     else:
         setting_name = 'v10'
@@ -484,23 +706,30 @@ def main():
 
         print(f'Starting {INPUT_FILES_PATH}')
 
+    # In test mode, redirect outputs to a `_TEST` sibling folder so we
+    # never clobber a real run's artefacts.
+    if TEST_MODE:
+        setting_name = f'{setting_name}_TEST'
+
     input_files = glob.glob(INPUT_FILES_PATH)
     pareto_runs_folder = os.path.join(BASE_DIR, 'pareto_runs', setting_name)
-    
+
     print("\n" + "=" * 80)
     print("PARETO KNAPSACK ANALYSIS — ε-CONSTRAINT ON EQUITY SPEND")
     print(f"  High-equity personas: {DEFAULT_HIGH_EQUITY_PERSONAS}")
     print(f"  Equity floors: {equity_floors}")
     print(f"  Force rerun: {FORCE_RERUN}")
+    print(f"  Test mode:   {TEST_MODE}")
     print("=" * 80)
 
     if run_greedy_runs:
         for prob_loft in loft_probs:
             # --------------------------------------------------------------
             # SKIP CHECK: if *all* budgets for this loft are already done,
-            # skip the expensive data load.
+            # skip the expensive data load. (Disabled in test mode — we
+            # always want to run the test end-to-end.)
             # --------------------------------------------------------------
-            if not FORCE_RERUN:
+            if not FORCE_RERUN and not TEST_MODE:
                 all_done = True
                 for budget in budgets:
                     million_budget = str(budget / MILLION_FACTOR).replace('.0', '')
@@ -531,9 +760,40 @@ def main():
             print("\nLoading personas...")
             personas = load_personas()
             personas = personas.drop_duplicates()
+            print('peronas loded')
+
+            # ----------------------------------------------------------------
+            # TEST MODE — stratified sample on (persona, intervention menu)
+            # ----------------------------------------------------------------
+            if TEST_MODE:
+                print(f"\n[TEST_MODE] Stratified-sampling ~{TEST_SAMPLE_SIZE} "
+                      f"buildings (seed={TEST_SEED})...")
+                n_upns_before = res_df['upn'].nunique()
+                res_df, sample_info = stratified_sample_buildings(
+                    df=res_df,
+                    personas=personas,
+                    target_n=TEST_SAMPLE_SIZE,
+                    upn_col='upn',
+                    postcode_col='postcode',
+                    persona_col='meta_socio_persona',
+                    intervention_col='intervention',
+                    min_per_stratum=TEST_MIN_PER_STRATUM,
+                    seed=TEST_SEED,
+                )
+                n_upns_after = res_df['upn'].nunique()
+                print(f"[TEST_MODE] Sampled {n_upns_after:,} / {n_upns_before:,} "
+                      f"buildings ({res_df.shape[0]:,} rows).")
+
+                # Scale budgets so at least the small ones are feasible on
+                # the mini-sample; the large ones will just retrofit the
+                # whole sample, which is a useful smoke-test too.
+                budgets = _scale_budgets_for_test(
+                    budgets, n_sampled=n_upns_after, n_total=n_upns_before
+                )
+                print(f"[TEST_MODE] Scaled budgets: "
+                      f"{[f'£{b/1e6:.2f}M' for b in budgets]}")
 
             # validations
-                        
             per_building = res_df.groupby('upn')['intervention'].apply(set)
 
             # How often do the loft packages co-occur?
@@ -546,19 +806,16 @@ def main():
             has_wall_install = per_building.apply(lambda s: 'wall_installation' in s)
             print(pd.crosstab(has_wall_decay, has_wall_install,
                             rownames=['has_wall_decay'], colnames=['has_wall_install']))
-            # For buildings that HAVE wall_installation — do they always have wall_decay too?
             wall_install_buildings = per_building[per_building.apply(
                 lambda s: 'wall_installation' in s
             )]
             print(f"Buildings with wall_installation: {len(wall_install_buildings)}")
 
-            # How many of those also have joint_heat_wall_decay?
             also_wall_decay = wall_install_buildings.apply(
                 lambda s: 'joint_heat_wall_decay' in s
             ).sum()
             print(f"  of which also have joint_heat_wall_decay: {also_wall_decay}")
 
-            # How many only have wall_decay, no wall_install?
             wall_decay_buildings = per_building[per_building.apply(
                 lambda s: 'joint_heat_wall_decay' in s and 'wall_installation' not in s
             )]
@@ -566,11 +823,9 @@ def main():
 
             PKG_COL = 'intervention'
 
-            # 1. Full list of interventions
             print(f"Distinct interventions: {res_df[PKG_COL].nunique()}")
             print(res_df[PKG_COL].value_counts())
 
-            # 2. Menu combinations
             building_menus = (
                 res_df.groupby('upn')[PKG_COL]
                 .apply(lambda s: tuple(sorted(s.unique())))
@@ -584,11 +839,8 @@ def main():
             for menu, n in menu_counts.head(30).items():
                 print(f"  {n:>7,}  ({len(menu)}) {menu}")
 
-
-            upn_col='upn'
-            # Drop UPN collisions: a UPN should uniquely identify a building, but
-            # upstream joins can occasionally stamp the same UPN onto multiple
-            # postcodes. Treat these as corrupt and drop them.
+            upn_col = 'upn'
+            # Drop UPN collisions
             upn_postcode_counts = res_df.groupby(upn_col)['postcode'].nunique()
             bad_upns = upn_postcode_counts[upn_postcode_counts > 1].index
             if len(bad_upns) > 0:
@@ -603,26 +855,6 @@ def main():
                     )
             else:
                 print("UPN-postcode collisions:     0")
-            # pkg_counts = res_df.groupby('upn').size()
-            # offenders = pkg_counts[pkg_counts > 6].sort_values(ascending=False)
-            # print(f"Buildings with >6 packages: {len(offenders)}")
-            # print(offenders.head(10))
-
-            # # Look at one offender's rows
-            # worst_upn = offenders.index[0]
-            # print(f"\nAll rows for {worst_upn}:")
-            # print(res_df[res_df['upn'] == worst_upn])
-            
-
-            # # Confirm: is it UPN collision across postcodes, or something else?
-            # multi_postcode_upns = res_df.groupby('upn')['postcode'].nunique()
-            # print(f"UPNs with multiple postcodes: {(multi_postcode_upns > 1).sum()}")
-            # print(multi_postcode_upns[multi_postcode_upns > 1].head(10))
-
-            # # And check the overall distribution so you know what cap is reasonable
-            # pkg_counts = res_df.groupby('upn').size()
-            # print("\nPackages-per-building distribution:")
-            # # print(pkg_counts.value_counts().sort_index())
 
             res_df = validate_multipackage_input(
                 res_df, personas,
@@ -630,9 +862,6 @@ def main():
                 min_packages=MIN_PACKAGES_PER_BUILDING,
                 max_packages=MAX_PACKAGES_PER_BUILDING,
             )
-
-
-
 
             df = res_df.merge(personas, on='postcode', how='inner')
             validate_post_merge(df, upn_col='upn', max_packages=MAX_PACKAGES_PER_BUILDING)
@@ -642,7 +871,7 @@ def main():
             gc.collect()
             print(f"After premise filtering: {len(df):,} rows ({df['upn'].nunique():,} buildings)")
             df_buildings = build_building_level_view(df, upn_col='upn')
-            
+
             for budget in budgets:
                 million_budget = str(budget / MILLION_FACTOR).replace('.0', '')
                 output_dir = os.path.join(
@@ -651,8 +880,8 @@ def main():
                 )
                 os.makedirs(output_dir, exist_ok=True)
 
-                # Per-budget skip check
-                if not FORCE_RERUN and run_is_complete(output_dir, equity_floors):
+                # Per-budget skip check (disabled in test mode).
+                if not FORCE_RERUN and not TEST_MODE and run_is_complete(output_dir, equity_floors):
                     print(f"\n[SKIP] Budget £{million_budget}M loft={prob_loft} "
                           f"already complete: {output_dir}")
                     continue
@@ -664,9 +893,14 @@ def main():
                     f'Starting Pareto analysis: Budget £{budget:,}, '
                     f'Loft Probability {prob_loft}'
                 )
+                if TEST_MODE:
+                    summary_logger.info(
+                        f'TEST_MODE sample_info: {sample_info}'
+                    )
 
                 pareto_df, all_stats, baseline_stats = run_pareto(
                     df_all_packages=df,
+                    df_buildings=df_buildings,
                     budget=budget,
                     equity_floors=equity_floors,
                     high_equity_personas=DEFAULT_HIGH_EQUITY_PERSONAS,
@@ -713,7 +947,6 @@ def main():
     print("=" * 80)
 
     for loft_val in loft_probs:
-        # Clean folder name — no spaces, no brackets from str(list).
         budgets_tag = '_'.join(str(int(b / MILLION_FACTOR)) for b in budgets)
         viss_fold = os.path.join(
             pareto_runs_folder, 'pareto_vis',

@@ -7,6 +7,7 @@
 MIN_PACKAGES_PER_BUILDING = 1
 MAX_PACKAGES_PER_BUILDING = 6
 
+ 
 
 def build_building_level_view(df_packages, upn_col='upn'):
     """
