@@ -6,6 +6,7 @@ Key Changes:
 - Loads pre-processed CSV chunks instead of raw simulation logs.
 - Skips redundant `prepare_data_for_postanalysis`.
 - Preserves logic for Equity, Budget, and Risk.
+- Supports exact ILP knapsack solver via ALGO toggle.
 """
 
 import os
@@ -20,7 +21,7 @@ import matplotlib.pyplot as plt
 sys.path.append('/Users/gracecolverd/RetrofitModel')
 
 from src.validate import validate
-from src.GreedyAlgo import true_greedy_knapsack, plot_greedy_distribution_analysis
+from src.GreedyAlgo import true_greedy_knapsack, exact_knapsack, plot_greedy_distribution_analysis
 from src.RetrofitGreedy import run_greedy_algo 
 from src.RetrofitGreedyUtils import setup_logging
 # from src.RetrofitAnalysisUtils import load_data , prepare_data_for_postanalysis
@@ -41,6 +42,10 @@ milion_factor = 1_000_000
 
 RHO=0.45 
 
+# Algorithm toggle: "greedy" or "exact"
+ALGO = os.getenv("ALGO", "exact").lower()
+assert ALGO in ("greedy", "exact"), f"ALGO must be 'greedy' or 'exact', got '{ALGO}'"
+
 
 def load_data_simple(files):
     res = [] 
@@ -54,18 +59,45 @@ def add_equity_weight(scenario_df, equity_factor , capex_col='capex_per_net_ton'
     EQUITY_WEIGHT_COL = 'equity_weight'
     PERSONA_COL = 'meta_socio_persona'
     scenario_df[EQUITY_WEIGHT_COL] = scenario_df[PERSONA_COL].map(EQUITY_WEIGHTS)
+    # scenario_df['weighted_capex_per_net_ton'] = (
+    #     scenario_df[capex_col] * (1 + (scenario_df[EQUITY_WEIGHT_COL] - 1) * equity_factor)
+    # )
+
     scenario_df['weighted_capex_per_net_ton'] = (
-        scenario_df[capex_col] * (1 + (scenario_df[EQUITY_WEIGHT_COL] - 1) * equity_factor)
-    )
+    scenario_df[capex_col] * scenario_df[EQUITY_WEIGHT_COL] ** equity_factor
+)
     print('equity weight added')
     return scenario_df
 
+
+def run_knapsack(algo, baseline_selection, budget, detail_logger):
+    """Dispatch to greedy or exact solver based on algo toggle."""
+    if algo == "exact":
+        return exact_knapsack(
+            df_knapsack=baseline_selection,
+            budget=budget,
+            cost_column='mean_total_capex',
+            carbon_col='mean_total_co2_saved',
+            objective_col='weighted_capex_per_net_ton',  
+            logger=detail_logger,
+        )
+    else:
+        return true_greedy_knapsack(
+            df_knapsack=baseline_selection,
+            budget=budget,
+            cost_column='mean_total_capex',
+            efficiency_column='weighted_capex_per_net_ton',
+            carbon_col='mean_total_co2_saved',
+            logger=detail_logger,
+        )
 
 
 def main():
     """
     Main execution function for greedy algorithm analysis using pre-processed data.
     """
+    print(f"\nAlgorithm: {ALGO.upper()}")
+
     # Configuration
     running_locally = not is_running_on_hpc()
     # RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')  )  
@@ -95,9 +127,10 @@ def main():
         budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000] 
         budgets = [ 1_000_000, 10_000_000, 50_000_000, 80_000_000,  100_000_000]
         budgets = [ 1_000_000,  25_000_000, 50_000_000,  100_000_000, 200_000_000]
+        budgets = [  1_000_000]
         
         
-        budgets= [200_000_000]
+        # budgets= [200_000_000]
         # budgets = [ 1_000_000, ]
         # budgets=[25_000_000]
         # budgets = [  50_000_000,80_000_000]
@@ -108,6 +141,7 @@ def main():
         
         
         equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.3]
+        equity_factors = [0,   0.5, 1 , 1.5, 2, 2.5, 3  ]
         # equity_factors = [0, 0.2, 0.4, 0.6, 0.8, 1 , 1.2, 1.3]
         # equity_factors = [ 1.3, 1.4, 1.5, 1.6, 1.7]
         # equity_factors = [ 1.6, 1.7]
@@ -120,43 +154,26 @@ def main():
         # equity_factors = [0, 0.2]
         # equity_factors = [ 1.4  ]
         # equity_factors=[0.8] 
-
+        print(equity_factors)
         # epc_run = True  
         epc_yn = os.getenv('EPC_YN')
         if epc_run:
-            # INPUT_FILES_PATH=f'/Volumes/T9/2025_10_RetrofitModel/3_optimised_epc/sigma_{RISK_PENALTY_SIGMA}__processed_best_only/*.csv'
             INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities_epc/risk_sigma_1.0/processed_best_only/*'
-            # INPUT_FILES_PATH= '/Users/gracecolverd/Downloads/risk_sigma1_epc__processed_best_only/*csv'
             BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results_epc/NE/all_domestic'
-            # BASE_DIR = '/Users/gracecolverd/RetrofitModel/3_greedy_optimisation/epc'
-
-            # INPUT_FILES_PATH = f'/Volumes/My Passport/retrofitModel_final/4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
-            # BASE_DIR =f'/Volumes/My Passport/retrofitModel_final/5_greedy_results_epc/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
-            
 
         else:
-            # INPUT_FILES_PATH=f'/Volumes/T9/2025_10_RetrofitModel/3_optimiseD_iroiities/risk_sigma_{RISK_PENALTY_SIGMA}__processed_best_only/*.csv'
-            # BASE_DIR=f'/Volumes/T9/2025_10_RetrofitModel/4_gredy/risk_{RISK_PENALTY_SIGMA}/'
-            
             INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_1.0/processed_best_only/*'
             BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results/NE/all_domestic'
             
-            # INPUT_FILES_PATH = f'/Volumes/My Passport/retrofitModel_final/4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only/*'
-            # BASE_DIR =f'/Volumes/My Passport/retrofitModel_final/5_greedy_results/NE/all_domestic/risk_sigma{RISK_PENALTY_SIGMA}'
-            
 
     else:
-        
-        # RISK_PENALTY_SIGMA = float(os.getenv('SIGMA')) 
         
         if epc_run:
             INPUT_FILES_PATH=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities_epc/risk_sigma_1.0/processed_best_only/*'
             BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/epc'
         else:
-            # INPUT_FILES_PATH=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities/risk_sigma_{sigma_value}/processed_best_only/*'
             INPUT_FILES_PATH = f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_1.0/processed_best_only/*'
             BASE_DIR =f'/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results/NE/all_domestic'
-            # BASE_DIR=f'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/all_domestic/risk_sigma_{sigma_value}'
 
         print(f'Starting {INPUT_FILES_PATH}') 
         setting_name = 'v10'
@@ -190,14 +207,18 @@ def main():
     
     input_files = glob.glob(INPUT_FILES_PATH)
     number=None
+
+    # ── Algo-aware folder naming ──────────────────────────────────
+    algo_suffix = f"_{ALGO}" if ALGO != "greedy" else ""
+
     if number:
-        greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}', setting_name) 
+        greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs_{number}{algo_suffix}', setting_name) 
     else:
-        greedy_runs_folder = os.path.join(BASE_DIR, 'greedy_runs', setting_name )
+        greedy_runs_folder = os.path.join(BASE_DIR, f'greedy_runs{algo_suffix}', setting_name)
  
        
     print("\n" + "="*80)
-    print("GREEDY ALGORITHM ANALYSIS - UPDATED FOR NEW COLUMN FORMAT")
+    print(f"KNAPSACK ANALYSIS ({ALGO.upper()}) - UPDATED FOR NEW COLUMN FORMAT")
     print("="*80)
 
     if run_greedy_runs: 
@@ -307,7 +328,7 @@ def main():
                     print(detail_logger)
                     
                     summary_logger.info(
-                        f'Starting analysis: Budget £{budget:,}, '
+                        f'Starting analysis ({ALGO}): Budget £{budget:,}, '
                         f'Loft Probability {prob_loft}, '
                         f'Equity Factor {equity_factor}'
                     )
@@ -317,7 +338,7 @@ def main():
          
                     
                     print(f"\n{'='*80}")
-                    print(f"Starting analysis:")
+                    print(f"Starting analysis ({ALGO}):")
                     print(f"  Budget: £{budget:,}")
                     print(f"  Loft Probability: {prob_loft}")
                     print(f"  Equity Factor: {equity_factor}")
@@ -325,24 +346,18 @@ def main():
                 
                     df = add_equity_weight(df, equity_factor , capex_col='capex_per_net_ton_sigma' )
 
-                    # Run greedy algorithm
+                    # Run knapsack algorithm (greedy or exact)
                     baseline_selection = df 
 
-
-                    # try:
                     print(f'Million biudget: {million_budget}')
-                    selected_projects_df, remaining_funds = true_greedy_knapsack(
-                        df_knapsack=baseline_selection,
-                        budget=budget,
-                        cost_column='mean_total_capex',
-                        efficiency_column='weighted_capex_per_net_ton' ,
-                        carbon_col='mean_total_co2_saved',
-                        logger=detail_logger, 
+                    selected_projects_df, remaining_funds = run_knapsack(
+                        ALGO, baseline_selection, budget, detail_logger
                     )
 
                     
                     
                     selected_projects_df['remaining_funds'] = remaining_funds
+                    selected_projects_df['algo'] = ALGO
 
                     if baseline_selection.empty:
                         raise Exception('Baselin results empty ')
@@ -364,7 +379,7 @@ def main():
                     plot_greedy_distribution_analysis(
                         baseline_df=baseline_selection,
                         selected_df=selected_projects_df,
-                        scenario_name=f'budget_{million_budget}M__loft{prob_loft}__equity{equity_factor}',
+                        scenario_name=f'budget_{million_budget}M__loft{prob_loft}__equity{equity_factor}__{ALGO}',
                         output_dir=output_dir,
                         
                     )
@@ -390,19 +405,9 @@ def main():
                         epc_random_selected_df.to_csv(epc_random_path, index=False) 
                         summary_logger.info(f"EPC RAndom selection saved to: {epc_random_path}")
 
-                    # except Exception as e:
-                    #     summary_logger.error(f"Error in analysis: {e}")
-                    #     print(f"✗ Error: {e}")
-                    #     import traceback
-                    #     traceback.print_exc()
-                    
-                    # finally:
-                    #     # Clear handlers to avoid duplicate logging in next iteration
-                    #     summary_logger.handlers.clear()
-                    #     detail_logger.handlers.clear()
         
         print("\n" + "="*80)
-        print("Greedy RUNS  COMPLETE!")
+        print(f"{ALGO.upper()} RUNS COMPLETE!")
         print("="*80)
     else:
         print('Set to skip runs. going to wrap up ')
@@ -421,9 +426,9 @@ def main():
     if post_proc_meta: 
         for LOFT_VALUE in loft_probs:
             if number:
-                OUTPUT_PATH = os.path.join(BASE_DIR, f'greedy_vis_num{number}', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
+                OUTPUT_PATH = os.path.join(BASE_DIR, f'greedy_vis_num{number}{algo_suffix}', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
             else:
-                OUTPUT_PATH = os.path.join(BASE_DIR, 'greedy_vis', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
+                OUTPUT_PATH = os.path.join(BASE_DIR, f'greedy_vis{algo_suffix}', f'loft_val{LOFT_VALUE}_budget{budgets}', setting_name)
 
             # Ensure output directory exists
             os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -436,7 +441,7 @@ def main():
                     million_budget= budget / milion_factor
                     for equity_factor in equity_factors:
                         
-                        run_epc_vis(greedy_runs_folder, os.path.join(BASE_DIR, 'greedy_vis_epc') , million_budget  , LOFT_VALUE , equity_factor    )
+                        run_epc_vis(greedy_runs_folder, os.path.join(BASE_DIR, f'greedy_vis_epc{algo_suffix}') , million_budget  , LOFT_VALUE , equity_factor    )
             
     print("\n" + "="*80)
     print("ALL ANALYSES COMPLETE!")
@@ -448,12 +453,8 @@ def main():
     meta_epc=False 
     if meta_epc:
         meta_results = []
-        # meta_df = aggregate_scenario_results(greedy_runs_folder, budgets, loft_probs, equity_factors)
-        op_dir = f'{BASE_DIR}/meta_epc' 
-        # plot_meta_comparisons(meta_df, output_dir=op_dir)
+        op_dir = f'{BASE_DIR}/meta_epc{algo_suffix}' 
         print('starting analysis')
     
-    # run_full_analysis_pipeline(greedy_runs_folder, budgets, loft_probs, equity_factors)
 
-
-main() 
+main()

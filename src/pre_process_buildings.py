@@ -1,6 +1,6 @@
 """
-Module: pre_process_buildings.py
-Description: Pre process the Verisk building data to calculate building metrics.
+Module: pre_process_buildings.py used in RertofitMODEL 
+
 
 Key features
  - Update age buckets to be non overlapping

@@ -218,7 +218,7 @@ def plot_greedy_distribution_analysis(baseline_df, selected_df,
                              colormap='tab10', edgecolor='black', linewidth=0.5)
         ax_a.set_xlabel('Dataset', fontsize=11)
         ax_a.set_ylabel('Percentage of Buildings (%)', fontsize=11)
-        ax_a.set_title(f'A. Gas Decile Distribution: Baseline vs. {scenario_name}', fontsize=12, fontweight='bold')
+        # ax_a.set_title(f'A. Gas Decile Distribution: Baseline vs. {scenario_name}', fontsize=12, fontweight='bold')
         ax_a.legend(title='Gas Decile', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
         ax_a.tick_params(axis='x', rotation=0)
         ax_a.grid(axis='y', alpha=0.3)
@@ -251,7 +251,7 @@ def plot_greedy_distribution_analysis(baseline_df, selected_df,
                 ax_b.text(j, i, f'{value:.1f}', ha="center", va="center", 
                           color=text_color, fontsize=9, fontweight='bold')
 
-        ax_b.set_title('B. Gas Decile Distribution Heatmap (%)', fontsize=12, fontweight='bold', pad=10)
+        # ax_b.set_title('B. Gas Decile Distribution Heatmap (%)', fontsize=12, fontweight='bold', pad=10)
         ax_b.set_xlabel('Gas Decile', fontsize=11)
         
         cbar = plt.colorbar(im, ax=ax_b)
@@ -271,7 +271,7 @@ def plot_greedy_distribution_analysis(baseline_df, selected_df,
         ax_c.axhline(y=0, color='black', linestyle='-', linewidth=1)
         ax_c.set_xlabel('Gas Decile', fontsize=11)
         ax_c.set_ylabel('Difference from Baseline (%)', fontsize=11)
-        ax_c.set_title(f'C. Decile Bias: {scenario_name} vs. Baseline', fontsize=12, fontweight='bold')
+        # ax_c.set_title(f'C. Decile Bias: {scenario_name} vs. Baseline', fontsize=12, fontweight='bold')
         ax_c.set_xticks(range(len(diff_from_baseline)))
         ax_c.set_xticklabels(diff_from_baseline.index, rotation=45)
         ax_c.grid(axis='y', alpha=0.3)
@@ -288,7 +288,7 @@ def plot_greedy_distribution_analysis(baseline_df, selected_df,
         )
         ax_d.set_xlabel('Intervention Scenario', fontsize=11)
         ax_d.set_ylabel('Total Buildings Selected', fontsize=11)
-        ax_d.set_title(f'D. Intervention Distribution for {scenario_name}', fontsize=12, fontweight='bold')
+        # ax_d.set_title(f'D. Intervention Distribution for {scenario_name}', fontsize=12, fontweight='bold')
         ax_d.tick_params(axis='x', rotation=45)
         ax_d.grid(axis='y', alpha=0.3)
         
@@ -309,7 +309,7 @@ def plot_greedy_distribution_analysis(baseline_df, selected_df,
         )
         ax_e.set_xlabel('Gas Decile', fontsize=11)
         ax_e.set_ylabel('Number of Buildings Selected', fontsize=11)
-        ax_e.set_title(f'E. Intervention Mix per Decile for {scenario_name}', fontsize=12, fontweight='bold')
+        # ax_e.set_title(f'E. Intervention Mix per Decile for {scenario_name}', fontsize=12, fontweight='bold')
         ax_e.legend(title='Intervention', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
         ax_e.tick_params(axis='x', rotation=45)
         ax_e.grid(axis='y', alpha=0.3)
@@ -319,3 +319,135 @@ def plot_greedy_distribution_analysis(baseline_df, selected_df,
 
     print("\nAnalysis plotting complete.")
 
+
+
+import logging
+from typing import Tuple
+
+import pandas as pd
+import pulp
+
+
+def exact_knapsack(
+    df_knapsack: pd.DataFrame,
+    budget: float,
+    cost_column: str = "cost_of_intervention_mean",
+    carbon_col: str = "mean_total_co2_saved",
+    objective_col: str = None,          
+    time_limit_seconds: int = 300,
+    logger: logging.Logger = None,
+) -> Tuple[pd.DataFrame, float]:
+    """
+    Selects buildings to maximise total CO2 saved subject to a budget
+    constraint, solved exactly via integer linear programming (0-1 knapsack).
+
+    Requires the ``pulp`` package (which bundles the CBC solver).
+
+    Parameters
+    ----------
+    df_knapsack : DataFrame
+        One row (best intervention) per building.
+    budget : float
+        Total budget available (£).
+    cost_column : str
+        Column containing the absolute cost of each intervention.
+    carbon_col : str
+        Column containing the CO2 saved by each intervention (tons).
+    time_limit_seconds : int
+        Maximum solver wall-clock time. If reached the best feasible
+        solution found so far is returned.
+    logger : logging.Logger, optional
+
+    Returns
+    -------
+    selected_df : DataFrame of selected interventions.
+    remaining_budget : float
+    """
+    # ── 1. Preprocess ──────────────────────────────────────────────
+    mask = (
+        (df_knapsack[cost_column] > 0)
+        & (df_knapsack[carbon_col] > 0)
+        & (df_knapsack[cost_column] <= budget)
+    )
+    df_valid = df_knapsack.loc[mask]
+
+    if logger:
+        n_dropped = len(df_knapsack) - len(df_valid)
+        logger.info(
+            f"Exact knapsack: {len(df_valid):,} candidate rows "
+            f"({n_dropped:,} dropped in preprocessing) | "
+            f"budget: £{budget:,.0f}"
+        )
+
+    if df_valid.empty:
+        if logger:
+            logger.warning("No feasible interventions after preprocessing.")
+        return df_knapsack.iloc[:0].copy(), budget
+
+    # ── 2. Build ILP ───────────────────────────────────────────────
+    indices = df_valid.index.tolist()
+    costs = df_valid[cost_column].to_dict()
+    co2 = df_valid[carbon_col].to_dict()
+    obj = df_valid[objective_col].to_dict()
+
+    prob = pulp.LpProblem("knapsack_co2", pulp.LpMaximize)
+
+    x = pulp.LpVariable.dicts("sel", indices, cat=pulp.LpBinary)
+
+    # If an objective column is provided (e.g. weighted_capex_per_net_ton),
+    # use its reciprocal so that lower cost-per-ton = higher objective value.
+    # Otherwise fall back to raw CO2 saved.
+    if objective_col:
+        obj_values = {i: 1.0 / v if v > 0 else 0.0 for i, v in obj.items()}
+ 
+    else:
+
+        obj_values = co2
+
+    prob += pulp.lpSum(obj_values[i] * x[i] for i in indices)
+
+    # Constraint: total cost ≤ budget
+    prob += pulp.lpSum(costs[i] * x[i] for i in indices) <= budget
+
+    # ── 3. Solve ───────────────────────────────────────────────────
+    solver = pulp.PULP_CBC_CMD(
+        msg=False,
+        timeLimit=time_limit_seconds,
+    )
+    prob.solve(solver)
+
+    status = pulp.LpStatus[prob.status]
+    if logger:
+        logger.info(f"Solver status: {status}")
+
+    if status not in ("Optimal", "Not Solved"):
+        # "Not Solved" with a feasible incumbent is fine (time-limit hit)
+        # but Infeasible / Unbounded means something is wrong
+        if prob.status == pulp.constants.LpStatusInfeasible:
+            if logger:
+                logger.warning("Problem is infeasible.")
+            return df_knapsack.iloc[:0].copy(), budget
+
+    # ── 4. Extract selected rows ───────────────────────────────────
+    selected_indices = [i for i in indices if pulp.value(x[i]) > 0.5]
+
+    selected_df = df_valid.loc[selected_indices].copy()
+    total_spent = selected_df[cost_column].sum()
+    remaining_budget = budget - total_spent
+
+    # ── 5. Log results ─────────────────────────────────────────────
+    if logger:
+        total_co2 = selected_df[carbon_col].sum()
+        logger.info(
+            f"\n✅ Exact selection complete ({status}):\n"
+            f"  Buildings covered: {len(selected_df):,}\n"
+            f"  Total spent: £{total_spent:,.0f} / £{budget:,.0f}\n"
+            f"  Remaining: £{remaining_budget:,.0f}\n"
+            f"  Total CO2 saved: {total_co2:,.2f} tons"
+        )
+        if total_co2 > 0:
+            logger.info(
+                f"  Achieved cost per ton CO2: £{total_spent / total_co2:,.2f}"
+            )
+
+    return selected_df, remaining_budget
