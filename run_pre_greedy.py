@@ -42,10 +42,13 @@ else:
 
 if is_epc:
     OUTPUT_BASE_DIR = f'4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only'
+    OUTPUT_BASE_DIR = f'4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processed_all_scenarios'
+    
     LOG_FILE_PATH = f'4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/processing_log.txt'
     ERROR_LOG_FILE = f'4_optimized_priorities_epc/risk_sigma_{RISK_PENALTY_SIGMA}/epc_processing_errors.txt'
 else:
     OUTPUT_BASE_DIR = f'4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_best_only'
+    OUTPUT_BASE_DIR = f'4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processed_all_scenarios'
     LOG_FILE_PATH = f'4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processing_log.txt'
     ERROR_LOG_FILE = f'4_optimized_priorities/risk_sigma_{RISK_PENALTY_SIGMA}/processing_errors.txt'
 
@@ -282,7 +285,8 @@ def add_sigma_columns(df_out, scenarios, sigma=1):
 def apply_physical_filters_for_optimisation(df, sc ):
     capex_col = f'{sc}_capex_per_net_ton_robust_mean'
     energy_col = f'{sc}_co2_robust_mean'
-    return df[( df[capex_col] > 0 ) & (df[energy_col]) > 0.1   ]
+    
+    return df[(df[capex_col] > 0) & (df[energy_col] > 0.1)]
     
     
 
@@ -392,21 +396,35 @@ def process_single_file(filepath, output_dir, LOFT_INSULATION_EXISTING_PERCENT, 
             all_interventions.append(clean_df)
 
     # -------------------------------------------------------------
-    # E. SELECT BEST
+    # E. KEEP ALL INTERVENTIONS (no best-only selection)
     # -------------------------------------------------------------
     if all_interventions:
-        print('Startng all interventions') 
+        print('Combining all interventions')
         combined_df = pd.concat(all_interventions, ignore_index=True)
-        combined_df.sort_values(by='capex_per_net_ton_sigma', ascending=True, inplace=True)
-        best_only_df = combined_df.drop_duplicates(subset=['upn'], keep='first')
-        
-        output_path = os.path.join(output_dir, f"best_intervention_{filename}_loft_{LOFT_INSULATION_EXISTING_PERCENT}.csv")
-        print(f'Saving t0 {output_path}' ) 
-        best_only_df.to_csv(output_path, index=False)
+        # Sort for readability: by upn, then by risk-adjusted score ascending
+        combined_df.sort_values(
+            by=['upn', 'capex_per_net_ton_sigma'],
+            ascending=[True, True],
+            inplace=True
+        )
+ 
+        # Optional: add a rank column so downstream code can still find "best" easily
+        combined_df['rank_within_upn'] = (
+            combined_df.groupby('upn')['capex_per_net_ton_sigma']
+            .rank(method='first', ascending=True)
+            .astype(int)
+        )
+ 
+        output_path = os.path.join(
+            output_dir,
+            f"all_interventions_{filename}_loft_{LOFT_INSULATION_EXISTING_PERCENT}.csv"
+        )
+        print(f'Saving to {output_path}')
+        combined_df.to_csv(output_path, index=False)
     else:
         logging.warning(f"No valid interventions found for {filename}")
-
-    del raw_df, agg_df , all_interventions
+ 
+    del raw_df, agg_df, all_interventions
     gc.collect()
  
 
