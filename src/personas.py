@@ -62,9 +62,11 @@ def load_personas():
     except:
         try:
             path = '/rds/user/gb669/hpc-work/energy_map/RetrofitModel/personas/clusters_res_df.csv'
+            personas = pd.read_csv(path)
         except:
             print('error cant find personas')
     print('Personas loaded')
+    
     personas['meta_socio_persona'] = personas['cluster'].map(mapping)
     personas['persona_name'] = personas['cluster'].map(cluster_names)
     return personas 
