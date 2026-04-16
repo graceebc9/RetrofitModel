@@ -34,6 +34,7 @@ from src.utils import is_running_on_hpc
 from src.EPCAlgo import select_epc_algo
 from src.GreedyEpcVis import run_epc_vis
 from src.PostPareto import post_proc_pareto
+from src.ParetoUtills import * 
 
 from src.ParetoKnapsack import (
     multichoice_knapsack,
@@ -354,7 +355,7 @@ def run_pareto(
             selected_df.to_csv(selected_path, index=False)
             try:
                 plot_greedy_distribution_analysis(
-                    baseline_df=df_all_packages,
+                    baseline_df=df_buildings,     # ← CHANGED
                     selected_df=selected_df,
                     scenario_name=f'pareto_eq{eq_label}_loft{loft_prob}',
                     output_dir=output_dir,
@@ -450,7 +451,8 @@ def main():
 
     run_g_yn = os.getenv('RUN_GREEDY_RUNS_YN')
     run_greedy_runs = run_g_yn != 'N'
-
+    
+    
     # Configuration
     if running_locally:
         setting_name = 'local'
@@ -463,7 +465,7 @@ def main():
             BASE_DIR = '/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results_epc/NE/all_domestic'
         else:
             INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_1.0/processed_best_only/*'
-            INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/12_v2_greedy/risk_sigma_1.0/processed_all_scenarios/*'
+            INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/12_v2_greedy/1_all_interventions/risk_sigma_1.0/processed_all_scenarios/*'
             
             BASE_DIR = '/Volumes/T9/2025_10_RetrofitModel/12_v2_greedy/2_greedy_results/NE/all_domestic'
     else:
@@ -484,7 +486,7 @@ def main():
 
     input_files = glob.glob(INPUT_FILES_PATH)
     pareto_runs_folder = os.path.join(BASE_DIR, 'pareto_runs', setting_name)
-
+    
     print("\n" + "=" * 80)
     print("PARETO KNAPSACK ANALYSIS — ε-CONSTRAINT ON EQUITY SPEND")
     print(f"  High-equity personas: {DEFAULT_HIGH_EQUITY_PERSONAS}")
@@ -523,7 +525,6 @@ def main():
 
             print("\nLoading input data...")
             res_df = load_data_simple(files_to_use)
-            res_df = res_df.drop_duplicates()
             print(f'res_df shape: {res_df.shape}')
             print(f'num upns: {res_df.upn.nunique()}')
 
@@ -531,36 +532,117 @@ def main():
             personas = load_personas()
             personas = personas.drop_duplicates()
 
-            # Validation
-            print("\n=== PRE-MERGE VALIDATION ===")
-            print(f"res_df rows: {len(res_df)}")
-            print(f"personas rows: {len(personas)}")
+            # validations
+                        
+            per_building = res_df.groupby('upn')['intervention'].apply(set)
 
-            res_dupes = res_df['upn'].duplicated().sum()
-            print(f"Duplicate upn in res_df: {res_dupes}")
-            if 0 < res_dupes < 50:
-                res_df = res_df.drop_duplicates(subset='upn', keep='first')
-                print("✓ Deduplicated")
+            # How often do the loft packages co-occur?
+            has_loft_decay = per_building.apply(lambda s: 'joint_heat_loft_decay' in s)
+            has_loft_install = per_building.apply(lambda s: 'loft_installation' in s)
 
-            personas_dupes = personas['postcode'].duplicated().sum()
-            print(f"Duplicate postcodes in personas: {personas_dupes}")
+            print(pd.crosstab(has_loft_decay, has_loft_install,
+                            rownames=['has_loft_decay'], colnames=['has_loft_install']))
+            has_wall_decay = per_building.apply(lambda s: 'joint_heat_wall_decay' in s)
+            has_wall_install = per_building.apply(lambda s: 'wall_installation' in s)
+            print(pd.crosstab(has_wall_decay, has_wall_install,
+                            rownames=['has_wall_decay'], colnames=['has_wall_install']))
+            # For buildings that HAVE wall_installation — do they always have wall_decay too?
+            wall_install_buildings = per_building[per_building.apply(
+                lambda s: 'wall_installation' in s
+            )]
+            print(f"Buildings with wall_installation: {len(wall_install_buildings)}")
 
-            common_postcodes = set(res_df['postcode']) & set(personas['postcode'])
-            print(f"Postcodes in common: {len(common_postcodes)}")
+            # How many of those also have joint_heat_wall_decay?
+            also_wall_decay = wall_install_buildings.apply(
+                lambda s: 'joint_heat_wall_decay' in s
+            ).sum()
+            print(f"  of which also have joint_heat_wall_decay: {also_wall_decay}")
+
+            # How many only have wall_decay, no wall_install?
+            wall_decay_buildings = per_building[per_building.apply(
+                lambda s: 'joint_heat_wall_decay' in s and 'wall_installation' not in s
+            )]
+            print(f"Buildings with wall_decay but no wall_install: {len(wall_decay_buildings)}")
+
+            PKG_COL = 'intervention'
+
+            # 1. Full list of interventions
+            print(f"Distinct interventions: {res_df[PKG_COL].nunique()}")
+            print(res_df[PKG_COL].value_counts())
+
+            # 2. Menu combinations
+            building_menus = (
+                res_df.groupby('upn')[PKG_COL]
+                .apply(lambda s: tuple(sorted(s.unique())))
+            )
+            menu_counts = building_menus.value_counts()
+            print(f"\nDistinct intervention menus: {len(menu_counts)}")
+            print(f"Menu size → count of buildings:")
+            print(building_menus.apply(len).value_counts().sort_index())
+
+            print("\nAll menus (or top 30):")
+            for menu, n in menu_counts.head(30).items():
+                print(f"  {n:>7,}  ({len(menu)}) {menu}")
+
+
+            upn_col='upn'
+            # Drop UPN collisions: a UPN should uniquely identify a building, but
+            # upstream joins can occasionally stamp the same UPN onto multiple
+            # postcodes. Treat these as corrupt and drop them.
+            upn_postcode_counts = res_df.groupby(upn_col)['postcode'].nunique()
+            bad_upns = upn_postcode_counts[upn_postcode_counts > 1].index
+            if len(bad_upns) > 0:
+                before = len(res_df)
+                res_df = res_df[~res_df[upn_col].isin(bad_upns)].reset_index(drop=True)
+                print(f"UPN-postcode collisions:     "
+                    f"{len(bad_upns)} UPNs dropped ({before - len(res_df)} rows)")
+                if len(bad_upns) > 100:
+                    raise ValueError(
+                        f"{len(bad_upns)} UPN-postcode collisions — "
+                        f"too many to be noise. Investigate upstream join."
+                    )
+            else:
+                print("UPN-postcode collisions:     0")
+            # pkg_counts = res_df.groupby('upn').size()
+            # offenders = pkg_counts[pkg_counts > 6].sort_values(ascending=False)
+            # print(f"Buildings with >6 packages: {len(offenders)}")
+            # print(offenders.head(10))
+
+            # # Look at one offender's rows
+            # worst_upn = offenders.index[0]
+            # print(f"\nAll rows for {worst_upn}:")
+            # print(res_df[res_df['upn'] == worst_upn])
+            
+
+            # # Confirm: is it UPN collision across postcodes, or something else?
+            # multi_postcode_upns = res_df.groupby('upn')['postcode'].nunique()
+            # print(f"UPNs with multiple postcodes: {(multi_postcode_upns > 1).sum()}")
+            # print(multi_postcode_upns[multi_postcode_upns > 1].head(10))
+
+            # # And check the overall distribution so you know what cap is reasonable
+            # pkg_counts = res_df.groupby('upn').size()
+            # print("\nPackages-per-building distribution:")
+            # # print(pkg_counts.value_counts().sort_index())
+
+            res_df = validate_multipackage_input(
+                res_df, personas,
+                upn_col='upn',
+                min_packages=MIN_PACKAGES_PER_BUILDING,
+                max_packages=MAX_PACKAGES_PER_BUILDING,
+            )
+
+
+
 
             df = res_df.merge(personas, on='postcode', how='inner')
-            print(f"\n=== POST-MERGE ===")
-            print(f"After persona merge: {len(df)} rows")
-            print(f"Unique UPNs: {df['upn'].nunique()}")
-
-            if df['upn'].nunique() < len(df):
-                print(f"⚠️ UPNs duplicated: {len(df) - df['upn'].nunique()} extra rows")
+            validate_post_merge(df, upn_col='upn', max_packages=MAX_PACKAGES_PER_BUILDING)
 
             df = df[df['premise_type'] != 'Domestic_outbuilding']
             df = df[~df['premise_type'].isna()]
             gc.collect()
-            print(f"After filtering: {len(df)} rows")
-
+            print(f"After premise filtering: {len(df):,} rows ({df['upn'].nunique():,} buildings)")
+            df_buildings = build_building_level_view(df, upn_col='upn')
+            
             for budget in budgets:
                 million_budget = str(budget / MILLION_FACTOR).replace('.0', '')
                 output_dir = os.path.join(

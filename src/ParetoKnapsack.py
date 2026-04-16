@@ -112,7 +112,7 @@ def multichoice_knapsack(
     t0 = time.time()
 
     # --- Preprocessing ---
-    df = df_all_packages.copy()
+    df = df_all_packages.copy().reset_index(drop=True)
     df = df[(df[cost_col] <= budget) & (df[carbon_col] >= 0)]
     df["_is_high_eq"] = df[persona_col].isin(high_equity_personas).astype(int)
 

@@ -388,6 +388,213 @@ def plot_tradeoff_scatter(pareto_summaries_df, output_dir, loft_val):
     print(f"  Saved {os.path.basename(path)}")
 
 
+def plot_intervention_by_persona_per_budget(
+    results_df, output_dir, loft_val, equity_floors,
+    metric='count',
+):
+    """
+    For each budget, produce a plot showing intervention breakdown 
+    by persona across equity floors.
+
+    Layout per budget: 5 subplots (one per persona), each showing
+    stacked bars of intervention across equity floors.
+
+    Parameters
+    ----------
+    metric : str
+        One of:
+          - 'count'     : number of buildings (default)
+          - 'carbon'    : sum of mean_total_co2_saved (tonnes)
+          - 'spend'     : sum of mean_total_capex (£M)
+    """
+    if results_df.empty or 'intervention' not in results_df.columns:
+        print("  No intervention data to plot.")
+        return
+
+    # --- Metric config ---
+    metric_config = {
+        'count': {
+            'value_col': None,   # uses count
+            'ylabel': 'Number of buildings',
+            'scale': 1.0,
+            'file_suffix': 'count',
+            'title_word': 'Buildings',
+            'fmt': lambda v: f'{v:.0f}',
+        },
+        'carbon': {
+            'value_col': 'mean_total_co2_saved',
+            'ylabel': 'CO₂ abatement (tonnes)',
+            'scale': 1.0,
+            'file_suffix': 'carbon',
+            'title_word': 'CO₂ Abatement',
+            'fmt': lambda v: f'{v:,.0f}',
+        },
+        'spend': {
+            'value_col': 'mean_total_capex',
+            'ylabel': 'Spend (£M)',
+            'scale': 1e-6,
+            'file_suffix': 'spend',
+            'title_word': 'Spend',
+            'fmt': lambda v: f'{v:.2f}',
+        },
+    }
+
+    if metric not in metric_config:
+        print(f"  Unknown metric '{metric}' — skipping.")
+        return
+
+    cfg = metric_config[metric]
+
+    # Check required column exists for non-count metrics
+    if cfg['value_col'] and cfg['value_col'] not in results_df.columns:
+        print(f"  Column '{cfg['value_col']}' not found — skipping {metric} plot.")
+        return
+
+    personas_order = [
+        'high_risk', 'med_risk', 'middle_risk', 'low_risk', 'v_low_risk'
+    ]
+    persona_labels = {
+        'high_risk': 'High risk',
+        'med_risk': 'Med risk',
+        'middle_risk': 'Middle',
+        'low_risk': 'Low risk',
+        'v_low_risk': 'V. low risk',
+    }
+
+    # Consistent intervention colours across all plots
+    all_interventions = sorted(results_df['intervention'].dropna().unique())
+    cmap = plt.colormaps.get_cmap('tab10')
+    intv_colors = {
+        intv: cmap(i % 10) for i, intv in enumerate(all_interventions)
+    }
+
+    budgets = sorted(results_df['budget'].unique())
+
+    for budget in budgets:
+        budget_df = results_df[results_df['budget'] == budget]
+        if budget_df.empty:
+            continue
+
+        eq_values = sorted(budget_df['equity_floor_pct'].unique())
+
+        fig, axes = plt.subplots(
+            1, len(personas_order),
+            figsize=(4 * len(personas_order), 5),
+            sharey=False,
+        )
+        if len(personas_order) == 1:
+            axes = [axes]
+
+        # --- Build pivots per persona first so we can find global max ---
+        pivots_by_persona = {}
+        max_total = 0
+
+        for persona in personas_order:
+            p_df = budget_df[budget_df['meta_socio_persona'] == persona]
+            if p_df.empty:
+                pivots_by_persona[persona] = None
+                continue
+
+            if cfg['value_col'] is None:
+                # Count mode
+                pivot = pd.crosstab(
+                    p_df['equity_floor_pct'],
+                    p_df['intervention'],
+                )
+            else:
+                # Sum a specific column
+                pivot = p_df.pivot_table(
+                    index='equity_floor_pct',
+                    columns='intervention',
+                    values=cfg['value_col'],
+                    aggfunc='sum',
+                    fill_value=0,
+                )
+
+            pivot = pivot.reindex(index=eq_values, fill_value=0)
+            pivot = pivot.reindex(columns=all_interventions, fill_value=0)
+            pivot = pivot * cfg['scale']
+
+            pivots_by_persona[persona] = pivot
+            row_totals = pivot.sum(axis=1)
+            if len(row_totals) > 0:
+                max_total = max(max_total, row_totals.max())
+
+        # --- Plot each persona ---
+        for ax, persona in zip(axes, personas_order):
+            pivot = pivots_by_persona.get(persona)
+
+            if pivot is None or pivot.values.sum() == 0:
+                ax.set_title(persona_labels[persona], fontsize=11, fontweight='bold')
+                ax.text(
+                    0.5, 0.5, 'No data',
+                    ha='center', va='center',
+                    transform=ax.transAxes, color='#999',
+                )
+                ax.set_xticks([])
+                ax.set_yticks([])
+                continue
+
+            x = np.arange(len(eq_values))
+            width = 0.75
+            bottom = np.zeros(len(eq_values))
+
+            for intv in all_interventions:
+                vals = pivot[intv].values
+                ax.bar(
+                    x, vals, width, bottom=bottom,
+                    label=intv.replace('_', ' ').title(),
+                    color=intv_colors[intv],
+                    edgecolor='white', linewidth=0.3,
+                )
+                bottom += vals
+
+            ax.set_title(persona_labels[persona], fontsize=11, fontweight='bold')
+            ax.set_xticks(x)
+            ax.set_xticklabels(
+                [f'{int(e)}%' for e in eq_values],
+                rotation=45, fontsize=9,
+            )
+            ax.set_xlabel('Equity floor', fontsize=10)
+            ax.grid(axis='y', alpha=0.3)
+            if max_total > 0:
+                ax.set_ylim(0, max_total * 1.05)
+
+        axes[0].set_ylabel(cfg['ylabel'], fontsize=11)
+
+        # Single legend for the whole figure
+        handles, labels = axes[-1].get_legend_handles_labels()
+        # If last axes had no data, grab from any axes that does
+        if not handles:
+            for a in axes:
+                handles, labels = a.get_legend_handles_labels()
+                if handles:
+                    break
+        if handles:
+            fig.legend(
+                handles, labels,
+                title='Intervention',
+                bbox_to_anchor=(1.0, 0.5), loc='center left',
+                fontsize=9,
+            )
+
+        fig.suptitle(
+            f'Intervention {cfg["title_word"]} by Persona — '
+            f'Budget £{budget/1e6:.0f}M, Loft {loft_val}',
+            fontsize=13, fontweight='bold', y=1.02,
+        )
+        fig.tight_layout()
+
+        budget_label = f"{budget/1e6:.0f}".replace('.', '_')
+        path = os.path.join(
+            output_dir,
+            f'04_{cfg["file_suffix"]}_by_persona_budget{budget_label}M_loft{loft_val}.png',
+        )
+        fig.savefig(path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        print(f"  Saved {os.path.basename(path)}")
+
+
 # ==============================================================================
 # 5. MAIN EXECUTION
 # ==============================================================================
@@ -515,6 +722,12 @@ def post_proc_pareto(
     plot_pareto_front_overlay(pareto_summaries_df, OUTPUT_PATH, LOFT_VALUE)
     plot_cpex_vs_equity_overlay(pareto_summaries_df, OUTPUT_PATH, LOFT_VALUE)
     plot_tradeoff_scatter(pareto_summaries_df, OUTPUT_PATH, LOFT_VALUE)
+
+    for metric in ('count', 'carbon', 'spend'):
+        plot_intervention_by_persona_per_budget(
+            results_df, OUTPUT_PATH, LOFT_VALUE, EQUITY_FLOORS,
+            metric=metric,
+        )
 
     # ── 7. Reuse existing scenario-comparison plots ───────────────────────
     print(f"\n--- Generating scenario comparison plots ---")
