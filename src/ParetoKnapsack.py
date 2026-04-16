@@ -157,6 +157,22 @@ def multichoice_knapsack(
 
     # --- Solve ---
     solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=time_limit_seconds)
+    # solver = pulp.HiGHS(msg=False, timeLimit=time_limit_seconds, threads=0)
+#     solver = pulp.HiGHS_CMD(
+#     msg=True,
+#     gapRel=0.01,  # 1% relative gap
+#     timeLimit=time_limit_seconds,
+#      threads=0,
+#     # options=["presolve=on", "parallel=on"]
+# )
+    
+#     solver = pulp.HiGHS(
+#     msg=True,
+#     gapRel=0.01,  # 1% relative gap
+#     timeLimit=time_limit_seconds,
+#     options=["presolve=off", "parallel=on"]
+# )
+    
     prob.solve(solver)
 
     status = pulp.LpStatus[prob.status]
