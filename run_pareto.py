@@ -50,10 +50,10 @@ from src.ParetoKnapsack import (
 milion_factor = 1_000_000
 RHO = 0.45
 
-# Algorithm toggle: "greedy" uses old single-objective, "pareto" uses new
-ALGO = os.getenv("ALGO", "pareto").lower()
-assert ALGO in ("greedy", "exact", "pareto"), \
-    f"ALGO must be 'greedy', 'exact', or 'pareto', got '{ALGO}'"
+# # Algorithm toggle: "greedy" uses old single-objective, "pareto" uses new
+# ALGO = os.getenv("ALGO", "pareto").lower()
+# assert ALGO in ("greedy", "exact", "pareto"), \
+#     f"ALGO must be 'greedy', 'exact', or 'pareto', got '{ALGO}'"
 
 
 def load_data_simple(files):
@@ -461,7 +461,7 @@ def run_pareto(
 # ============================================================================
 
 def main():
-    print(f"\nAlgorithm: {ALGO.upper()}")
+    
 
     running_locally = not is_running_on_hpc()
 
@@ -479,7 +479,7 @@ def main():
         setting_name = 'local'
         budgets = [1_000_000]
         budgets= [ 1_000_000,  25_000_000,  50_000_000, 100_000_000, 200_000_000] 
-        loft_probs = [0.65]
+        loft_probs = [0.95]
 
         # NEW: equity floors replace equity_factors
         # "at least X% of spend must go to high_risk + med_risk buildings"
@@ -683,7 +683,7 @@ def main():
     
 
     for loft_val in loft_probs: 
-        viss_fold = os.path.join(pareto_runs_folder, 'pareto_vis', f'budget{str(budgets)}_{loft_val} ' )
+        viss_fold = os.path.join(pareto_runs_folder, 'pareto_vis', f'budget{str(budgets)}_{loft_val}' )
         os.makedirs(viss_fold, exist_ok=True)
         
         post_proc_pareto(
