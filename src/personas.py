@@ -55,10 +55,15 @@ def load_personas():
 
     try:
         path = '/Users/gracecolverd/Downloads/final_results_clustering_for_paoper/fuel_poc_model14_kn12/clusters_res_df.csv'
+        path = '/Users/gracecolverd/RetrofitModel/personas/clusters_res_df.csv'
+       
         
         personas = pd.read_csv(path)
     except:
-       print('error cant find personas')
+        try:
+            path = '/rds/user/gb669/hpc-work/energy_map/RetrofitModel/personas/clusters_res_df.csv'
+        except:
+            print('error cant find personas')
     print('Personas loaded')
     personas['meta_socio_persona'] = personas['cluster'].map(mapping)
     personas['persona_name'] = personas['cluster'].map(cluster_names)
