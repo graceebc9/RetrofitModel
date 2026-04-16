@@ -41,6 +41,12 @@ INPUT_FILES_PATH = (
  '/Volumes/T9/2025_10_RetrofitModel/12_v2_greedy/1_all_interventions/risk_sigma_1.0/processed_all_scenarios/*'
 )
 
+INPUT_FILES_PATH = (
+'/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_optimized_priorities/risk_sigma_1.0/processed_all_scenarios/*'
+)
+
+ 
+
 LOFT_PROB = 0.65
 SAMPLE_SIZE = 2000       # buildings
 RANDOM_SEED = 42
