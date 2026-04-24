@@ -17,6 +17,7 @@ Key changes from previous version:
     sanity-check the pipeline end-to-end before kicking off a full run.
 """
 
+
 import os
 import sys
 import glob
@@ -31,10 +32,11 @@ import matplotlib.pyplot as plt
 # Add custom module path
 sys.path.append('/Users/gracecolverd/RetrofitModel')
 
-from src.GreedyAlgo import plot_greedy_distribution_analysis
+# from src.GreedyAlgo import plot_greedy_distribution_analysis
 from src.personas import load_personas
 from src.utils import is_running_on_hpc
-from src.EPCAlgo import select_epc_algo
+# from src.EPCAlgo import select_epc_algo
+from src.PartetoEpc import select_epc_algo_pareto
 from src.GreedyEpcVis import run_epc_vis
 from src.PostPareto import post_proc_pareto
 from src.ParetoUtills import *
@@ -84,6 +86,7 @@ def load_data_simple(files):
 # STRATIFIED SAMPLING FOR TEST MODE
 # ============================================================================
 
+
 def stratified_sample_buildings(
     df,
     personas,
@@ -92,16 +95,17 @@ def stratified_sample_buildings(
     postcode_col='postcode',
     persona_col='meta_socio_persona',
     intervention_col='intervention',
-    decile_col = 'avg_gas_percentile',
+    decile_col='avg_gas_percentile',
     min_per_stratum=1,
     seed=42,
     logger=None,
 ):
     """
     Draw a stratified sample of *buildings* (UPNs), jointly stratified on:
-      - persona (from the personas table, joined on postcode), and
+      - persona (from the personas table, joined on postcode),
       - intervention-package menu (the set of interventions available
-        for that building in `df`).
+        for that building in `df`), and
+      - gas percentile decile.
 
     Parameters
     ----------
@@ -113,7 +117,7 @@ def stratified_sample_buildings(
         Target sample size in *buildings* (UPNs). The realised sample
         may be slightly larger because each stratum contributes at
         least `min_per_stratum` buildings (when available).
-    upn_col, postcode_col, persona_col, intervention_col : str
+    upn_col, postcode_col, persona_col, intervention_col, decile_col : str
         Column names.
     min_per_stratum : int
         Minimum buildings per stratum when the stratum is non-empty.
@@ -143,15 +147,14 @@ def stratified_sample_buildings(
           .rename('menu')
     )
 
-    # One postcode per UPN (collisions should already have been dropped
-    # upstream, but take the first as a defensive fallback).
-    upn_postcode = (
-        df[[upn_col, postcode_col]]
+    # Extract building-level features (postcode AND decile)
+    upn_features = (
+        df[[upn_col, postcode_col, decile_col]]
           .drop_duplicates(subset=[upn_col])
-          .set_index(upn_col)[postcode_col]
+          .set_index(upn_col)
     )
 
-    building_df = pd.concat([menus, upn_postcode], axis=1).reset_index()
+    building_df = pd.concat([menus, upn_features], axis=1).reset_index()
 
     # Attach persona via postcode.
     personas_small = personas[[postcode_col, persona_col]].drop_duplicates(
@@ -159,58 +162,58 @@ def stratified_sample_buildings(
     )
     building_df = building_df.merge(personas_small, on=postcode_col, how='left')
 
+    # Handle missing personas
     n_missing_persona = building_df[persona_col].isna().sum()
     if n_missing_persona > 0:
         _log(f"  [sampler] {n_missing_persona} buildings have no persona "
              f"(postcode not in personas table) — excluded from sample.")
         building_df = building_df.dropna(subset=[persona_col])
 
+    # Handle missing deciles
+    n_missing_decile = building_df[decile_col].isna().sum()
+    if n_missing_decile > 0:
+        _log(f"  [sampler] {n_missing_decile} buildings have no decile "
+             f"recorded — excluded from sample.")
+        building_df = building_df.dropna(subset=[decile_col])
+
     n_buildings_total = len(building_df)
     if n_buildings_total == 0:
-        raise ValueError("No buildings left to sample after persona join.")
+        raise ValueError("No buildings left to sample after persona/decile joins.")
 
     if target_n >= n_buildings_total:
-        _log(f"  [sampler] Requested {target_n} ≥ available "
+        _log(f"  [sampler] Requested {target_n} >= available "
              f"{n_buildings_total}; returning all buildings.")
         sampled_upns = building_df[upn_col].tolist()
     else:
-        # 2. Form strata.
+        # 2. Form strata (Persona x Menu x Decile)
         building_df['_stratum'] = list(
-            zip(building_df[persona_col], building_df['menu'])
+            zip(building_df[persona_col], building_df['menu'], building_df[decile_col])
         )
         strata_sizes = building_df['_stratum'].value_counts()
         n_strata = len(strata_sizes)
-        _log(f"  [sampler] {n_strata} non-empty (persona × menu) strata "
+        _log(f"  [sampler] {n_strata} non-empty (persona × menu × decile) strata "
              f"across {n_buildings_total:,} buildings.")
 
         # 3. Proportional allocation with a floor.
-        #    Each stratum gets at least min(min_per_stratum, stratum_size).
-        #    The remainder is distributed proportionally to stratum size.
         floor_alloc = {
             s: min(min_per_stratum, sz) for s, sz in strata_sizes.items()
         }
         floor_total = sum(floor_alloc.values())
 
         if floor_total >= target_n:
-            # Floors alone already hit (or exceed) target. Keep floors;
-            # realised sample size will be ~floor_total.
             alloc = floor_alloc
         else:
             remainder = target_n - floor_total
-            # Remaining headroom per stratum after the floor:
             headroom = {s: sz - floor_alloc[s] for s, sz in strata_sizes.items()}
             total_headroom = sum(headroom.values())
 
             if total_headroom == 0:
                 alloc = floor_alloc
             else:
-                # Proportional split of the remainder over headroom.
                 raw = {
                     s: remainder * (headroom[s] / total_headroom)
                     for s in strata_sizes.index
                 }
-                # Round down, then distribute leftover by largest fractional
-                # part (Hamilton / largest-remainder method).
                 floored = {s: int(np.floor(v)) for s, v in raw.items()}
                 leftover = remainder - sum(floored.values())
                 fracs = sorted(
@@ -225,7 +228,6 @@ def stratified_sample_buildings(
                     s: floor_alloc[s] + floored[s]
                     for s in strata_sizes.index
                 }
-                # Clamp to stratum size (defensive).
                 alloc = {
                     s: min(alloc[s], strata_sizes[s])
                     for s in strata_sizes.index
@@ -239,6 +241,7 @@ def stratified_sample_buildings(
             upns_in_stratum = building_df.loc[
                 building_df['_stratum'] == stratum, upn_col
             ].to_numpy()
+            
             if len(upns_in_stratum) <= n_take:
                 picked = upns_in_stratum
             else:
@@ -257,6 +260,12 @@ def stratified_sample_buildings(
         building_df[building_df[upn_col].isin(sampled_upns_set)]
         [persona_col].value_counts().to_dict()
     )
+    
+    decile_counts = (
+        building_df[building_df[upn_col].isin(sampled_upns_set)]
+        [decile_col].value_counts().to_dict()
+    )
+
     _log(f"  [sampler] Persona breakdown in sample: {persona_counts}")
     _log(f"  [sampler] Sampled rows: {len(sampled_df):,} "
          f"(from {len(df):,}); sampled UPNs: "
@@ -267,8 +276,10 @@ def stratified_sample_buildings(
         'realised_n_buildings': sampled_df[upn_col].nunique(),
         'realised_n_rows': len(sampled_df),
         'persona_breakdown': persona_counts,
+        'decile_breakdown': decile_counts,
         'seed': seed,
     }
+    
     return sampled_df, sample_info
 
 
@@ -729,12 +740,19 @@ def main():
     if running_locally:
         setting_name = 'local'
         budgets = [1_000_000, 25_000_000, 50_000_000, 100_000_000, 200_000_000]
-        loft_probs = [0.65]
-        equity_floors = list(range(0, 105, 25))
+        # budgets = [ 200_000_000]
+        loft_probs = [0.95, 0.65]
+        # loft_probs = [0.65]
+        # equity_floors = list(range(10, 95, 25))
+        equity_floors = [0,10, 25, 35, 50, 60, 75,100] 
+        # equity_floors = [0,    60, 100] 
+        # equity_floors = [75]
 
         if epc_run:
             INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities_epc/risk_sigma_1.0/processed_best_only/*'
-            BASE_DIR = '/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results_epc/NE/all_domestic'
+            INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/12_v2_greedy/1_all_int_epc/risk_sigma_1.0/processed_all_scenarios/*'
+            
+            BASE_DIR = '/Volumes/T9/2025_10_RetrofitModel/12_v2_greedy/2_greedy_results/NE/all_domestic'
         else:
             INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_1.0/processed_best_only/*'
             INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/12_v2_greedy/1_all_interventions/risk_sigma_1.0/processed_all_scenarios/*'
@@ -744,7 +762,8 @@ def main():
         setting_name = 'v10'
         budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
         loft_probs = [0.95, 0.65]
-        equity_floors = list(range(0, 105, 50))
+        # equity_floors = list(range(0, 105, 50)
+        equity_floors = [0, 10, 25, 35, 50, 60, 75,100] 
 
         if epc_run:
             INPUT_FILES_PATH = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities_epc/risk_sigma_1.0/processed_all_scenarios/*'
@@ -762,7 +781,16 @@ def main():
         setting_name = f'{setting_name}_TEST'
 
     input_files = glob.glob(INPUT_FILES_PATH)
-    pareto_runs_folder = os.path.join(BASE_DIR, 'pareto_runs', setting_name, f'samples_{str(TEST_SAMPLE_SIZE)}'  )
+    if TEST_MODE:
+           if epc_run:
+               pareto_runs_folder = os.path.join(BASE_DIR, 'pareto_runs', f'{setting_name}_epc', f'samples_{str(TEST_SAMPLE_SIZE)}'  )
+           else:
+               pareto_runs_folder = os.path.join(BASE_DIR, 'pareto_runs', setting_name, f'samples_{str(TEST_SAMPLE_SIZE)}'  )
+    else:
+        if epc_run:
+            pareto_runs_folder = os.path.join(BASE_DIR, 'pareto_runs_epc', setting_name   )
+        else:
+            pareto_runs_folder = os.path.join(BASE_DIR, 'pareto_runs', setting_name   )
 
     print("\n" + "=" * 80)
     print("PARETO KNAPSACK ANALYSIS — ε-CONSTRAINT ON EQUITY SPEND")
@@ -970,11 +998,11 @@ def main():
 
                 if epc_run:
                     epc_random_path = os.path.join(output_dir, 'epc_random_selection.csv')
-                    epc_random_selected_df, epc_random_remaining = select_epc_algo(
+                    epc_random_selected_df, epc_random_remaining = select_epc_algo_pareto(
                         df_knapsack=df,
                         budget=budget,
-                        cost_column='mean_total_capex',
-                        efficiency_column='capex_per_net_ton',
+                        cost_col='mean_total_capex',
+                        # efficiency_column='capex_per_net_ton',
                         carbon_col='mean_total_co2_saved',
                         logger=detail_logger,
                     )
@@ -1014,14 +1042,17 @@ def main():
         )
 
     if epc_run:
-        for LOFT_VALUE in loft_probs:
-            for budget in budgets:
-                million_budget = budget / MILLION_FACTOR
-                run_epc_vis(
-                    pareto_runs_folder,
-                    os.path.join(BASE_DIR, 'greedy_vis_epc_pareto'),
-                    million_budget, LOFT_VALUE, equity_factor=0,
-                )
+        for equity_floor in equity_floors:
+            for LOFT_VALUE in loft_probs:
+                for budget in budgets:
+                    million_budget = budget / MILLION_FACTOR
+                    run_epc_vis(
+                        pareto_runs_folder,
+                        base_dir_outputs = os.path.join(pareto_runs_folder, 'greedy_vis_epc_pareto'),
+                        million_budget= million_budget,
+                         prob_loft=  LOFT_VALUE, 
+                          equity_floor=equity_floor,
+                    )
 
     print("\n" + "=" * 80)
     print("ALL ANALYSES COMPLETE!")

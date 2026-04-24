@@ -6,91 +6,73 @@ import numpy as np
 import os 
 
 PERSONA_COLORS = {
-    'low_deprived': '#009E73',  # Green
-    'med_deprived': '#E69F00',  # Orange
-    'high_deprived': '#D55E00'  # Red
+    'low_deprived': '#009E73',
+    'med_deprived': '#E69F00',
+    'high_deprived': '#D55E00'
 }
 
 method_name = 'Opt.T'
 
 METHOD_COLORS = {
-    method_name: '#56B4E9',  # Sky Blue (for targeted/consumption targeting)
-    'EPC': '#CC79A7'  # Purple/Magenta (for EPC targeting)
+    method_name: '#56B4E9',
+    'EPC': '#CC79A7'
 }
 
-# raw cols from the epc optimisated groups
-total_co2_saved_col= 'mean_total_co2_saved' 
-total_co2_saved_col_std='std_total_co2_saved'
+# Column names (pass-through from solver input)
+total_co2_saved_col = 'mean_total_co2_saved' 
+total_co2_saved_col_std = 'std_total_co2_saved'
 
 capex_per_net_ton_mean_col = 'mean_capex_per_net_ton'
 capex_per_net_ton_std_col = 'std_capex_per_net_ton'
 
 
-def run_epc_vis(greedy_runs_folder, base_dir_outputs, million_budget, prob_loft, equity_factor): 
-    output_dir = os.path.join(greedy_runs_folder, f'budget_{int(million_budget)}M__loft_{prob_loft}__equity_{equity_factor}')
-    selected_path = os.path.join(output_dir, f'selected_projects.csv')
-    epc_random_path = os.path.join(output_dir, f'epc_random_selection.csv')
+def run_epc_vis(pareto_runs_folder, base_dir_outputs, million_budget, prob_loft, equity_floor): 
+    """
+    Load Pareto-selected and EPC-selected results and generate comparison plots.
     
+    Parameters
+    ----------
+    pareto_runs_folder : str
+        Root folder containing per-budget/loft run directories.
+    base_dir_outputs : str
+        Root folder for saving visualisation outputs.
+    million_budget : float
+        Budget in millions (e.g. 50 for £50M).
+    prob_loft : float
+        Loft probability used in this run.
+    equity_floor : int or float
+        Which equity floor's Pareto result to compare against EPC.
+    """
+    million_budget_str = str(int(million_budget)) if million_budget == int(million_budget) else str(million_budget)
+    eq_label = f"{int(equity_floor)}"
+    
+    output_dir = os.path.join(
+        pareto_runs_folder, 
+        f'budget_{million_budget_str}M__loft_{prob_loft}'
+    )
+    
+    
+    selected_path = os.path.join(output_dir, f'selected_projects_eq{eq_label}.csv')
+    epc_path = os.path.join(output_dir, 'epc_random_selection.csv')
+    
+    print(f'trying paths: {selected_path} \n and. {epc_path}  ')
     df = pd.read_csv(selected_path) 
-    epc = pd.read_csv(epc_random_path) 
-    print('df and epc loaded')
-    print(selected_path)
-    print(df.head())
-    print(epc_random_path)
+    epc = pd.read_csv(epc_path) 
+    print(f'Loaded Pareto (eq={eq_label}): {len(df)} rows from {selected_path}')
+    print(f'Loaded EPC: {len(epc)} rows from {epc_path}')
     
-    generate_all_aggregation_plots(df, epc, output_dir=f'{base_dir_outputs}/epc_comaprisons/budget_{million_budget}M__loft_{prob_loft}__equity_{equity_factor}', save=True)
+    vis_output_dir = os.path.join(
+        base_dir_outputs, 
+        'epc_comparisons',
+        f'budget_{million_budget_str}M__loft_{prob_loft}__eq_{eq_label}'
+    )
+    
+    generate_all_aggregation_plots(df, epc, output_dir=vis_output_dir, save=True)
 
 
-# def plot_total_comparison(df1, df2, column_mean, columns_std output_dir=None, save=False):
-#     """
-#     Plot overall total comparison for a single column.
-#     Handles unit conversion for Capex to Millions (£M).
-#     """
-#     fig, ax = plt.subplots(figsize=(8, 6))
-    
-#     # Check for Capex to handle units
-#     is_capex = 'capex' in column.lower()
-#     scale_factor = 1e6 if is_capex else 1.0
-#     unit_label = ' (£M)' if is_capex else ''
-#     fmt_str = '{:,.1f}' if is_capex else '{:,.0f}'
-    
-#     # Calculate totals
-#     total_df1 = df1[column].sum() / scale_factor
-#     total_df2 = df2[column].sum() / scale_factor
-    
-#     # Create bar chart
-#     bars = ax.bar([method_name, 'EPC'], [total_df1, total_df2], 
-#                    color=[METHOD_COLORS[method_name], METHOD_COLORS['EPC']], alpha=0.7, edgecolor='black', linewidth=2)
-    
-#     # Add value labels on bars
-#     for bar in bars:
-#         height = bar.get_height()
-#         ax.text(bar.get_x() + bar.get_width()/2., height,
-#                 fmt_str.format(height),
-#                 ha='center', va='bottom', fontsize=12, fontweight='bold')
-    
-#     ylabel_text = column.replace('_', ' ').title() + unit_label
-#     ax.set_ylabel(ylabel_text, fontsize=12)
-    
-#     ax.grid(True, alpha=0.3, axis='y')
-    
-#     # Add difference annotation
-#     diff = total_df2 - total_df1
-#     diff_pct = (diff / total_df1) * 100 if total_df1 != 0 else 0
-#     ax.text(0.75, 0.85, f'Difference: {diff:,.1f} ({diff_pct:+.1f}%)', 
-#             transform=ax.transAxes, ha='center', va='top',
-#             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
-#             fontsize=10)
-    
-#     plt.tight_layout()
-    
-#     if save and output_dir:
-#         filepath = Path(output_dir) / f'{column}_total_comparison.png'
-#         plt.savefig(filepath, dpi=300, bbox_inches='tight')
-#         print(f"Saved: {filepath}")
-#         plt.close()
-#     else:
-#         plt.show()
+# ---------------------------------------------------------------------------
+# TOTAL COMPARISON
+# ---------------------------------------------------------------------------
 
 def plot_total_comparison(df1, df2, column_mean, column_std, output_dir=None, save=False):
     """
@@ -99,21 +81,17 @@ def plot_total_comparison(df1, df2, column_mean, column_std, output_dir=None, sa
     """
     fig, ax = plt.subplots(figsize=(8, 6))
     
-    # Check for Capex to handle units
     is_capex = 'capex' in column_mean.lower()
     scale_factor = 1e6 if is_capex else 1.0
     unit_label = ' (£M)' if is_capex else ''
     fmt_str = '{:,.1f}' if is_capex else '{:,.0f}'
     
-    # Calculate total mean = sum of means
     total_mean_df1 = df1[column_mean].sum() / scale_factor
     total_mean_df2 = df2[column_mean].sum() / scale_factor
     
-    # Calculate total std = sqrt(sum of variances)
     total_std_df1 = np.sqrt((df1[column_std]**2).sum()) / scale_factor
     total_std_df2 = np.sqrt((df2[column_std]**2).sum()) / scale_factor
     
-    # Create bar chart with error bars
     x_positions = [0, 1]
     means = [total_mean_df1, total_mean_df2]
     stds = [total_std_df1, total_std_df2]
@@ -132,7 +110,6 @@ def plot_total_comparison(df1, df2, column_mean, column_std, output_dir=None, sa
     ax.set_xticks(x_positions)
     ax.set_xticklabels(labels)
     
-    # Add value labels on bars (above error bars)
     for bar, mean, std in zip(bars, means, stds):
         ax.text(bar.get_x() + bar.get_width()/2., mean + std + (mean * 0.02),
                 f'{fmt_str.format(mean)} ± {fmt_str.format(std)}',
@@ -140,10 +117,8 @@ def plot_total_comparison(df1, df2, column_mean, column_std, output_dir=None, sa
     
     ylabel_text = column_mean.replace('_', ' ').title() + unit_label
     ax.set_ylabel(ylabel_text, fontsize=12)
-    
     ax.grid(True, alpha=0.3, axis='y')
     
-    # Add difference annotation
     diff = total_mean_df2 - total_mean_df1
     diff_pct = (diff / total_mean_df1) * 100 if total_mean_df1 != 0 else 0
     ax.text(0.75, 0.85, f'Difference: {fmt_str.format(diff)} ({diff_pct:+.1f}%)', 
@@ -162,154 +137,22 @@ def plot_total_comparison(df1, df2, column_mean, column_std, output_dir=None, sa
         plt.show()
 
 
-# def plot_by_socio_persona(df1, df2, column, output_dir=None, save=False):
-#     """
-#     Plot totals split by meta_socio_persona.
-#     Handles unit conversion for Capex to Millions (£M).
-#     """
-#     fig, ax = plt.subplots(figsize=(12, 8))
-    
-#     # Check for Capex to handle units
-#     is_capex = 'capex' in column.lower()
-#     scale_factor = 1e6 if is_capex else 1.0
-#     unit_label = ' (£M)' if is_capex else ''
-#     fmt_str = '{:,.1f}' if is_capex else '{:,.0f}'
-    
-#     # Aggregate by socio persona
-#     df1_agg = df1.groupby('meta_socio_persona')[column].sum().sort_index() / scale_factor
-#     df2_agg = df2.groupby('meta_socio_persona')[column].sum().sort_index() / scale_factor
-    
-#     # Get all unique personas
-#     all_personas = sorted(set(df1_agg.index) | set(df2_agg.index))
-    
-#     # Prepare data for plotting
-#     df1_values = [df1_agg.get(p, 0) for p in all_personas]
-#     df2_values = [df2_agg.get(p, 0) for p in all_personas]
-    
-#     x = np.arange(len(all_personas))
-#     width = 0.35
-    
-#     # Create grouped bar chart
-#     bars1 = ax.bar(x - width/2, df1_values, width, label=method_name, 
-#                    color=METHOD_COLORS[method_name], alpha=0.7, edgecolor='black')
-#     bars2 = ax.bar(x + width/2, df2_values, width, label='EPC', 
-#                    color=METHOD_COLORS['EPC'], alpha=0.7, edgecolor='black')
-    
-#     # Add value labels on bars
-#     for bars in [bars1, bars2]:
-#         for bar in bars:
-#             height = bar.get_height()
-#             if height > 0:
-#                 ax.text(bar.get_x() + bar.get_width()/2., height,
-#                         fmt_str.format(height),
-#                         ha='center', va='bottom', fontsize=9, rotation=0)
-    
-#     ax.set_xlabel('Socio Persona', fontsize=12, fontweight='bold')
-#     ax.set_ylabel(column.replace('_', ' ').title() + unit_label, fontsize=12)
-    
-#     ax.set_xticks(x)
-#     ax.set_xticklabels(all_personas, rotation=45, ha='right')
-#     ax.legend()
-#     ax.grid(True, alpha=0.3, axis='y')
-    
-#     plt.tight_layout()
-    
-#     if save and output_dir:
-#         filepath = Path(output_dir) / f'{column}_by_socio_persona.png'
-#         plt.savefig(filepath, dpi=300, bbox_inches='tight')
-#         print(f"Saved: {filepath}")
-#         plt.close()
-#     else:
-#         plt.show()
+# ---------------------------------------------------------------------------
+# GROUP COMPARISON
+# ---------------------------------------------------------------------------
 
-
-# def plot_by_gas_percentile(df1, df2, column, output_dir=None, save=False):
-#     """
-#     Plot totals split by avg_gas_percentile.
-#     Handles unit conversion for Capex to Millions (£M).
-#     """
-#     fig, ax = plt.subplots(figsize=(12, 6))
-    
-#     # Check for Capex to handle units
-#     is_capex = 'capex' in column.lower()
-#     scale_factor = 1e6 if is_capex else 1.0
-#     unit_label = ' (£M)' if is_capex else ''
-#     fmt_str = '{:,.1f}' if is_capex else '{:,.0f}'
-    
-#     # Aggregate by gas percentile
-#     df1_agg = df1.groupby('avg_gas_percentile')[column].sum().sort_index() / scale_factor
-#     df2_agg = df2.groupby('avg_gas_percentile')[column].sum().sort_index() / scale_factor
-    
-#     # Get all unique percentiles
-#     all_percentiles = sorted(set(df1_agg.index) | set(df2_agg.index))
-    
-#     # Prepare data for plotting
-#     df1_values = [df1_agg.get(p, 0) for p in all_percentiles]
-#     df2_values = [df2_agg.get(p, 0) for p in all_percentiles]
-    
-#     x = np.arange(len(all_percentiles))
-#     width = 0.35
-    
-#     # Create grouped bar chart
-#     bars1 = ax.bar(x - width/2, df1_values, width, label=method_name, 
-#                    color=METHOD_COLORS[method_name], alpha=0.7, edgecolor='black')
-#     bars2 = ax.bar(x + width/2, df2_values, width, label='EPC', 
-#                    color=METHOD_COLORS['EPC'], alpha=0.7, edgecolor='black')
-    
-#     # Add value labels on bars
-#     for bars in [bars1, bars2]:
-#         for bar in bars:
-#             height = bar.get_height()
-#             if height > 0:
-#                 ax.text(bar.get_x() + bar.get_width()/2., height,
-#                         fmt_str.format(height),
-#                         ha='center', va='bottom', fontsize=9)
-    
-#     ax.set_xlabel('Gas Percentile', fontsize=12, fontweight='bold')
-#     ax.set_ylabel(column.replace('_', ' ').title() + unit_label, fontsize=12)
-    
-#     ax.set_xticks(x)
-#     ax.set_xticklabels([f'{int(p)}' for p in all_percentiles])
-#     ax.legend()
-#     ax.grid(True, alpha=0.3, axis='y')
-    
-#     plt.tight_layout()
-    
-#     if save and output_dir:
-#         filepath = Path(output_dir) / f'{column}_by_gas_percentile.png'
-#         plt.savefig(filepath, dpi=300, bbox_inches='tight')
-#         print(f"Saved: {filepath}")
-#         plt.close()
-#     else:
-#         plt.show()
-
-def plot_by_group(df1, df2, column_mean,column_std,   group_col, group_label, output_dir=None, save=False):
+def plot_by_group(df1, df2, column_mean, column_std, group_col, group_label, output_dir=None, save=False):
     """
     Plot totals split by a grouping column with error bars.
-    Handles unit conversion for Capex to Millions (£M).
-    
-    Args:
-        df1: First dataframe
-        df2: Second dataframe
-        column_mean: Column name for the mean values
-        group_col: Column name to group by (e.g., 'meta_socio_persona', 'region')
-        group_label: Display label for the grouping (e.g., 'Socio Persona', 'Region')
-        output_dir: Output directory for saving
-        save: Whether to save the plot
     """
-    # Derive std column from mean column
-    
-    
     fig, ax = plt.subplots(figsize=(12, 8))
     
-    # Check for Capex to handle units
     is_capex = 'capex' in column_mean.lower()
     scale_factor = 1e6 if is_capex else 1.0
     unit_label = ' (£M)' if is_capex else ''
     fmt_str = '{:,.1f}' if is_capex else '{:,.0f}'
     
     def aggregate_with_std(df):
-        """Aggregate by group: sum means, combine stds."""
         grouped = df.groupby(group_col).agg(
             total_mean=(column_mean, 'sum'),
             total_std=(column_std, lambda x: np.sqrt((x**2).sum()))
@@ -321,10 +164,8 @@ def plot_by_group(df1, df2, column_mean,column_std,   group_col, group_label, ou
     df1_agg = aggregate_with_std(df1)
     df2_agg = aggregate_with_std(df2)
     
-    # Get all unique groups
     all_groups = sorted(set(df1_agg.index) | set(df2_agg.index))
     
-    # Prepare data for plotting
     df1_means = [df1_agg.loc[g, 'total_mean'] if g in df1_agg.index else 0 for g in all_groups]
     df1_stds = [df1_agg.loc[g, 'total_std'] if g in df1_agg.index else 0 for g in all_groups]
     df2_means = [df2_agg.loc[g, 'total_mean'] if g in df2_agg.index else 0 for g in all_groups]
@@ -333,26 +174,20 @@ def plot_by_group(df1, df2, column_mean,column_std,   group_col, group_label, ou
     x = np.arange(len(all_groups))
     width = 0.35
     
-    # Create grouped bar chart with error bars
     bars1 = ax.bar(x - width/2, df1_means, width, 
-                   yerr=df1_stds,
-                   capsize=4,
+                   yerr=df1_stds, capsize=4,
                    label=method_name, 
                    color=METHOD_COLORS[method_name], 
-                   alpha=0.7, 
-                   edgecolor='black',
+                   alpha=0.7, edgecolor='black',
                    error_kw={'linewidth': 1.5, 'capthick': 1.5})
     
     bars2 = ax.bar(x + width/2, df2_means, width,
-                   yerr=df2_stds,
-                   capsize=4,
+                   yerr=df2_stds, capsize=4,
                    label='EPC', 
                    color=METHOD_COLORS['EPC'], 
-                   alpha=0.7, 
-                   edgecolor='black',
+                   alpha=0.7, edgecolor='black',
                    error_kw={'linewidth': 1.5, 'capthick': 1.5})
     
-    # Add value labels on bars (above error bars)
     for bars, stds in [(bars1, df1_stds), (bars2, df2_stds)]:
         for bar, std in zip(bars, stds):
             height = bar.get_height()
@@ -363,7 +198,6 @@ def plot_by_group(df1, df2, column_mean,column_std,   group_col, group_label, ou
     
     ax.set_xlabel(group_label, fontsize=12, fontweight='bold')
     ax.set_ylabel(column_mean.replace('_', ' ').title() + unit_label, fontsize=12)
-    
     ax.set_xticks(x)
     ax.set_xticklabels(all_groups, rotation=45, ha='right')
     ax.legend()
@@ -372,7 +206,6 @@ def plot_by_group(df1, df2, column_mean,column_std,   group_col, group_label, ou
     plt.tight_layout()
     
     if save and output_dir:
-        # Include group_col in filename to distinguish different groupings
         filepath = Path(output_dir) / f'{column_mean}_by_{group_col}.png'
         plt.savefig(filepath, dpi=300, bbox_inches='tight')
         print(f"Saved: {filepath}")
@@ -381,98 +214,29 @@ def plot_by_group(df1, df2, column_mean,column_std,   group_col, group_label, ou
         plt.show()
 
 
-def plot_by_energy_rating(df1, df2, column, output_dir=None, save=False):
-    """
-    Plot totals split by CURRENT_ENERGY_RATING.
-    Handles unit conversion for Capex to Millions (£M).
-    """
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # Check for Capex to handle units
-    is_capex = 'capex' in column.lower()
-    scale_factor = 1e6 if is_capex else 1.0
-    unit_label = ' (£M)' if is_capex else ''
-    fmt_str = '{:,.1f}' if is_capex else '{:,.0f}'
-    
-    # Aggregate by energy rating
-    df1_agg = df1.groupby('CURRENT_ENERGY_RATING')[column].sum().sort_index() / scale_factor
-    df2_agg = df2.groupby('CURRENT_ENERGY_RATING')[column].sum().sort_index() / scale_factor
-    
-    # Get all unique ratings (typically A, B, C, D, E, F, G)
-    all_ratings = sorted(set(df1_agg.index) | set(df2_agg.index))
-    
-    # Prepare data for plotting
-    df1_values = [df1_agg.get(r, 0) for r in all_ratings]
-    df2_values = [df2_agg.get(r, 0) for r in all_ratings]
-    
-    x = np.arange(len(all_ratings))
-    width = 0.35
-    
-    # Create grouped bar chart
-    bars1 = ax.bar(x - width/2, df1_values, width, label=method_name, 
-                   color=METHOD_COLORS[method_name], alpha=0.7, edgecolor='black')
-    bars2 = ax.bar(x + width/2, df2_values, width, label='EPC', 
-                   color=METHOD_COLORS['EPC'], alpha=0.7, edgecolor='black')
-    
-    # Add value labels on bars
-    for bars in [bars1, bars2]:
-        for bar in bars:
-            height = bar.get_height()
-            if height > 0:
-                ax.text(bar.get_x() + bar.get_width()/2., height,
-                        fmt_str.format(height),
-                        ha='center', va='bottom', fontsize=9, rotation=0)
-    
-    ax.set_xlabel('Current Energy Rating', fontsize=12, fontweight='bold')
-    ax.set_ylabel(column.replace('_', ' ').title() + unit_label, fontsize=12)
-    
-    ax.set_xticks(x)
-    ax.set_xticklabels(all_ratings)
-    ax.legend()
-    ax.grid(True, alpha=0.3, axis='y')
-    
-    plt.tight_layout()
-    
-    if save and output_dir:
-        filepath = Path(output_dir) / f'{column}_by_energy_rating.png'
-        plt.savefig(filepath, dpi=300, bbox_inches='tight')
-        print(f"Saved: {filepath}")
-        plt.close()
-    else:
-        plt.show()
-
+# ---------------------------------------------------------------------------
+# HEATMAP
+# ---------------------------------------------------------------------------
 
 def plot_heatmap_comparison(df1, df2, column, output_dir=None, save=False):
-    """
-    Plot heatmap showing totals by socio persona and energy rating.
-    Handles unit conversion for Capex to Millions (£M).
-    """
+    """Plot heatmap showing totals by socio persona and energy rating."""
     fig, axes = plt.subplots(1, 2, figsize=(24, 12))
     
-    # Check for Capex to handle units
     is_capex = 'capex' in column.lower()
     scale_factor = 1e6 if is_capex else 1.0
     unit_label = ' (£M)' if is_capex else ''
     fmt_str = '.1f' if is_capex else '.0f'
     
-    # Create pivot tables and scale
     pivot_df1 = df1.pivot_table(
-        values=column, 
-        index='meta_socio_persona', 
-        columns='CURRENT_ENERGY_RATING', 
-        aggfunc='sum', 
-        fill_value=0
+        values=column, index='meta_socio_persona', 
+        columns='CURRENT_ENERGY_RATING', aggfunc='sum', fill_value=0
     ) / scale_factor
     
     pivot_df2 = df2.pivot_table(
-        values=column, 
-        index='meta_socio_persona', 
-        columns='CURRENT_ENERGY_RATING', 
-        aggfunc='sum', 
-        fill_value=0
+        values=column, index='meta_socio_persona', 
+        columns='CURRENT_ENERGY_RATING', aggfunc='sum', fill_value=0
     ) / scale_factor
     
-    # Plot heatmaps
     sns.heatmap(pivot_df1, annot=True, fmt=fmt_str, cmap='YlOrRd', 
                 ax=axes[0], cbar_kws={'label': column.replace('_', ' ').title() + unit_label})
     axes[0].set_title(method_name, fontsize=13, fontweight='bold')
@@ -485,7 +249,6 @@ def plot_heatmap_comparison(df1, df2, column, output_dir=None, save=False):
     axes[1].set_xlabel('Energy Rating', fontsize=11)
     axes[1].set_ylabel('Socio Persona', fontsize=11)
     
-  
     plt.tight_layout()
     
     if save and output_dir:
@@ -497,13 +260,14 @@ def plot_heatmap_comparison(df1, df2, column, output_dir=None, save=False):
         plt.show()
 
 
-# ============= BUILDING COUNT PLOTS =============
+# ---------------------------------------------------------------------------
+# BUILDING COUNTS
+# ---------------------------------------------------------------------------
 
 def plot_building_counts_by_percentile(df1, df2, output_dir=None, save=False):
     """Plot count of buildings by gas percentile."""
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Count buildings by percentile
     df1_counts = df1['avg_gas_percentile'].value_counts().sort_index()
     df2_counts = df2['avg_gas_percentile'].value_counts().sort_index()
     
@@ -525,8 +289,7 @@ def plot_building_counts_by_percentile(df1, df2, output_dir=None, save=False):
             height = bar.get_height()
             if height > 0:
                 ax.text(bar.get_x() + bar.get_width()/2., height,
-                        f'{int(height)}',
-                        ha='center', va='bottom', fontsize=9)
+                        f'{int(height)}', ha='center', va='bottom', fontsize=9)
     
     ax.set_xlabel('Gas Percentile', fontsize=12, fontweight='bold')
     ax.set_ylabel('Building Count', fontsize=12)
@@ -534,7 +297,6 @@ def plot_building_counts_by_percentile(df1, df2, output_dir=None, save=False):
     ax.set_xticklabels([f'{int(p)}' for p in all_percentiles])
     ax.legend()
     ax.grid(True, alpha=0.3, axis='y')
-    
     plt.tight_layout()
     
     if save and output_dir:
@@ -571,8 +333,7 @@ def plot_building_counts_by_persona(df1, df2, output_dir=None, save=False):
             height = bar.get_height()
             if height > 0:
                 ax.text(bar.get_x() + bar.get_width()/2., height,
-                        f'{int(height)}',
-                        ha='center', va='bottom', fontsize=9)
+                        f'{int(height)}', ha='center', va='bottom', fontsize=9)
     
     ax.set_xlabel('Socio Persona', fontsize=12, fontweight='bold')
     ax.set_ylabel('Building Count', fontsize=12)
@@ -580,7 +341,6 @@ def plot_building_counts_by_persona(df1, df2, output_dir=None, save=False):
     ax.set_xticklabels(all_personas, rotation=45, ha='right')
     ax.legend()
     ax.grid(True, alpha=0.3, axis='y')
-    
     plt.tight_layout()
     
     if save and output_dir:
@@ -617,8 +377,7 @@ def plot_building_counts_by_energy_rating(df1, df2, output_dir=None, save=False)
             height = bar.get_height()
             if height > 0:
                 ax.text(bar.get_x() + bar.get_width()/2., height,
-                        f'{int(height)}',
-                        ha='center', va='bottom', fontsize=9)
+                        f'{int(height)}', ha='center', va='bottom', fontsize=9)
     
     ax.set_xlabel('Current Energy Rating', fontsize=12, fontweight='bold')
     ax.set_ylabel('Building Count', fontsize=12)
@@ -626,7 +385,6 @@ def plot_building_counts_by_energy_rating(df1, df2, output_dir=None, save=False)
     ax.set_xticklabels(all_ratings)
     ax.legend()
     ax.grid(True, alpha=0.3, axis='y')
-    
     plt.tight_layout()
     
     if save and output_dir:
@@ -638,7 +396,9 @@ def plot_building_counts_by_energy_rating(df1, df2, output_dir=None, save=False)
         plt.show()
 
 
-# ============= INTERVENTION TYPE PLOTS =============
+# ---------------------------------------------------------------------------
+# INTERVENTION PLOTS
+# ---------------------------------------------------------------------------
 
 def plot_interventions_by_percentile(df1, df2, output_dir=None, save=False):
     """Plot stacked bar of intervention counts by gas percentile."""
@@ -669,9 +429,7 @@ def plot_interventions_by_percentile(df1, df2, output_dir=None, save=False):
     axes[1].tick_params(axis='x', rotation=0)
     
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, title='Intervention', loc='upper right' 
-               , frameon=True)
-    
+    fig.legend(handles, labels, title='Intervention', loc='upper right', frameon=True)
     plt.tight_layout(rect=[0, 0, 0.95, 1])
     
     if save and output_dir:
@@ -712,9 +470,8 @@ def plot_interventions_by_persona(df1, df2, output_dir=None, save=False):
     axes[1].tick_params(axis='x', rotation=45)
     
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, title='Intervention', loc='center right', bbox_to_anchor=(0.6, 0.8) , 
-                 frameon=True)
-    
+    fig.legend(handles, labels, title='Intervention', loc='center right', 
+               bbox_to_anchor=(0.6, 0.8), frameon=True)
     plt.tight_layout(rect=[0, 0, 0.95, 1])
     
     if save and output_dir:
@@ -757,7 +514,6 @@ def plot_interventions_by_energy_rating(df1, df2, output_dir=None, save=False):
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, title='Intervention', loc='center left', 
                bbox_to_anchor=(0.75, 0.85), frameon=True)
-    
     plt.tight_layout(rect=[0, 0, 0.95, 1])
     
     if save and output_dir:
@@ -768,16 +524,16 @@ def plot_interventions_by_energy_rating(df1, df2, output_dir=None, save=False):
     else:
         plt.show()
 
+
+# ---------------------------------------------------------------------------
+# CO2 / CAPEX BY INTERVENTION
+# ---------------------------------------------------------------------------
+
 def plot_co2_by_intervention(df1, df2, output_dir=None, save=False):
     """Plot total CO2 saved split by intervention type with error bars."""
-    
-    # Derive std column from mean column
-    
-    
     fig, ax = plt.subplots(figsize=(10, 6))
     
     def aggregate_with_std(df):
-        """Aggregate by intervention: sum means, combine stds."""
         grouped = df.groupby('intervention').agg(
             total_mean=(total_co2_saved_col, 'sum'),
             total_std=(total_co2_saved_col_std, lambda x: np.sqrt((x**2).sum()))
@@ -787,10 +543,8 @@ def plot_co2_by_intervention(df1, df2, output_dir=None, save=False):
     df1_agg = aggregate_with_std(df1)
     df2_agg = aggregate_with_std(df2)
     
-    # Get all unique interventions (sorted by df1 values for consistency)
     all_interventions = sorted(set(df1_agg.index) | set(df2_agg.index))
     
-    # Prepare data for plotting
     df1_means = [df1_agg.loc[i, 'total_mean'] if i in df1_agg.index else 0 for i in all_interventions]
     df1_stds = [df1_agg.loc[i, 'total_std'] if i in df1_agg.index else 0 for i in all_interventions]
     df2_means = [df2_agg.loc[i, 'total_mean'] if i in df2_agg.index else 0 for i in all_interventions]
@@ -799,33 +553,24 @@ def plot_co2_by_intervention(df1, df2, output_dir=None, save=False):
     x = np.arange(len(all_interventions))
     width = 0.35
     
-    # Create grouped bar chart with error bars
     bars1 = ax.bar(x - width/2, df1_means, width,
-                   yerr=df1_stds,
-                   capsize=4,
+                   yerr=df1_stds, capsize=4,
                    label=method_name, 
-                   color=METHOD_COLORS[method_name], 
-                   alpha=0.7, 
-                   edgecolor='black',
+                   color=METHOD_COLORS[method_name], alpha=0.7, edgecolor='black',
                    error_kw={'linewidth': 1.5, 'capthick': 1.5})
     
     bars2 = ax.bar(x + width/2, df2_means, width,
-                   yerr=df2_stds,
-                   capsize=4,
+                   yerr=df2_stds, capsize=4,
                    label='EPC', 
-                   color=METHOD_COLORS['EPC'], 
-                   alpha=0.7, 
-                   edgecolor='black',
+                   color=METHOD_COLORS['EPC'], alpha=0.7, edgecolor='black',
                    error_kw={'linewidth': 1.5, 'capthick': 1.5})
     
-    # Add value labels on bars (above error bars)
     for bars, stds in [(bars1, df1_stds), (bars2, df2_stds)]:
         for bar, std in zip(bars, stds):
             height = bar.get_height()
             if height > 0:
                 ax.text(bar.get_x() + bar.get_width()/2., height + std + (height * 0.02),
-                        f'{height:,.0f}',
-                        ha='center', va='bottom', fontsize=8, rotation=0)
+                        f'{height:,.0f}', ha='center', va='bottom', fontsize=8, rotation=0)
     
     ax.set_xlabel('Intervention Type', fontsize=12, fontweight='bold')
     ax.set_ylabel('Total CO2 Saved (Tons/5yr)', fontsize=12)
@@ -833,7 +578,6 @@ def plot_co2_by_intervention(df1, df2, output_dir=None, save=False):
     ax.set_xticklabels(all_interventions, rotation=45, ha='right')
     ax.legend()
     ax.grid(True, alpha=0.3, axis='y')
-    
     plt.tight_layout()
     
     if save and output_dir:
@@ -844,61 +588,11 @@ def plot_co2_by_intervention(df1, df2, output_dir=None, save=False):
     else:
         plt.show()
 
-# def plot_co2_by_intervention(df1, df2, output_dir=None, save=False):
-#     """Plot total CO2 saved split by intervention type."""
-#     fig, ax = plt.subplots(figsize=(10, 6))
-#     print('df1 cols')
-#     print(df1.columns.tolist() )
-#     df1_agg = df1.groupby('intervention')[total_co2_saved_col].sum().sort_values(ascending=False)
-#     df2_agg = df2.groupby('intervention')[total_co2_saved_col].sum().sort_values(ascending=False)
-    
-#     all_interventions = sorted(set(df1_agg.index) | set(df2_agg.index))
-    
-#     df1_values = [df1_agg.get(i, 0) for i in all_interventions]
-#     df2_values = [df2_agg.get(i, 0) for i in all_interventions]
-    
-#     x = np.arange(len(all_interventions))
-#     width = 0.35
-    
-#     bars1 = ax.bar(x - width/2, df1_values, width, label=method_name, 
-#                    color=METHOD_COLORS[method_name], alpha=0.7, edgecolor='black')
-#     bars2 = ax.bar(x + width/2, df2_values, width, label='EPC', 
-#                    color=METHOD_COLORS['EPC'], alpha=0.7, edgecolor='black')
-    
-#     for bars in [bars1, bars2]:
-#         for bar in bars:
-#             height = bar.get_height()
-#             if height > 0:
-#                 ax.text(bar.get_x() + bar.get_width()/2., height,
-#                         f'{height:,.0f}',
-#                         ha='center', va='bottom', fontsize=8, rotation=0)
-    
-#     ax.set_xlabel('Intervention Type', fontsize=12, fontweight='bold')
-#     ax.set_ylabel('Total CO2 Saved (Tons/5yr)', fontsize=12)
-#     ax.set_xticks(x)
-#     ax.set_xticklabels(all_interventions, rotation=45, ha='right')
-#     ax.legend()
-#     ax.grid(True, alpha=0.3, axis='y')
-    
-#     plt.tight_layout()
-    
-#     if save and output_dir:
-#         filepath = Path(output_dir) / 'co2_by_intervention.png'
-#         plt.savefig(filepath, dpi=300, bbox_inches='tight')
-#         print(f"Saved: {filepath}")
-#         plt.close()
-#     else:
-#         plt.show()
-
 
 def plot_capex_by_intervention(df1, df2, output_dir=None, save=False):
-    """
-    Plot total CAPEX split by intervention type.
-    Includes (£M) conversion and labelling.
-    """
-    # Determine which capex column to use
+    """Plot total CAPEX split by intervention type."""
     capex_col = None
-    for col in ['capex', 'total_capex', 'CAPEX']:
+    for col in ['mean_total_capex', 'capex', 'total_capex', 'CAPEX']:
         if col in df1.columns and col in df2.columns:
             capex_col = col
             break
@@ -909,7 +603,6 @@ def plot_capex_by_intervention(df1, df2, output_dir=None, save=False):
     
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Aggregate CAPEX by intervention and convert to millions
     df1_agg = df1.groupby('intervention')[capex_col].sum().sort_values(ascending=False) / 1e6
     df2_agg = df2.groupby('intervention')[capex_col].sum().sort_values(ascending=False) / 1e6
     
@@ -931,17 +624,14 @@ def plot_capex_by_intervention(df1, df2, output_dir=None, save=False):
             height = bar.get_height()
             if height > 0:
                 ax.text(bar.get_x() + bar.get_width()/2., height,
-                        f'{height:,.1f}',
-                        ha='center', va='bottom', fontsize=8, rotation=0)
+                        f'{height:,.1f}', ha='center', va='bottom', fontsize=8, rotation=0)
     
     ax.set_xlabel('Intervention Type', fontsize=12, fontweight='bold')
     ax.set_ylabel(f'Total {capex_col.replace("_", " ").title()} (£M)', fontsize=12, fontweight='bold')
-    
     ax.set_xticks(x)
     ax.set_xticklabels(all_interventions, rotation=45, ha='right')
     ax.legend()
     ax.grid(True, alpha=0.3, axis='y')
-    
     plt.tight_layout()
     
     if save and output_dir:
@@ -953,71 +643,17 @@ def plot_capex_by_intervention(df1, df2, output_dir=None, save=False):
         plt.show()
 
 
-# def plot_mean_capex_per_ton(df1, df2, output_dir=None, save=False):
-#     """
-#     Plot comparison of mean capex per ton.
-#     Includes (£/ton) labelling.
-#     """
-#     capex_per_net_ton_mean_col
-#     # capex_per_net_ton_std_col
-    
-    
-#     fig, ax = plt.subplots(figsize=(8, 6))
-    
-#     mean_df1 = df1[capex_per_net_ton_mean_col].median()
-#     mean_df2 = df2[capex_per_net_ton_mean_col].median()
-    
-#     bars = ax.bar([method_name, 'EPC'], [mean_df1, mean_df2], 
-#                     color=[METHOD_COLORS[method_name], METHOD_COLORS['EPC']], alpha=0.7, edgecolor='black', linewidth=2)
-    
-#     for bar in bars:
-#         height = bar.get_height()
-#         ax.text(bar.get_x() + bar.get_width()/2., height,
-#                 f'{height:,.0f}',
-#                 ha='center', va='bottom', fontsize=12, fontweight='bold')
-    
-#     ax.set_ylabel(f'{col.replace("_", " ").title()} (£/ton)', fontsize=12)
-    
-#     ax.grid(True, alpha=0.3, axis='y')
-    
-#     diff = mean_df2 - mean_df1
-#     diff_pct = (diff / mean_df1) * 100 if mean_df1 != 0 else 0
-#     ax.text(0.22, 0.95, f'Difference: {diff:,.2f} ({diff_pct:+.1f}%)', 
-#             transform=ax.transAxes, ha='center', va='top',
-#             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
-#             fontsize=10)
-    
-#     median_df1 = df1[col].median()
-#     median_df2 = df2[col].median()
-#     ax.text(0.22, 0.87, f'Median: DF={median_df1:,.2f}, EPC={median_df2:,.2f}', 
-#             transform=ax.transAxes, ha='center', va='top',
-#             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.3),
-#             fontsize=9)
-    
-#     plt.tight_layout()
-        
-#         if save and output_dir:
-#             filepath = Path(output_dir) / f'{col}_mean_comparison.png'
-#             plt.savefig(filepath, dpi=300, bbox_inches='tight')
-#             print(f"Saved: {filepath}")
-#             plt.close()
-#         else:
-#             plt.show()
+# ---------------------------------------------------------------------------
+# MEAN CAPEX PER TON
+# ---------------------------------------------------------------------------
 
 def plot_mean_capex_per_ton(df1, df2, output_dir=None, save=False):
-    """
-    Plot comparison of mean capex per ton with error bars.
-    Includes (£/ton) labelling.
-    """
- 
-    
+    """Plot comparison of mean capex per ton with error bars."""
     fig, ax = plt.subplots(figsize=(8, 6))
     
-    # Combined mean (mean of means, since equal weights)
     combined_mean_df1 = df1[capex_per_net_ton_mean_col].mean()
     combined_mean_df2 = df2[capex_per_net_ton_mean_col].mean()
     
-    # Combined std: sqrt(avg_variance + between_variance)
     def combined_std(df):
         means = df[capex_per_net_ton_mean_col].values
         stds = df[capex_per_net_ton_std_col].values
@@ -1028,7 +664,6 @@ def plot_mean_capex_per_ton(df1, df2, output_dir=None, save=False):
     combined_std_df1 = combined_std(df1)
     combined_std_df2 = combined_std(df2)
     
-    # Plot bars with error bars
     x_positions = [0, 1]
     means = [combined_mean_df1, combined_mean_df2]
     stds = [combined_std_df1, combined_std_df2]
@@ -1036,18 +671,13 @@ def plot_mean_capex_per_ton(df1, df2, output_dir=None, save=False):
     colors = [METHOD_COLORS[method_name], METHOD_COLORS['EPC']]
     
     bars = ax.bar(x_positions, means,
-                  yerr=stds,
-                  capsize=8,
-                  color=colors, 
-                  alpha=0.7, 
-                  edgecolor='black', 
-                  linewidth=2,
+                  yerr=stds, capsize=8,
+                  color=colors, alpha=0.7, edgecolor='black', linewidth=2,
                   error_kw={'linewidth': 2, 'capthick': 2})
     
     ax.set_xticks(x_positions)
     ax.set_xticklabels(labels)
     
-    # Add value labels on bars
     for bar, std in zip(bars, stds):
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height + std + 5,
@@ -1057,7 +687,6 @@ def plot_mean_capex_per_ton(df1, df2, output_dir=None, save=False):
     ax.set_ylabel('Capex per Net Ton (£/ton)', fontsize=12)
     ax.grid(True, alpha=0.3, axis='y')
     
-    # Difference annotation
     diff = combined_mean_df2 - combined_mean_df1
     diff_pct = (diff / combined_mean_df1) * 100 if combined_mean_df1 != 0 else 0
     ax.text(0.22, 0.95, f'Difference: {diff:,.2f} ({diff_pct:+.1f}%)', 
@@ -1077,12 +706,9 @@ def plot_mean_capex_per_ton(df1, df2, output_dir=None, save=False):
 
 
 def plot_mean_capex(df1, df2, output_dir=None, save=False):
-    """
-    Plot comparison of mean CAPEX.
-    Includes (£) labelling.
-    """
+    """Plot comparison of mean CAPEX."""
     capex_col = None
-    for col in ['capex', 'total_capex', 'CAPEX']:
+    for col in ['mean_total_capex', 'capex', 'total_capex', 'CAPEX']:
         if col in df1.columns and col in df2.columns:
             capex_col = col
             break
@@ -1097,16 +723,15 @@ def plot_mean_capex(df1, df2, output_dir=None, save=False):
     mean_df2 = df2[capex_col].mean()
     
     bars = ax.bar([method_name, 'EPC'], [mean_df1, mean_df2], 
-                   color=[METHOD_COLORS[method_name], METHOD_COLORS['EPC']], alpha=0.7, edgecolor='black', linewidth=2)
+                   color=[METHOD_COLORS[method_name], METHOD_COLORS['EPC']], 
+                   alpha=0.7, edgecolor='black', linewidth=2)
     
     for bar in bars:
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height,
-                f'{height:,.0f}',
-                ha='center', va='bottom', fontsize=12, fontweight='bold')
+                f'{height:,.0f}', ha='center', va='bottom', fontsize=12, fontweight='bold')
     
     ax.set_ylabel(f'{capex_col.replace("_", " ").title()} (£)', fontsize=12)
-    
     ax.grid(True, alpha=0.3, axis='y')
     
     diff = mean_df2 - mean_df1
@@ -1134,51 +759,56 @@ def plot_mean_capex(df1, df2, output_dir=None, save=False):
         plt.show()
 
 
+# ---------------------------------------------------------------------------
+# META FUNCTION
+# ---------------------------------------------------------------------------
+
 def generate_all_aggregation_plots(df1, df2, output_dir='./plots', save=True):
-    """
-    Meta function to generate all aggregation/summation comparison plots.
-    """
+    """Generate all aggregation/summation comparison plots."""
     if save:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         print(f"Output directory: {output_path.absolute()}\n")
     
-    capex_col = None
- 
-    
-    columns_to_compare = [total_co2_saved_col  ]
- 
     print("Generating aggregation plots...\n")
     
-    plot_total_comparison(df1, df2,column_mean =  total_co2_saved_col,  column_std= total_co2_saved_col_std, output_dir= output_dir, save= save)
-    for column in columns_to_compare:
-        print(f"Processing: {column}")
-        plot_by_group(df1, df2, total_co2_saved_col, total_co2_saved_col_std , 'meta_socio_persona', 'meta_socio_persona', output_dir=output_dir, save=save)
-        plot_by_group(df1, df2, total_co2_saved_col, total_co2_saved_col_std , 'meta_socio_persona', 'Persona', output_dir=output_dir, save=save)
-        plot_by_group(df1, df2, total_co2_saved_col, total_co2_saved_col_std , 'avg_gas_percentile', 'Gas Consumption Decile', output_dir=output_dir, save=save)
-        plot_by_group(df1, df2, total_co2_saved_col, total_co2_saved_col_std , 'CURRENT_ENERGY_RATING', 'CURRENT_ENERGY_RATING', output_dir=output_dir, save=save)
-        
-        # plot_by_socio_persona(df1, df2, column, output_dir, save)
-        # plot_by_gas_percentile(df1, df2, column, output_dir, save)
-        # plot_by_energy_rating(df1, df2, column, output_dir, save)
-        plot_heatmap_comparison(df1, df2, column, output_dir, save)
-        print(f"Completed: {column}\n")
+    # Total CO2 comparison
+    print("Processing: Total CO2 comparison")
+    plot_total_comparison(df1, df2, 
+                          column_mean=total_co2_saved_col, 
+                          column_std=total_co2_saved_col_std, 
+                          output_dir=output_dir, save=save)
     
+    # CO2 by group
+    print("Processing: CO2 by group breakdowns")
+    plot_by_group(df1, df2, total_co2_saved_col, total_co2_saved_col_std, 
+                  'meta_socio_persona', 'Persona', output_dir=output_dir, save=save)
+    plot_by_group(df1, df2, total_co2_saved_col, total_co2_saved_col_std, 
+                  'avg_gas_percentile', 'Gas Consumption Decile', output_dir=output_dir, save=save)
+    plot_by_group(df1, df2, total_co2_saved_col, total_co2_saved_col_std, 
+                  'CURRENT_ENERGY_RATING', 'Energy Rating', output_dir=output_dir, save=save)
+    
+    # Heatmap
+    plot_heatmap_comparison(df1, df2, total_co2_saved_col, output_dir, save)
+    print("Completed: CO2 breakdowns\n")
+    
+    # Building counts
     print("Processing: Building Counts")
     plot_building_counts_by_percentile(df1, df2, output_dir, save)
     plot_building_counts_by_persona(df1, df2, output_dir, save)
     plot_building_counts_by_energy_rating(df1, df2, output_dir, save)
     print("Completed: Building Counts\n")
     
+    # Intervention analysis
     print("Processing: Intervention Analysis")
     plot_interventions_by_percentile(df1, df2, output_dir, save)
     plot_interventions_by_persona(df1, df2, output_dir, save)
     plot_interventions_by_energy_rating(df1, df2, output_dir, save)
     plot_co2_by_intervention(df1, df2, output_dir, save)
-    if capex_col:
-        plot_capex_by_intervention(df1, df2, output_dir, save)
+    plot_capex_by_intervention(df1, df2, output_dir, save)
     print("Completed: Intervention Analysis\n")
     
+    # Mean comparisons
     print("Processing: Mean Value Comparisons")
     plot_mean_capex_per_ton(df1, df2, output_dir, save)
     plot_mean_capex(df1, df2, output_dir, save)
@@ -1186,4 +816,4 @@ def generate_all_aggregation_plots(df1, df2, output_dir='./plots', save=True):
     
     print("All aggregation plots generated!")
     if save:
-        print(f"All figures saved to: {output_path.absolute()}")
+        print(f"All figures saved to: {Path(output_dir).absolute()}")

@@ -13,34 +13,17 @@ New approach:
   2. Solver jointly picks buildings AND packages
   3. Constraint: at least X% of spend goes to high-equity personas
   4. Sweep X to trace the Pareto front
-
-Usage:
-    from src.ParetoKnapsack import multichoice_knapsack, pareto_sweep
-
-    # Single solve
-    selected_df, stats = multichoice_knapsack(
-        df_all_packages=df,       # all packages, multiple rows per upn
-        budget=10_000_000,
-        equity_floor_pct=60,      # at least 60% of spend to high/med risk
-        cost_col='mean_total_capex',
-        carbon_col='mean_total_co2_saved',
-    )
-
-    # Sweep to get Pareto front
-    pareto_df, all_stats = pareto_sweep(
-        df_all_packages=df,
-        budget=10_000_000,
-        equity_floors=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-    )
 """
 
 import logging
 import time
+import sys
 from typing import Dict, List, Set, Tuple
 
 import numpy as np
 import pandas as pd
-import pulp
+import gurobipy as gp
+from gurobipy import GRB
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +32,6 @@ import pulp
 
 DEFAULT_HIGH_EQUITY_PERSONAS = {"high_risk", "med_risk"}
 ALL_PERSONAS = ["high_risk", "med_risk", "middle_risk", "low_risk", "v_low_risk"]
-
 
 # ---------------------------------------------------------------------------
 # SOLVER
@@ -64,47 +46,12 @@ def multichoice_knapsack(
     persona_col: str = "meta_socio_persona",
     cost_col: str = "mean_total_capex",
     carbon_col: str = "mean_total_co2_saved",
-    time_limit_seconds: int = 600,
+    time_limit_seconds: int = 1200,
     logger: logging.Logger = None,
 ) -> Tuple[pd.DataFrame, Dict]:
     """
     Multiple-choice knapsack: pick at most one package per building
-    to maximise total CO2 abatement, subject to:
-      - total cost <= budget
-      - at least equity_floor_pct % of total spend goes to buildings
-        whose meta_socio_persona is in high_equity_personas
-
-    Parameters
-    ----------
-    df_all_packages : DataFrame
-        All packages for all buildings. Multiple rows per upn
-        (one per intervention). Should include a do_nothing option
-        if you want the solver to be able to skip a building.
-    budget : float
-        Total budget cap (£).
-    equity_floor_pct : float
-        Minimum % of total spend that must go to high-equity
-        persona buildings. Range: 0–100.
-    high_equity_personas : set of str
-        Which meta_socio_persona values count as "high equity".
-        Default: {"high_risk", "med_risk"}.
-    upn_col : str
-        Column identifying each building.
-    persona_col : str
-        Column containing the persona category.
-    cost_col : str
-        Column with intervention cost.
-    carbon_col : str
-        Column with CO2 saved.
-    time_limit_seconds : int
-        Max solver time per solve.
-    logger : logging.Logger, optional
-
-    Returns
-    -------
-    selected_df : DataFrame of selected packages (do-nothing excluded).
-    stats : dict with summary statistics including persona and
-            intervention breakdowns.
+    to maximise total CO2 abatement.
     """
     if high_equity_personas is None:
         high_equity_personas = DEFAULT_HIGH_EQUITY_PERSONAS
@@ -127,88 +74,96 @@ def multichoice_knapsack(
     if df.empty:
         return df_all_packages.iloc[:0].copy(), {"status": "empty"}
 
-    # --- Build ILP ---
-    prob = pulp.LpProblem("retrofit_multichoice", pulp.LpMaximize)
+    # --- Build ILP (Gurobi) ---
+    
+    # Create environment and model
+    env = gp.Env(empty=True)
+    env.setParam("OutputFlag", 1) # Set to 0 to suppress Gurobi console output
+    env.start()
+    model = gp.Model("retrofit_multichoice", env=env)
+
+    # Set Gurobi Parameters (matching your previous HiGHS config)
+    model.Params.TimeLimit = time_limit_seconds
+    model.Params.MIPGap = 0.01  # 1% relative gap
+    model.Params.Threads = 0   # 0 = use all available cores
+    
     indices = df.index.tolist()
-    x = pulp.LpVariable.dicts("sel", indices, cat=pulp.LpBinary)
+
+    # Decision Variables
+    x = model.addVars(indices, vtype=GRB.BINARY, name="sel")
 
     carbon = df[carbon_col].to_dict()
     costs = df[cost_col].to_dict()
     is_high = df["_is_high_eq"].to_dict()
 
     # OBJECTIVE: maximise total CO2 abatement
-    prob += pulp.lpSum(carbon[i] * x[i] for i in indices)
+    model.setObjective(gp.quicksum(carbon[i] * x[i] for i in indices), GRB.MAXIMIZE)
 
     # C1: total spend <= budget
-    prob += pulp.lpSum(costs[i] * x[i] for i in indices) <= budget
+    model.addConstr(gp.quicksum(costs[i] * x[i] for i in indices) <= budget, name="budget_limit")
 
     # C2: at most one package per building
     for upn, group in df.groupby(upn_col):
-        prob += pulp.lpSum(x[i] for i in group.index) <= 1
+        model.addConstr(gp.quicksum(x[i] for i in group.index) <= 1, name=f"max_one_{upn}")
 
     # C3: equity floor on SPEND
-    #   spend_high_eq >= (equity_floor_pct / 100) * spend_total
-    #   Rearranged: sum((is_high_i - frac) * cost_i * x_i) >= 0
     if equity_floor_pct > 0:
         frac = equity_floor_pct / 100.0
-        prob += pulp.lpSum(
-            (is_high[i] - frac) * costs[i] * x[i] for i in indices
-        ) >= 0
+        model.addConstr(
+            gp.quicksum((is_high[i] - frac) * costs[i] * x[i] for i in indices) >= 0,
+            name="equity_floor"
+        )
 
     # --- Solve ---
-    solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=time_limit_seconds)
-    # solver = pulp.HiGHS(msg=False, timeLimit=time_limit_seconds, threads=0)
-#     solver = pulp.HiGHS_CMD(
-#     msg=True,
-#     gapRel=0.01,  # 1% relative gap
-#     timeLimit=time_limit_seconds,
-#      threads=0,
-#     # options=["presolve=on", "parallel=on"]
-# )
-    
-#     solver = pulp.HiGHS(
-#     msg=True,
-#     gapRel=0.01,  # 1% relative gap
-#     timeLimit=time_limit_seconds,
-#     options=["presolve=off", "parallel=on"]
-# )
-    
-    prob.solve(solver)
+    model.optimize()
 
-    status = pulp.LpStatus[prob.status]
     solve_time = time.time() - t0
 
+    # --- Map Gurobi Status to PuLP-style strings for compatibility ---
+    if model.Status == GRB.OPTIMAL or (model.Status == GRB.TIME_LIMIT and model.SolCount > 0):
+        status_str = "Optimal"
+    elif model.Status == GRB.INFEASIBLE:
+        status_str = "Infeasible"
+    else:
+        status_str = "Not Solved"
+
     if logger:
-        logger.info(f"  Status: {status} ({solve_time:.1f}s)")
+        logger.info(f"  Status: {status_str} ({solve_time:.1f}s)")
 
     # --- Extract selected rows ---
-    selected_idx = [i for i in indices if pulp.value(x[i]) > 0.5]
-    selected_df = df.loc[selected_idx].copy()
+    if model.SolCount > 0:
+        selected_idx = [i for i in indices if x[i].X > 0.5]
+        selected_df = df.loc[selected_idx].copy()
+    else:
+        selected_df = df.iloc[:0].copy()
+
     # Remove do-nothing selections (zero carbon) from output
-    selected_df = selected_df[selected_df[carbon_col] > 0]
-    selected_df = selected_df.drop(columns=["_is_high_eq"], errors="ignore")
+    if not selected_df.empty:
+        selected_df = selected_df[selected_df[carbon_col] > 0]
+        selected_df = selected_df.drop(columns=["_is_high_eq"], errors="ignore")
 
     # --- Compute stats ---
-    total_cost = selected_df[cost_col].sum()
-    total_carbon = selected_df[carbon_col].sum()
-    high_eq_mask = selected_df[persona_col].isin(high_equity_personas)
-    high_eq_spend = selected_df.loc[high_eq_mask, cost_col].sum()
-    high_eq_carbon = selected_df.loc[high_eq_mask, carbon_col].sum()
+    total_cost = selected_df[cost_col].sum() if not selected_df.empty else 0
+    total_carbon = selected_df[carbon_col].sum() if not selected_df.empty else 0
+    high_eq_mask = selected_df[persona_col].isin(high_equity_personas) if not selected_df.empty else pd.Series(dtype=bool)
+    high_eq_spend = selected_df.loc[high_eq_mask, cost_col].sum() if not selected_df.empty else 0
+    high_eq_carbon = selected_df.loc[high_eq_mask, carbon_col].sum() if not selected_df.empty else 0
 
     # Per-persona breakdown
     persona_breakdown = {}
-    for p in ALL_PERSONAS:
-        pmask = selected_df[persona_col] == p
-        persona_breakdown[p] = {
-            "buildings": int(pmask.sum()),
-            "spend": round(selected_df.loc[pmask, cost_col].sum(), 0),
-            "abatement": round(selected_df.loc[pmask, carbon_col].sum(), 2),
-        }
+    if not selected_df.empty:
+        for p in ALL_PERSONAS:
+            pmask = selected_df[persona_col] == p
+            persona_breakdown[p] = {
+                "buildings": int(pmask.sum()),
+                "spend": round(selected_df.loc[pmask, cost_col].sum(), 0),
+                "abatement": round(selected_df.loc[pmask, carbon_col].sum(), 2),
+            }
 
     # Per-intervention breakdown
     intervention_col = "intervention"
     intervention_breakdown = {}
-    if intervention_col in selected_df.columns:
+    if not selected_df.empty and intervention_col in selected_df.columns:
         for intv, grp in selected_df.groupby(intervention_col):
             intervention_breakdown[intv] = {
                 "buildings": len(grp),
@@ -216,30 +171,27 @@ def multichoice_knapsack(
                 "abatement": round(grp[carbon_col].sum(), 2),
             }
 
-
-    # Per-intervention breakdown
+    # Per-percentile breakdown
     percntile_col = "avg_gas_percentile"
     percentile_breakdown = {}
-    if percntile_col in selected_df.columns:
-        print('col present') 
-        for intv, grp in selected_df.groupby(percntile_col):
-            percentile_breakdown[intv] = {
-                "buildings": len(grp),
-                "spend": round(grp[cost_col].sum(), 0),
-                "abatement": round(grp[carbon_col].sum(), 2),
-            }
-    else:
-        import sys 
-        print('missing percentile')
-        sys.exit() 
-
+    if not selected_df.empty:
+        if percntile_col in selected_df.columns:
+            for intv, grp in selected_df.groupby(percntile_col):
+                percentile_breakdown[intv] = {
+                    "buildings": len(grp),
+                    "spend": round(grp[cost_col].sum(), 0),
+                    "abatement": round(grp[carbon_col].sum(), 2),
+                }
+        else:
+            print('missing percentile')
+            sys.exit() 
 
     stats = {
-        "status": status,
+        "status": status_str,
         "solve_time_s": round(solve_time, 2),
         "equity_floor_pct": equity_floor_pct,
         "n_retrofitted": len(selected_df),
-        "n_high_equity": int(high_eq_mask.sum()),
+        "n_high_equity": int(high_eq_mask.sum()) if not selected_df.empty else 0,
         "total_cost": round(total_cost, 2),
         "remaining_budget": round(budget - total_cost, 2),
         "total_abatement": round(total_carbon, 4),
@@ -260,13 +212,17 @@ def multichoice_knapsack(
         "percentile_breakdown": percentile_breakdown , 
     }
 
-    if logger:
+    if logger and status_str == "Optimal":
         logger.info(
             f"  {stats['n_retrofitted']:,} bldgs | "
             f"£{total_cost:,.0f} | {total_carbon:,.1f} tCO2 | "
-            f"£{stats['cpex_per_ton']:,.0f}/t | "
+            f"£{stats['cpex_per_ton'] if stats['cpex_per_ton'] else 0:,.0f}/t | "
             f"high-eq spend: {stats['high_eq_spend_pct']:.1f}%"
         )
+
+    # Clean up the Gurobi environment to free up the license token when done
+    model.dispose()
+    env.dispose()
 
     return selected_df, stats
 
@@ -284,20 +240,11 @@ def pareto_sweep(
     persona_col: str = "meta_socio_persona",
     cost_col: str = "mean_total_capex",
     carbon_col: str = "mean_total_co2_saved",
-    time_limit_seconds: int = 600,
+    time_limit_seconds: int = 1200,
     logger: logging.Logger = None,
 ) -> Tuple[pd.DataFrame, List[Dict]]:
     """
     Sweep equity floor from 0% upward to trace the Pareto front.
-
-    At each equity_floor value, solves the multi-choice knapsack.
-    Stops early if a value is infeasible (all higher values will
-    also be infeasible).
-
-    Returns
-    -------
-    pareto_df : DataFrame with one row per feasible equity floor.
-    all_stats : list of full stat dicts (including breakdowns).
     """
     if equity_floors is None:
         equity_floors = list(range(0, 105, 5))
@@ -341,12 +288,6 @@ def preselect_best_cpt(
     cost_col: str = "mean_total_capex",
     carbon_col: str = "mean_total_co2_saved",
 ) -> pd.DataFrame:
-    """
-    Old method: for each building, pick the package with the lowest
-    £/tCO2, returning one row per building.
-
-    Use this to benchmark against the new multi-choice approach.
-    """
     df = df_all_packages[df_all_packages[carbon_col] > 0].copy()
     df["_cpt"] = df[cost_col] / df[carbon_col]
     best_idx = df.groupby(upn_col)["_cpt"].idxmin()
