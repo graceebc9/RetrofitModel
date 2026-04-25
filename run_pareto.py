@@ -664,6 +664,11 @@ def main():
     epc_yn = os.getenv('EPC_YN')
     epc_run = epc_yn == 'Y'
     print('Running greedy for EPC' if epc_run else 'Running greedy for normal')
+    
+    # --- NEW: HPC Array / Single Input Logic ---
+    # These will be strings from os.getenv, so we convert them if they exist
+    env_budget = os.getenv('SINGLE_BUDGET')
+    env_loft = os.getenv('SINGLE_LOFT_PROB')
 
     run_g_yn = os.getenv('RUN_GREEDY_RUNS_YN')
     run_greedy_runs = run_g_yn != 'N'
@@ -706,6 +711,16 @@ def main():
 
         print(f'Starting {INPUT_FILES_PATH}')
 
+    
+    # OVERRIDE with single values if provided by the HPC job script
+    if env_budget:
+        budgets = [int(float(env_budget))]
+        print(f"HPC Input: Single Budget set to £{budgets[0]:,}")
+    
+    if env_loft:
+        loft_probs = [float(env_loft)]
+        print(f"HPC Input: Single Loft Prob set to {loft_probs[0]}")
+        
     # In test mode, redirect outputs to a `_TEST` sibling folder so we
     # never clobber a real run's artefacts.
     if TEST_MODE:
