@@ -24,10 +24,14 @@ For each input file (one region's per-building per-run results), this script:
              epistemic_std for each of capex_per_net_ton, co2, capex,
              plus the aleatoric-sigma selection score and a rank.
        (b) per_run_means_<file>.parquet
-           - long-format table with one row per (upn, scenario, metric, run_id)
-             holding the per-run mean. This is the input to the portfolio-level
-             epistemic propagation step (compute portfolio total per run,
-             take std across runs).
+           - WIDE-format table with one row per (upn, scenario, run_idx),
+             holding cost_run_mean and co2_run_mean per row. This is the
+             input to the portfolio-level epistemic propagation step
+             (compute portfolio total per run, take std across runs).
+             capex_per_net_ton is intentionally excluded -- it is not
+             needed downstream, and dropping it cuts the artefact size
+             by ~3x. Compressed snappy parquet keeps full-region runs
+             tractable.
 
 Author: Grace Colverd, revised 2026.
 """
@@ -256,28 +260,45 @@ def pool_epistemic_runs_decomposed(
 # ============================================================================
 # 2. PER-RUN MEANS FOR PORTFOLIO-LEVEL EPISTEMIC PROPAGATION
 # ============================================================================
+# Schema: WIDE format. One row per (upn, scenario, run_idx).
+# Columns: upn, scenario, run_idx, cost_run_mean, co2_run_mean.
+#
+# This is denser than long-format by ~3x (no row duplication per metric)
+# and we drop capex_per_net_ton from this artefact entirely -- the
+# downstream optimiser only needs cost and co2 per-run totals to compute
+# portfolio-level epistemic uncertainty, and uses percentile ratios for
+# £/tCO2 rather than the per-run capex_per_net_ton values.
+#
+# At full scale (~5e5 buildings x 6 scenarios x 50 runs) this fits in
+# memory and on disk where long-format with 3 metrics did not.
+PER_RUN_COST_COL = 'cost_run_mean'
+PER_RUN_CO2_COL = 'co2_run_mean'
+
+
 def extract_per_run_means(
     df: pd.DataFrame,
     scenarios: list,
     id_col: str = 'upn',
 ) -> pd.DataFrame:
     """
-    Return a long-format dataframe of per-run building means, suitable for
-    portfolio-level epistemic propagation.
+    Return a wide-format dataframe of per-run building means for the two
+    metrics needed downstream (capex, co2):
 
-    Each input row is already one (upn, run) pair, with the per-run mean
-    stored in the {scn}_..._mean column. We melt these into a long table:
+        upn | scenario | run_idx | cost_run_mean | co2_run_mean
 
-        upn | scenario | metric | run_idx | run_mean
+    Each input row is already one (upn, run) pair; we read the per-run
+    means out of the upstream {scn}_..._mean columns and reshape so each
+    (upn, scenario, run_idx) is a single row.
 
     `run_idx` is a within-upn enumeration of the runs (0..N-1). We do not
     require the upstream to provide a stable run id because the epistemic
     propagation only needs to align rows across buildings *within the same
-    epistemic world*. As long as runs are emitted in a consistent order per
-    upn, position within the group is sufficient.
+    epistemic world*. As long as runs are emitted in a consistent order
+    per upn, position within the group is sufficient.
 
-    Storing as long-format parquet keeps the artifact compact and lets the
-    downstream optimiser pivot to (run x building) for the chosen portfolio.
+    Wide format + dropping capex_per_net_ton brings the artefact down to
+    ~1/3 of the long-format size, which is what makes full-scale runs
+    feasible.
     """
     logging.info("Extracting per-run building means for portfolio propagation")
 
@@ -286,33 +307,64 @@ def extract_per_run_means(
     df = df.sort_values(id_col, kind='mergesort').reset_index(drop=True)
     df['run_idx'] = df.groupby(id_col).cumcount()
 
+    # The two metrics we keep. capex_per_net_ton is intentionally excluded.
+    keep_metrics = {
+        'capex': PER_RUN_COST_COL,
+        'co2': PER_RUN_CO2_COL,
+    }
+
     pieces = []
     for scn in scenarios:
-        for metric_name, pattern in METRICS_MAP.items():
-            mean_col = pattern.format(sc=scn, stat='mean')
+        per_scn = {id_col: df[id_col].to_numpy(),
+                   'run_idx': df['run_idx'].to_numpy()}
+        any_found = False
+        for metric_name, out_col in keep_metrics.items():
+            mean_col = METRICS_MAP[metric_name].format(sc=scn, stat='mean')
             if mean_col not in df.columns:
+                # Mark missing so we don't emit a half-populated row.
+                per_scn[out_col] = None
                 continue
-            piece = df[[id_col, 'run_idx', mean_col]].copy()
-            piece.rename(columns={mean_col: 'run_mean'}, inplace=True)
-            piece['scenario'] = scn
-            piece['metric'] = metric_name
-            pieces.append(piece[[id_col, 'scenario', 'metric', 'run_idx', 'run_mean']])
+            per_scn[out_col] = df[mean_col].to_numpy()
+            any_found = True
 
+        if not any_found:
+            continue
+
+        piece = pd.DataFrame(per_scn)
+        piece['scenario'] = scn
+        # Reorder for downstream readability.
+        piece = piece[[id_col, 'scenario', 'run_idx',
+                       PER_RUN_COST_COL, PER_RUN_CO2_COL]]
+        # Drop rows where both metrics are NaN (i.e. scenario truly absent).
+        valid = piece[[PER_RUN_COST_COL, PER_RUN_CO2_COL]].notna().any(axis=1)
+        piece = piece[valid]
+        if not piece.empty:
+            pieces.append(piece)
+
+    cols = [id_col, 'scenario', 'run_idx', PER_RUN_COST_COL, PER_RUN_CO2_COL]
     if not pieces:
         logging.warning("No per-run mean columns found to extract.")
-        return pd.DataFrame(
-            columns=[id_col, 'scenario', 'metric', 'run_idx', 'run_mean']
-        )
+        return pd.DataFrame(columns=cols)
 
-    long_df = pd.concat(pieces, ignore_index=True)
-    logging.info(
-        f"Per-run table: {len(long_df):,} rows "
-        f"({long_df[id_col].nunique():,} buildings x "
-        f"{long_df['scenario'].nunique()} scenarios x "
-        f"{long_df['metric'].nunique()} metrics x "
-        f"~{long_df.groupby([id_col, 'scenario', 'metric'])['run_idx'].count().mean():.0f} runs)"
+    wide_df = pd.concat(pieces, ignore_index=True)
+
+    # Downcast where safe to shrink the on-disk parquet further.
+    for c in (PER_RUN_COST_COL, PER_RUN_CO2_COL):
+        if c in wide_df.columns:
+            wide_df[c] = pd.to_numeric(wide_df[c], downcast='float')
+    wide_df['run_idx'] = pd.to_numeric(wide_df['run_idx'], downcast='unsigned')
+
+    n_runs_avg = (
+        wide_df.groupby([id_col, 'scenario'])['run_idx'].count().mean()
+        if not wide_df.empty else 0
     )
-    return long_df
+    logging.info(
+        f"Per-run table (wide): {len(wide_df):,} rows "
+        f"({wide_df[id_col].nunique():,} buildings x "
+        f"{wide_df['scenario'].nunique()} scenarios x "
+        f"~{n_runs_avg:.0f} runs)"
+    )
+    return wide_df
 
 
 # ============================================================================
@@ -513,7 +565,11 @@ def process_single_file(
                 per_run_output_dir,
                 f"per_run_means_{filename}.parquet",
             )
-            per_run_df.to_parquet(per_run_path, index=False)
+            # Snappy compression + downcasted dtypes keep these files
+            # compact at full scale.
+            per_run_df.to_parquet(
+                per_run_path, index=False, compression='snappy',
+            )
             logging.info(f"   Saved per-run means: {per_run_path}")
 
     except Exception as e:
