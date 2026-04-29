@@ -142,21 +142,20 @@ class RunConfig:
         # input_files_path is a glob like '.../processed_all_scenarios/*'.
         # The per-run artefacts sit alongside in 'per_run_means/'.
         input_dir = os.path.dirname(self.input_files_path.rstrip('/*'))
-        
         return os.path.join(input_dir, 'processed_all_scenarios', PER_RUN_MEANS_GLOB)
 
 
 # Path table: (environment, epc_run) -> (input_glob, base_dir)
 PATHS = {
     ('local', True): (
-        '/Volumes/T9/2025_10_RetrofitModel/13_new_runs/1_all_int_epc/'
+        '/Volumes/T9/2025_10_RetrofitModel/14_new_runs_compressed/1_all_int_epc/'
         'risk_sigma_1.0/processed_all_scenarios/*',
-        '/Volumes/T9/2025_10_RetrofitModel/13_new_runs/2_greedy_results/NE/all_domestic',
+        '/Volumes/T9/2025_10_RetrofitModel/14_new_runs_compressed/2_greedy_results/NE/all_domestic',
     ),
     ('local', False): (
-        '/Volumes/T9/2025_10_RetrofitModel/13_new_runs/1_all_interventions/'
+        '/Volumes/T9/2025_10_RetrofitModel/14_new_runs_compressed/1_all_interventions/'
         'risk_sigma_1.0/processed_all_scenarios/*',
-        '/Volumes/T9/2025_10_RetrofitModel/13_new_runs/2_greedy_results/NE/all_domestic',
+        '/Volumes/T9/2025_10_RetrofitModel/14_new_runs_compressed/2_greedy_results/NE/all_domestic',
     ),
     ('hpc', True): (
         '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/'
@@ -173,7 +172,7 @@ PATHS = {
 # high mips / slower
 LOCAL_DEFAULTS = dict(
     budgets=[1_000_000, 25_000_000, 50_000_000, 100_000_000, 200_000_000],
-    loft_probs=[0.95, 0.65],
+    loft_probs=[0.65, 0.95],
     equity_floors=[0, 25, 50, 75, 100],
 )
 
@@ -193,7 +192,6 @@ def resolve_config() -> RunConfig:
 
     input_path, base_dir = PATHS[(env_key, epc_run)]
     defaults = LOCAL_DEFAULTS if running_locally else HPC_DEFAULTS
-    os.makedirs(base_dir, exist_ok=True)
     setting_name = 'local' if running_locally else 'v10'
     if test_mode:
         setting_name = f'{setting_name}_TEST'
@@ -231,51 +229,86 @@ def load_data_simple(files: list[str]) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def load_per_run_means(cfg: RunConfig, prob_loft: float) -> pd.DataFrame:
+def _per_run_dataset(cfg: RunConfig):
     """
-    Load and concatenate the per-run building-means parquet artefacts that
-    correspond to the given loft probability.
+    Open the per-run parquet artefacts as a lazy pyarrow Dataset rather
+    than loading them into memory. At full scale these files together
+    can be tens of GB, but we only need a tiny slice (the selected upns
+    for one solve) at a time.
 
-    The files are produced by the new preprocessing script; one parquet per
-    input region/file, all sitting under <input_dir>/per_run_means/.
-
-    Returns
-    -------
-    DataFrame with columns: upn, scenario, metric, run_idx, run_mean.
-    Returns an empty frame (with the right columns) if no files are found.
+    Returns None if no files exist, so callers can fall back to
+    aleatoric-only uncertainty without crashing.
     """
+    import pyarrow.dataset as ds  # local import: optional dep at runtime
+
     pattern = cfg.per_run_means_glob
     print(pattern)
     files = glob.glob(pattern)
-    # The preprocessing doesn't bake the loft fraction into the per-run
-    # filename -- the per-run means are the same regardless of the loft
-    # disqualification, which only affects which buildings survive into
-    # `selected_df`. So we don't filter by loft here.
     if not files:
         print(f"  [warn] No per-run means files matched {pattern}")
-        return pd.DataFrame(
-            columns=['upn', 'scenario', 'metric', 'run_idx', 'run_mean']
-        )
+        return None
 
-    frames = []
-    for f in files:
-        try:
-            frames.append(pd.read_parquet(f))
-        except Exception as e:
-            print(f"  [warn] Failed to read per-run parquet {f}: {e}")
-    if not frames:
-        return pd.DataFrame(
-            columns=['upn', 'scenario', 'metric', 'run_idx', 'run_mean']
-        )
+    try:
+        return ds.dataset(files, format='parquet')
+    except Exception as e:
+        print(f"  [warn] Failed to open per-run dataset: {e}")
+        return None
 
-    out = pd.concat(frames, ignore_index=True)
-    print(
-        f"  Per-run means: {len(out):,} rows, "
-        f"{out['upn'].nunique():,} buildings, "
-        f"{out['scenario'].nunique()} scenarios, "
-        f"{out['metric'].nunique()} metrics, "
-        f"~{out.groupby(['upn', 'scenario', 'metric'])['run_idx'].count().mean():.0f} runs/cell"
+
+def _per_run_slice_for_selection(
+    dataset,
+    selected_df: pd.DataFrame,
+    upn_col: str = 'upn',
+    intervention_col: str = 'intervention',
+) -> pd.DataFrame:
+    """
+    Pull only the rows needed for one selection: the (upn, scenario)
+    pairs the optimiser chose. Uses pyarrow predicate-pushdown +
+    column projection so the read scans the parquet without
+    materialising the whole frame.
+
+    Returns an empty wide-format DataFrame if anything is missing.
+    """
+    cols = ['upn', 'scenario', 'run_idx', 'cost_run_mean', 'co2_run_mean']
+    if dataset is None or selected_df is None or selected_df.empty:
+        return pd.DataFrame(columns=cols)
+
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    sel_upns = selected_df[upn_col].astype(str).unique().tolist()
+    sel_scenarios = selected_df[intervention_col].astype(str).unique().tolist()
+    if not sel_upns or not sel_scenarios:
+        return pd.DataFrame(columns=cols)
+
+    # Pre-filter on upn AND scenario at the parquet layer. This is the
+    # whole point of the lazy read -- both predicates are pushed down so
+    # we only materialise rows that match.
+    expr = pc.field('upn').isin(pa.array(sel_upns))
+    expr = expr & pc.field('scenario').isin(pa.array(sel_scenarios))
+
+    try:
+        table = dataset.to_table(columns=cols, filter=expr)
+    except Exception as e:
+        print(f"  [warn] Predicate-pushdown read failed ({e}); "
+              f"returning empty per-run slice.")
+        return pd.DataFrame(columns=cols)
+
+    out = table.to_pandas()
+    if out.empty:
+        return out
+
+    # Final inner join on (upn, scenario) — the parquet may have rows
+    # for non-selected scenarios per upn even after the scenario isin
+    # filter, when those upns also appear in selected_df with different
+    # scenarios. The cheap join here keeps semantics identical to the
+    # old eager-load path.
+    sel_keys = (
+        selected_df[[upn_col, intervention_col]]
+        .rename(columns={intervention_col: 'scenario'})
+        .drop_duplicates()
     )
+    out = out.merge(sel_keys, on=[upn_col, 'scenario'], how='inner')
     return out
 
 
@@ -338,68 +371,62 @@ def _portfolio_aleatoric_std(selected_df: pd.DataFrame, ale_col: str) -> float:
     return float(np.sqrt(np.sum(selected_df[ale_col].fillna(0).to_numpy() ** 2)))
 
 
-def _portfolio_epistemic_totals(
-    selected_df: pd.DataFrame,
-    per_run_df: pd.DataFrame,
-    metric: str,
-    upn_col: str = 'upn',
-    intervention_col: str = 'intervention',
+def _portfolio_epistemic_totals_wide(
+    per_run_slice: pd.DataFrame,
+    value_col: str,
 ) -> np.ndarray:
     """
-    Compute the per-run portfolio total for `metric` (e.g. 'capex' or 'co2'),
-    using only the (upn, scenario) pairs that the optimiser selected.
-
-    Each epistemic run defines a coherent "world" — summing the per-run
-    means of the selected pairs within a run gives that world's portfolio
-    total. The std of these totals across runs is sigma_P^epi.
+    Given a wide-format per-run slice already restricted to the selected
+    (upn, scenario) pairs, sum `value_col` across selections within each
+    run_idx to get one portfolio total per epistemic world.
 
     Returns
     -------
-    np.ndarray of shape (n_runs,). Empty array if inputs don't permit it.
+    np.ndarray of shape (n_runs,). Empty array if input is empty or
+    `value_col` is missing.
     """
-    if selected_df.empty or per_run_df.empty:
+    if per_run_slice is None or per_run_slice.empty:
         return np.array([])
-
-    # Restrict per-run frame to this metric and to the selected pairs.
-    pr = per_run_df[per_run_df['metric'] == metric]
-    if pr.empty:
+    if value_col not in per_run_slice.columns:
         return np.array([])
-
-    # Inner join on (upn, scenario) to pick out only the chosen pairs.
-    sel_keys = selected_df[[upn_col, intervention_col]].rename(
-        columns={intervention_col: 'scenario'}
-    ).drop_duplicates()
-    pr = pr.merge(sel_keys, on=[upn_col, 'scenario'], how='inner')
-
-    if pr.empty:
-        return np.array([])
-
-    # Portfolio total per run.
-    per_run_totals = pr.groupby('run_idx')['run_mean'].sum()
-    # Sort by run_idx so output is deterministic.
-    per_run_totals = per_run_totals.sort_index()
-    return per_run_totals.to_numpy()
+    totals = (
+        per_run_slice
+        .groupby('run_idx')[value_col]
+        .sum()
+        .sort_index()
+    )
+    return totals.to_numpy()
 
 
 def compute_portfolio_uncertainty(
     selected_df: pd.DataFrame,
-    per_run_df: pd.DataFrame,
+    per_run_dataset,
     upn_col: str = 'upn',
     intervention_col: str = 'intervention',
 ) -> dict:
     """
     Compute portfolio-level uncertainty fields for one optimiser solution.
 
-    Aleatoric: closed-form sum-of-variances over selected rows. Scales like
-    sqrt(n) with portfolio size, washes out at scale.
+    Aleatoric: closed-form sum-of-variances over selected rows. Scales
+    like sqrt(n) with portfolio size, washes out at scale.
 
-    Epistemic: per-run portfolio totals over the selected (upn, scenario)
-    pairs, taken from the per-run means parquet. The std across runs
-    captures the cross-building correlation induced by shared global
-    parameters automatically — no correlation modelling needed.
+    Epistemic: for each epistemic run, sum the per-run building means
+    across the selected (upn, scenario) pairs to get one portfolio
+    total per run. The std across runs captures the cross-building
+    correlation induced by shared global parameters automatically -- no
+    correlation modelling needed.
 
-    £/tCO2 is reported as percentiles of the per-run ratio (cost_total_r /
-    carbon_total_r), avoiding the ratio-of-Gaussians problem.
+    £/tCO2 is reported as percentiles of the per-run ratio
+    (cost_total_r / carbon_total_r), avoiding the ratio-of-Gaussians
+    problem.
+
+    Parameters
+    ----------
+    selected_df : DataFrame
+        Optimiser output (one row per selected (upn, scenario)).
+    per_run_dataset : pyarrow.dataset.Dataset or None
+        Lazy handle to the wide-format per-run parquets. Only the rows
+        matching `selected_df` are read.
 
     Returns a dict suitable for merging into the optimiser's stats dict.
     """
@@ -420,7 +447,7 @@ def compute_portfolio_uncertainty(
     if selected_df is None or selected_df.empty:
         return out
 
-    # Aleatoric (closed form on selected rows).
+    # ----- Aleatoric (closed form on selected rows) -----
     out['total_cost_aleatoric_std'] = _portfolio_aleatoric_std(
         selected_df, COST_ALEATORIC_STD_COL
     )
@@ -428,14 +455,18 @@ def compute_portfolio_uncertainty(
         selected_df, CARBON_ALEATORIC_STD_COL
     )
 
-    # Epistemic (per-run portfolio totals).
-    per_run_cost = _portfolio_epistemic_totals(
-        selected_df, per_run_df, metric='capex',
-        upn_col=upn_col, intervention_col=intervention_col,
+    # ----- Epistemic (lazy slice + per-run totals) -----
+    per_run_slice = _per_run_slice_for_selection(
+        per_run_dataset,
+        selected_df,
+        upn_col=upn_col,
+        intervention_col=intervention_col,
     )
-    per_run_carbon = _portfolio_epistemic_totals(
-        selected_df, per_run_df, metric='co2',
-        upn_col=upn_col, intervention_col=intervention_col,
+    per_run_cost = _portfolio_epistemic_totals_wide(
+        per_run_slice, value_col='cost_run_mean',
+    )
+    per_run_carbon = _portfolio_epistemic_totals_wide(
+        per_run_slice, value_col='co2_run_mean',
     )
 
     if per_run_cost.size > 0:
@@ -445,7 +476,7 @@ def compute_portfolio_uncertainty(
         out['total_abatement_epistemic_std'] = float(np.std(per_run_carbon, ddof=1))
         out['per_run_totals_carbon'] = per_run_carbon.tolist()
 
-    # Epistemic share of total variance, per metric.
+    # ----- Epistemic share of total variance, per metric -----
     def _share(ale: float, epi: float) -> float:
         denom = ale ** 2 + epi ** 2
         if denom <= 0:
@@ -459,11 +490,9 @@ def compute_portfolio_uncertainty(
         out['total_abatement_aleatoric_std'], out['total_abatement_epistemic_std']
     )
 
-    # Percentile-based £/tCO2 envelope from the per-run ratio.
-    # We only compute when both are aligned and carbon totals are positive.
+    # ----- Percentile-based £/tCO2 envelope from per-run ratios -----
     if (per_run_cost.size > 0 and per_run_carbon.size > 0
             and per_run_cost.size == per_run_carbon.size):
-        # Guard against zero/negative carbon in any run.
         valid = per_run_carbon > 0
         if valid.any():
             ratios = per_run_cost[valid] / per_run_carbon[valid]
@@ -962,9 +991,10 @@ def load_and_prepare_data(
     cfg: RunConfig,
     prob_loft: float,
     personas: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame, Optional[dict], pd.DataFrame]:
+):
     """
-    Load raw package data and per-run means for one loft probability.
+    Load raw package data and open the per-run dataset handle for one
+    loft probability.
 
     Returns
     -------
@@ -974,23 +1004,30 @@ def load_and_prepare_data(
         Building-level view.
     sample_info : dict or None
         Diagnostics from test-mode sampling, else None.
-    per_run_df : DataFrame
-        Per-run building means table for portfolio epistemic propagation.
-        May be empty if files are missing — uncertainty fields will then
-        report aleatoric only.
+    per_run_dataset : pyarrow.dataset.Dataset or None
+        Lazy handle to the wide-format per-run parquets. None if files
+        are missing — uncertainty fields will then report aleatoric only.
     """
-    print(cfg.input_files_path)
     files = [x for x in glob.glob(cfg.input_files_path) if f'loft_{prob_loft}' in x]
+    print(cfg.input_files_path)
     print(f'\nFound {len(files)} files for loft prob {prob_loft}')
     if not files:
-        return pd.DataFrame(), pd.DataFrame(), None, pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), None, None
 
     print("\nLoading input data...")
     res_df = load_data_simple(files)
     print(f'res_df shape: {res_df.shape}, n_upns: {res_df["upn"].nunique()}')
 
-    print("\nLoading per-run building means (for epistemic propagation)...")
-    per_run_df = load_per_run_means(cfg, prob_loft)
+    print("\nOpening per-run dataset (lazy) for epistemic propagation...")
+    per_run_dataset = _per_run_dataset(cfg)
+    if per_run_dataset is not None:
+        try:
+            n_files = len(per_run_dataset.files)
+        except Exception:
+            n_files = '?'
+        print(f"  Per-run dataset: {n_files} parquet file(s) registered.")
+    else:
+        print("  [warn] No per-run dataset; epistemic uncertainty will be 0.")
 
     sample_info = None
     if cfg.test_mode:
@@ -1008,13 +1045,8 @@ def load_and_prepare_data(
         )
         print(f"[TEST_MODE] Scaled budgets: "
               f"{[f'£{b/1e6:.2f}M' for b in cfg.budgets]}")
-
-        # Restrict the per-run frame to the sampled UPNs to keep memory in check.
-        if not per_run_df.empty:
-            sampled_upns = set(res_df['upn'].unique())
-            per_run_df = per_run_df[per_run_df['upn'].isin(sampled_upns)]
-            print(f"[TEST_MODE] Per-run frame restricted to "
-                  f"{len(per_run_df):,} rows.")
+        # No need to filter the per-run dataset -- the per-call slice
+        # filters by selected upns at read time anyway.
 
     if cfg.verbose:
         describe_input(res_df)
@@ -1037,20 +1069,15 @@ def load_and_prepare_data(
     print(f"After premise filtering: {len(df):,} rows "
           f"({df['upn'].nunique():,} buildings)")
 
-    # Keep per-run frame consistent with the surviving UPN set.
-    if not per_run_df.empty:
-        surviving = set(df['upn'].unique())
-        per_run_df = per_run_df[per_run_df['upn'].isin(surviving)]
-
     df_buildings = build_building_level_view(df, upn_col='upn')  # noqa: F405
-    return df, df_buildings, sample_info, per_run_df
+    return df, df_buildings, sample_info, per_run_dataset
 
 
 def run_all_budgets(
     cfg: RunConfig,
     df: pd.DataFrame,
     df_buildings: pd.DataFrame,
-    per_run_df: pd.DataFrame,
+    per_run_dataset,
     mip_gap: float,
     prob_loft: float,
     sample_info: Optional[dict],
@@ -1081,7 +1108,7 @@ def run_all_budgets(
         _, all_stats, _ = run_pareto(
             df_all_packages=df,
             df_buildings=df_buildings,
-            per_run_df=per_run_df,
+            per_run_dataset=per_run_dataset,
             budget=budget,
             mip_gap=mip_gap,
             equity_floors=cfg.equity_floors,
@@ -1136,7 +1163,7 @@ def run_post_processing(cfg: RunConfig) -> None:
             LOFT_VALUE=loft_val,
             BASE_PATH=cfg.pareto_runs_folder,
             OUTPUT_PATH=vis_folder,
-            MIP_GAP=cfg.mip_gap , 
+            MIP_GAP=cfg.mip_gap,
         )
 
     if cfg.epc_run:
@@ -1161,7 +1188,7 @@ def run_post_processing(cfg: RunConfig) -> None:
 def run_pareto(
     df_all_packages,
     df_buildings,
-    per_run_df,
+    per_run_dataset,
     budget,
     equity_floors,
     high_equity_personas,
@@ -1209,10 +1236,10 @@ def run_pareto(
             logger=detail_logger,
         )
 
-        # ----- Portfolio-level uncertainty (immediately after the run) -----
+        # ----- Portfolio-level uncertainty (lazy slice on per-run parquets) -----
         unc = compute_portfolio_uncertainty(
             selected_df=selected_df,
-            per_run_df=per_run_df,
+            per_run_dataset=per_run_dataset,
             upn_col=upn_col,
             intervention_col=intervention_col,
         )
@@ -1247,9 +1274,6 @@ def run_pareto(
     print("BASELINE: pre-select best aleatoric-σ £/tCO2 per building")
     print(f"{'='*60}")
 
-    # Pass the new aleatoric-penalised score so the baseline's risk regime
-    # matches the preprocessing filter. If the helper doesn't accept the
-    # argument, fall back gracefully.
     try:
         df_preselected = preselect_best_cpt(
             df_all_packages, upn_col=upn_col,
@@ -1278,7 +1302,7 @@ def run_pareto(
     baseline_stats["method"] = "pre_select_best_cpt"
     baseline_unc = compute_portfolio_uncertainty(
         selected_df=baseline_selected,
-        per_run_df=per_run_df,
+        per_run_dataset=per_run_dataset,
         upn_col=upn_col,
         intervention_col=intervention_col,
     )
@@ -1374,7 +1398,7 @@ def main() -> None:
                     run_is_complete(
                         os.path.join(
                             cfg.pareto_runs_folder,
-                            f'budget_{budget_label(b)}M__loft_{prob_loft}',
+                            f'budget_{budget_label(b)}M__loft_{prob_loft}__mip_{cfg.mip_gap}',
                         ),
                         cfg.equity_floors,
                     )
@@ -1385,7 +1409,7 @@ def main() -> None:
                           f"Set FORCE_RERUN=Y to redo.")
                     continue
 
-            df, df_buildings, sample_info, per_run_df = load_and_prepare_data(
+            df, df_buildings, sample_info, per_run_dataset = load_and_prepare_data(
                 cfg, prob_loft, personas,
             )
             if df.empty:
@@ -1413,7 +1437,7 @@ def main() -> None:
                     )
 
             run_all_budgets(
-                cfg, df, df_buildings, per_run_df=per_run_df,
+                cfg, df, df_buildings, per_run_dataset=per_run_dataset,
                 prob_loft=prob_loft, sample_info=sample_info,
                 mip_gap=cfg.mip_gap,
             )
