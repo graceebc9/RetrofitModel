@@ -41,7 +41,7 @@ def process_retrofit_batch_with_uncertainty(
         log_file: Path to save results
         region: Region code (LN, SE, etc.)
         energy_column: Column name with energy consumption data
-        n_monte_carlo: Number of Monte Carlo iterations (default 10000)
+        
         random_seed: Random seed for reproducibility
         use_uncertainty: If True, runs Monte Carlo; if False, uses legacy cost-only method
     """
@@ -182,7 +182,7 @@ def run_retrofit_calc_with_uncertainty2D(
         batch_label: Label for logging
         log_file: Path to save results (region extracted from path)
         energy_column: Column name with energy consumption
-        n_monte_carlo: Number of Monte Carlo iterations
+        
         random_seed: Random seed for reproducibility
         use_uncertainty: If True, runs Monte Carlo; if False, legacy cost-only
     
@@ -216,7 +216,7 @@ def run_retrofit_calc_with_uncertainty2D(
     logger.info(f'Logger_Batch size: {batch_size}')
     logger.info(f'Uncertainty analysis: {"ENABLED" if use_uncertainty else "DISABLED"}')
     if use_uncertainty:
-        logger.info(f'Monte Carlo iterations: defined in RetrofigModel')
+        logger.info(f'Monte Carlo iterations (n_samples): {retrofit_config.n_samples}')
         logger.info(f'Energy column: {energy_column}')
     
     # Process in batches
