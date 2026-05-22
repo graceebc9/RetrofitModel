@@ -1371,8 +1371,76 @@ def run_pareto(
 # MAIN
 # ============================================================================
 
-def main() -> None:
-    cfg = resolve_config()
+def main():
+    running_locally = not is_running_on_hpc()
+
+    epc_yn = os.getenv('EPC_YN')
+    epc_run = epc_yn == 'Y'
+    print('Running greedy for EPC' if epc_run else 'Running greedy for normal')
+    
+    # --- NEW: HPC Array / Single Input Logic ---
+    # These will be strings from os.getenv, so we convert them if they exist
+    env_budget = os.getenv('SINGLE_BUDGET')
+    env_loft = os.getenv('SINGLE_LOFT_PROB')
+
+    run_g_yn = os.getenv('RUN_GREEDY_RUNS_YN')
+    run_greedy_runs = run_g_yn != 'N'
+
+    if TEST_MODE:
+        print("\n" + "!" * 80)
+        print(f"!! TEST_MODE ENABLED — stratified sample of "
+              f"~{TEST_SAMPLE_SIZE} buildings (seed={TEST_SEED})")
+        print(f"!! Outputs will be written to a separate `_TEST` folder.")
+        print("!" * 80)
+
+    # Configuration
+    if running_locally:
+        setting_name = 'local'
+        budgets = [1_000_000, 25_000_000, 50_000_000, 100_000_000, 200_000_000]
+        loft_probs = [0.65]
+        equity_floors = list(range(0, 105, 25))
+
+        if epc_run:
+            INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities_epc/risk_sigma_1.0/processed_best_only/*'
+            BASE_DIR = '/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/5_greedy_results_epc/NE/all_domestic'
+        else:
+            INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/11_finaL_sub/4_optimized_priorities/risk_sigma_1.0/processed_best_only/*'
+            INPUT_FILES_PATH = '/Volumes/T9/2025_10_RetrofitModel/12_v2_greedy/1_all_interventions/risk_sigma_1.0/processed_all_scenarios/*'
+
+            BASE_DIR = '/Volumes/T9/2025_10_RetrofitModel/12_v2_greedy/2_greedy_results/NE/all_domestic'
+    else:
+        setting_name = 'v10'
+        budgets = [1_000_000, 10_000_000, 50_000_000, 80_000_000, 100_000_000]
+        loft_probs = [0.95, 0.65]
+        equity_floors = list(range(0, 105, 50))
+
+        if epc_run:
+            INPUT_FILES_PATH = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/2_optimized_priorities_epc/risk_sigma_1.0/processed_all_scenarios/*'
+            BASE_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_greedy_optimisation/v9/NE/epc'
+        else:
+            # FIX: was pointing at local /Volumes/T9 — clearly wrong on HPC.
+            INPUT_FILES_PATH = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/4_optimized_priorities/risk_sigma_1.0/processed_all_scenarios/*'
+            BASE_DIR = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel/5_pareto/v9/NE/all_domestic'
+
+        print(f'Starting {INPUT_FILES_PATH}')
+
+    
+    # OVERRIDE with single values if provided by the HPC job script
+    if env_budget:
+        budgets = [int(float(env_budget))]
+        print(f"HPC Input: Single Budget set to £{budgets[0]:,}")
+    
+    if env_loft:
+        loft_probs = [float(env_loft)]
+        print(f"HPC Input: Single Loft Prob set to {loft_probs[0]}")
+        
+    # In test mode, redirect outputs to a `_TEST` sibling folder so we
+    # never clobber a real run's artefacts.
+    if TEST_MODE:
+        setting_name = f'{setting_name}_TEST'
+
+    input_files = glob.glob(INPUT_FILES_PATH)
+    pareto_runs_folder = os.path.join(BASE_DIR, 'pareto_runs', setting_name)
 
     print("\n" + "=" * 80)
     print("PARETO KNAPSACK ANALYSIS — ε-CONSTRAINT ON EQUITY SPEND")
