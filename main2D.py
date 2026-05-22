@@ -16,7 +16,8 @@ from src.utils import is_running_on_hpc
 # Use it in your script
 running_locally = not is_running_on_hpc()
 if running_locally:
-    base_path = '/Users/gracecolverd/RetrofitModel/notebook'
+    base_path = '/Volumes/T9/2025_10_RetrofitModel'
+    os.makedirs(f'{base_path}/logs', exist_ok=True )
 else:
     base_path = '/home/gb669/rds/hpc-work/energy_map/RetrofitModel'
     os.makedirs(f'{base_path}/logs', exist_ok=True )
@@ -27,7 +28,7 @@ job_id = os.getenv('SLURM_ARRAY_TASK_ID', 'local')
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 log_path = f"{base_path}/logs/log_{timestamp}_{job_id}"
 
-setup_logging(log_level='DEBUG', log_path=log_path)
+setup_logging(log_level='INFO', log_path=log_path)
 logger = get_logger(__name__)
 
 
@@ -68,14 +69,14 @@ if running_locally:
     TEMP_1KM_PATH = os.path.join(location_input_data_folder, 'climate_data/tas_hadukgrid_uk_1km_mon_202201-202212.nc')
      
     
-    scenarios = ['joint_heat_loft_decay','joint_heat_wall_decay',  'wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
+    scenarios = [ 'wall_installation', 'loft_installation', 'join_heat_ins_decay', 'heat_pump_only']
     job_name = 'all'
-    batch_size = 500
-    log_size = 10
+    batch_size = 50
+    log_size = 50
     n_monte_carlo = 1000
-    N_EPISTEMIC_RUNS = 5
+    N_EPISTEMIC_RUNS = 70
     RANDOM_SEED_OUTER = 42
-    OUTPUT_DIR = 'final_dataset'
+    OUTPUT_DIR = '/Volumes/T9/2025_10_RetrofitModel/20_debug_testings/final_dataset_testing'
 
 else: 
     PC_SHP_PATH = '/rds/user/gb669/hpc-work/energy_map/data/postcode_polygons/codepoint-poly_5267291'
@@ -101,6 +102,7 @@ region_list = ['NE'] if running_locally else [os.getenv('REGION_LIST')]
 STAGE0_split_onsud = False
 
 retrofit_config = RetrofitConfig(
+    n_samples=n_monte_carlo,
     # energy_cost_per_kwh=0.07,
     existing_intervention_probs={
         'loft_insulation': 0,
@@ -110,6 +112,9 @@ retrofit_config = RetrofitConfig(
         # 'external_wall_occurence': 0.5,
     }
 )
+print(f"DEBUG: retrofit_config.n_samples = {retrofit_config.n_samples}")
+print(f"DEBUG: id(retrofit_config) = {id(retrofit_config)}")
+print(f"DEBUG: vars = {vars(retrofit_config)}")
  
 from src.utils import log_configuration
 
@@ -195,7 +200,7 @@ def postcode_main(batch_path, data_dir, path_to_onsud_file, path_to_pcshp, INPUT
         'SubBatch log limit': log_size,
         'Batch label': batch_label,
         
-        'RetrofitModel2DSettings': RetrofitModel2D.n_samples,
+'RetrofitModel2D n_samples (from retrofit_config)': retrofit_config.n_samples,
         'Scenarios': scenarios,
         'Output dir': data_dir,
         "N_EPISTEMIC_RUNS": N_EPISTEMIC_RUNS, 
@@ -226,9 +231,9 @@ def postcode_main(batch_path, data_dir, path_to_onsud_file, path_to_pcshp, INPUT
 # ========================================
 
 def main():
-    log_file = os.path.join(OUTPUT_DIR, 'processing.log')
     logger.info("Starting data processing pipeline")
-    logger.debug(f"Using output directory: {OUTPUT_DIR}")
+    logger.info(f"Logs directory: {base_path}/logs")
+    logger.debug(f"Output directory: {OUTPUT_DIR}")
 
     # Validate input paths
     required_paths = {
@@ -286,7 +291,7 @@ def main():
     else:
         # Local mode: process all batches
         batch_paths = all_batch_paths
-        batch_paths=['batches/NE/batch_10.txt']
+        # batch_paths=['batches/NE/batch_10.txt']
         logger.info(f"Local mode: Processing all {len(batch_paths)} batches")
 
     print(f"Batch paths to process: {batch_paths}")
@@ -305,7 +310,7 @@ def main():
         
         postcode_main(
             batch_path=batch_path,
-            data_dir='0_intermediate_data_2D',
+            data_dir=OUTPUT_DIR , 
             path_to_onsud_file=onsud_path,
             path_to_pcshp=PC_SHP_PATH,
             INPUT_GPK=BUILDING_PATH,
@@ -329,5 +334,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        logging.error(f"Fatal error in main program: {str(e)}", exc_info=True)
+        logger.error(f"Fatal error in main program: {str(e)}", exc_info=True)
         raise
