@@ -113,11 +113,10 @@ def budgets_tag(budgets: list[int]) -> str:
 # ============================================================================
 # CONFIG
 # ============================================================================
-
 @dataclass
 class RunConfig:
     setting_name: str
-    input_base_dir: str          # parent of cost_scenario buckets
+    input_base_dir: str
     base_dir: str
     mip_gap: float
     budgets: list[int]
@@ -136,36 +135,18 @@ class RunConfig:
     verbose: bool = True
 
     @property
-    def pareto_runs_folder(self) -> str:
+    def root(self) -> str:
+        """Top of the run folder. Replaces pareto_runs_folder."""
         parts = [self.base_dir]
         if self.epc_run:
-            parts.append('pareto_runs_epc' if not self.test_mode else 'pareto_runs')
+            parts.append('pareto_runs_epc' if not self.test_mode
+                         else 'pareto_runs')
         else:
             parts.append('pareto_runs')
         parts.append(self.setting_name + ('_epc' if self.epc_run and self.test_mode else ''))
         if self.test_mode:
             parts.append(f'samples_{self.test_sample_size}')
         return os.path.join(*parts)
-
-    def bucket_input_glob(self, bucket: str) -> str:
-        """CSV glob for one cost_scenario bucket (interventions logs)."""
-        return os.path.join(self.input_base_dir, LOGS_SUBDIR, bucket, '*')
-
-    def bucket_per_run_glob(self, bucket: str) -> str:
-        """Per-run parquet glob for one cost_scenario bucket."""
-        return os.path.join(
-            self.input_base_dir, MEANS_SUBDIR, bucket, PER_RUN_MEANS_PATTERN,
-        )
-
-    def bucket_output_dir(self, bucket: str) -> str:
-        """Top of the output tree for one bucket."""
-        return os.path.join(self.pareto_runs_folder, f'cost_scenario={bucket}')
-
-    @property
-    def comparison_dir(self) -> str:
-        """Top of the cross-bucket comparison output tree."""
-        return os.path.join(self.pareto_runs_folder, 'comparison')
-
 
 # Path table now points at the *parent* of the logs/ and means/ trees.
 # Layout under each entry:
@@ -1019,100 +1000,7 @@ def _scale_budgets_for_test(budgets, n_sampled, n_total):
 # ============================================================================
 # SKIP-IF-EXISTS
 # ============================================================================
-
-# def run_is_complete(output_dir: str, equity_floors: list) -> bool:
-#     """True if a (bucket, budget, loft_prob) run already produced its outputs."""
-#     summary_path = os.path.join(output_dir, 'pareto_summary.csv')
-#     full_path = os.path.join(output_dir, 'pareto_full.json')
-#     baseline_path = os.path.join(output_dir, 'baseline_preselect.csv')
-
-#     for p in (summary_path, full_path, baseline_path):
-#         if not os.path.exists(p) or os.path.getsize(p) == 0:
-#             return False
-
-#     try:
-#         summary_df = pd.read_csv(summary_path)
-#     except Exception:
-#         return False
-
-#     if summary_df.empty or 'status' not in summary_df.columns:
-#         return False
-
-#     feasible = summary_df[summary_df['status'].isin(['Optimal', 'Not Solved'])]
-#     if feasible.empty:
-#         return False
-
-#     if equity_floors and 'equity_floor_pct' in summary_df.columns:
-#         if equity_floors[0] not in summary_df['equity_floor_pct'].values:
-#             return False
-
-#     return True
-
-
-def run_is_complete(output_dir: str, equity_floors: list) -> bool:
-    """True if a (bucket, budget, loft_prob) run already produced its outputs.
-
-    A run counts as complete when:
-      * pareto_summary.csv, pareto_full.json, baseline_preselect.csv all
-        exist and are non-empty;
-      * the summary parses and has the expected columns;
-      * for every equity_floor in `equity_floors`, the summary either
-        contains that floor, OR a *lower* floor is already infeasible
-        (the sweep breaks on infeasibility, so higher floors are
-        legitimately absent in that case).
-    """
-    summary_path = os.path.join(output_dir, 'pareto_summary.csv')
-    full_path = os.path.join(output_dir, 'pareto_full.json')
-    baseline_path = os.path.join(output_dir, 'baseline_preselect.csv')
-
-    for p in (summary_path, full_path, baseline_path):
-        if not os.path.exists(p) or os.path.getsize(p) == 0:
-            return False
-
-    try:
-        summary_df = pd.read_csv(summary_path)
-    except Exception:
-        return False
-
-    if summary_df.empty or 'status' not in summary_df.columns:
-        return False
-    if 'equity_floor_pct' not in summary_df.columns:
-        return False
-
-    feasible_statuses = {'Optimal', 'Not Solved'}
-    feasible = summary_df[summary_df['status'].isin(feasible_statuses)]
-    if feasible.empty:
-        return False
-
-    if not equity_floors:
-        return True
-
-    present = set(summary_df['equity_floor_pct'].astype(float).tolist())
-    floor_status = (
-        summary_df.assign(
-            equity_floor_pct=summary_df['equity_floor_pct'].astype(float)
-        )
-        .set_index('equity_floor_pct')['status']
-        .to_dict()
-    )
-
-    sorted_floors = sorted(float(f) for f in equity_floors)
-    earliest_infeasible = None
-    for f in sorted_floors:
-        st = floor_status.get(f)
-        if st is not None and st not in feasible_statuses:
-            earliest_infeasible = f
-            break
-
-    for f in sorted_floors:
-        if f in present:
-            continue
-        # Missing floor is acceptable only if a lower floor was infeasible
-        # — the sweep stops as soon as it hits an infeasible floor.
-        if earliest_infeasible is None or f < earliest_infeasible:
-            return False
-
-    return True
+ 
 
 def comparison_is_complete(output_dir: str) -> bool:
     """True if the cross-bucket comparison artefacts exist for this slice."""
@@ -1260,41 +1148,27 @@ def run_all_budgets(
                 )
 
 
-# def _run_epc_fallback(
-#     df: pd.DataFrame, budget: int, output_dir: str,
-#     detail_logger: logging.Logger, summary_logger: logging.Logger,
-# ) -> None:
-#     epc_path = os.path.join(output_dir, 'epc_random_selection.csv')
-#     selected, remaining = select_epc_algo_pareto(
-#         df_knapsack=df, budget=budget,
-#         cost_col=COST_COL, carbon_col=CARBON_COL,
-#         logger=detail_logger,
-#     )
-#     if selected.empty:
-#         detail_logger.info('EPC selection empty')
-#         raise EPCSelectionError(
-#             f'EPC random selection produced no rows at budget £{budget:,}'
-#         )
-#     selected['remaining_funds'] = remaining
-#     selected.to_csv(epc_path, index=False)
-#     summary_logger.info(f"EPC random saved to: {epc_path}")
-
+ 
 def _run_epc_fallback(
-    df, budget, output_dir, detail_logger, summary_logger,
-    per_run_dataset=None,           # NEW
-):
-    epc_path = os.path.join(output_dir, 'epc_random_selection.csv')
+    df: pd.DataFrame,
+    cfg: RunConfig,
+    key: SliceKey,
+    *,
+    detail_logger,
+    summary_logger,
+    per_run_dataset=None,
+) -> None:
     selected, stats = select_epc_algo_pareto(
-        df_knapsack=df, budget=budget,
+        df_knapsack=df, budget=key.budget,
         cost_col=COST_COL, carbon_col=CARBON_COL,
         logger=detail_logger,
     )
     if selected.empty:
         detail_logger.info('EPC selection empty')
-        raise EPCSelectionError(...)
+        raise EPCSelectionError(
+            f'EPC random selection produced no rows at budget £{key.budget:,}'
+        )
 
-    # Propagate uncertainty through the EPC selection on the same per-run
-    # ensemble that Opt.T used. Apples-to-apples Jensen-corrected ratio.
     unc = compute_portfolio_uncertainty(
         selected_df=selected,
         per_run_dataset=per_run_dataset,
@@ -1303,26 +1177,26 @@ def _run_epc_fallback(
     )
     stats.update(unc)
 
-    selected.to_csv(epc_path, index=False)
-    pd.DataFrame([stats]).to_csv(
-        os.path.join(output_dir, 'epc_summary.csv'), index=False,
+    selected.to_csv(
+        epc_selected_csv(cfg.root, key.bucket, key.budget, key.loft),
+        index=False,
     )
-    summary_logger.info(f"EPC random saved to: {epc_path}")
-
-
+    pd.DataFrame([stats]).to_csv(
+        epc_summary_csv(cfg.root, key.bucket, key.budget, key.loft),
+        index=False,
+    )
+    summary_logger.info(
+        f"EPC summary written to "
+        f"{epc_summary_csv(cfg.root, key.bucket, key.budget, key.loft)}"
+    )
 # ============================================================================
 # CROSS-BUCKET COMPARISON
 # ============================================================================
 
 def _read_bucket_pareto_summary(
-    cfg: RunConfig, bucket: str, budget: int, prob_loft: float,
+    cfg: RunConfig, bucket: str, budget: float, loft: float,
 ) -> Optional[pd.DataFrame]:
-    """Load one bucket's pareto_summary.csv. Returns None if missing."""
-    path = os.path.join(
-        cfg.bucket_output_dir(bucket),
-        f'budget_{budget_label(budget)}M__loft_{prob_loft}__mip_{cfg.mip_gap}',
-        'pareto_summary.csv',
-    )
+    path = summary_csv(cfg.root, bucket, budget, loft)
     if not os.path.exists(path) or os.path.getsize(path) == 0:
         return None
     try:
@@ -1581,46 +1455,65 @@ def run_comparison(cfg: RunConfig) -> None:
 # ============================================================================
 # PARETO RUNNER
 # ============================================================================
-
 def run_pareto(
-    df_all_packages,
-    df_buildings,
+    df_all_packages: pd.DataFrame,
+    df_buildings: pd.DataFrame,
     per_run_dataset,
-    budget,
-    equity_floors,
-    high_equity_personas,
-    output_dir,
-    loft_prob,
-    mip_gap,
-    cost_col=COST_COL,
-    carbon_col=CARBON_COL,
-    upn_col='upn',
-    intervention_col='intervention',
-    persona_col='meta_socio_persona',
-    time_limit_seconds=600,
-    detail_logger=None,
-    summary_logger=None,
-    bucket_label: Optional[str] = None,
+    cfg: RunConfig,
+    key: SliceKey,
+    equity_floors: list,
+    high_equity_personas: list,
+    view_dir: str,
+    cost_col: str = COST_COL,
+    carbon_col: str = CARBON_COL,
+    upn_col: str = 'upn',
+    intervention_col: str = 'intervention',
+    persona_col: str = 'meta_socio_persona',
+    time_limit_seconds: int = 600,
+    detail_logger: Optional[logging.Logger] = None,
+    summary_logger: Optional[logging.Logger] = None,
 ):
+    """
+    Run the equity-floor sweep for one (bucket, budget, loft) slice.
+
+    Solves multichoice knapsack at each equity floor, propagates per-run
+    uncertainty through the fixed selection, computes a baseline, and
+    writes outputs to the slice's data folder. Stage 1 plots go to
+    view_dir.
+
+    Returns
+    -------
+    pareto_df : DataFrame
+        One row per equity floor with the standard summary columns.
+    all_stats : list[dict]
+        Full stats dicts (richer than pareto_df, including per-run totals).
+    baseline_stats : dict
+        One-dict summary for the preselect-best-cpt baseline.
+    """
+    output_dir = slice_data_dir(cfg.root, key.bucket, key.budget, key.loft)
+    sel_dir = selected_dir(cfg.root, key.bucket, key.budget, key.loft)
     os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(sel_dir, exist_ok=True)
+    os.makedirs(view_dir, exist_ok=True)
 
     if summary_logger:
         summary_logger.info(
-            f"Starting Pareto sweep [bucket={bucket_label}]: "
-            f"budget=£{budget:,.0f}, equity_floors={equity_floors}"
+            f"Starting Pareto sweep [bucket={key.bucket}]: "
+            f"budget=£{key.budget:,.0f}, equity_floors={equity_floors}"
         )
 
+    # ── Equity-floor sweep ────────────────────────────────────────────────
     all_stats = []
     for eps in equity_floors:
         print(f"\n{'='*60}")
-        print(f"[{bucket_label}] Equity floor: {eps}% to {high_equity_personas}")
+        print(f"[{key.bucket}] Equity floor: {eps}% to {high_equity_personas}")
         print(f"{'='*60}")
 
         selected_df, stats = multichoice_knapsack(
             df_all_packages=df_all_packages,
-            budget=budget,
+            budget=key.budget,
             equity_floor_pct=eps,
-            mip_gap=mip_gap,
+            mip_gap=cfg.mip_gap,
             high_equity_personas=high_equity_personas,
             upn_col=upn_col,
             persona_col=persona_col,
@@ -1637,8 +1530,8 @@ def run_pareto(
             intervention_col=intervention_col,
         )
         stats.update(unc)
-        if bucket_label:
-            stats['cost_scenario'] = bucket_label
+        stats['cost_scenario'] = key.bucket
+
         if summary_logger:
             summary_logger.info(
                 f"  eq={eps}% uncertainty: "
@@ -1646,44 +1539,42 @@ def run_pareto(
                 f"σ_epi={unc['total_abatement_epistemic_std']:.1f}, "
                 f"epistemic_share={unc['epistemic_share_carbon']}"
             )
+            if not unc['per_run_slice_complete']:
+                summary_logger.warning(
+                    f"  eq={eps}%: per-run slice incomplete "
+                    f"({unc['n_pairs_in_slice']}/{unc['n_pairs_selected']} "
+                    f"pairs found; epistemic std biased low)."
+                )
 
         all_stats.append(stats)
 
         if not selected_df.empty:
-            eq_label = f"{eps:.0f}"
-            selected_path = os.path.join(
-                output_dir, f'selected_projects_eq{eq_label}.csv'
+            selected_df.to_csv(
+                selected_csv(cfg.root, key.bucket, key.budget, key.loft, eps),
+                index=False,
             )
-            selected_df.to_csv(selected_path, index=False)
 
-        if stats["status"] not in ("Optimal", "Not Solved"):
+        if stats['status'] not in ('Optimal', 'Not Solved'):
             print(f"  Infeasible at {eps}% — stopping sweep.")
             if summary_logger:
                 summary_logger.info(f"Infeasible at equity_floor={eps}%")
             break
 
-    # Baseline (per-bucket)
+    # ── Baseline (preselect best aleatoric-σ £/tCO₂) ──────────────────────
     print(f"\n{'='*60}")
-    print(f"[{bucket_label}] BASELINE: pre-select best aleatoric-σ £/tCO2")
+    print(f"[{key.bucket}] BASELINE: pre-select best aleatoric-σ £/tCO2")
     print(f"{'='*60}")
 
-    # try:
     df_preselected = preselect_best_cpt(
         df_all_packages, upn_col=upn_col,
         cost_col=cost_col, carbon_col=carbon_col,
         score_col=SELECTION_SCORE_COL,
     )
-    # except TypeError:
-    #     df_preselected = preselect_best_cpt(
-    #         df_all_packages, upn_col=upn_col,
-    #         cost_col=cost_col, carbon_col=carbon_col,
-    #     )
-
     baseline_selected, baseline_stats = multichoice_knapsack(
         df_all_packages=df_preselected,
-        budget=budget,
+        budget=key.budget,
         equity_floor_pct=0,
-        mip_gap=mip_gap,
+        mip_gap=cfg.mip_gap,
         high_equity_personas=high_equity_personas,
         upn_col=upn_col,
         persona_col=persona_col,
@@ -1692,9 +1583,8 @@ def run_pareto(
         time_limit_seconds=time_limit_seconds,
         logger=detail_logger,
     )
-    baseline_stats["method"] = "pre_select_best_cpt"
-    if bucket_label:
-        baseline_stats['cost_scenario'] = bucket_label
+    baseline_stats['method'] = 'pre_select_best_cpt'
+    baseline_stats['cost_scenario'] = key.bucket
     baseline_unc = compute_portfolio_uncertainty(
         selected_df=baseline_selected,
         per_run_dataset=per_run_dataset,
@@ -1702,59 +1592,67 @@ def run_pareto(
         intervention_col=intervention_col,
     )
     baseline_stats.update(baseline_unc)
+
     baseline_selected.to_csv(
-        os.path.join(output_dir, 'baseline_preselect.csv'), index=False
+        baseline_csv(cfg.root, key.bucket, key.budget, key.loft),
+        index=False,
+    )
+    pd.DataFrame([baseline_stats]).to_csv(
+        baseline_summary_csv(cfg.root, key.bucket, key.budget, key.loft),
+        index=False,
     )
 
-    # Save summary
+    # ── Summary CSV ───────────────────────────────────────────────────────
     pareto_df = pd.DataFrame(all_stats)
     summary_cols = [
-        "equity_floor_pct", "status", "n_retrofitted", "n_high_equity",
-        "total_cost", "total_abatement", "cpex_per_ton",
-        "total_cost_aleatoric_std", "total_cost_epistemic_std",
-        "total_abatement_aleatoric_std", "total_abatement_epistemic_std",
-        "epistemic_share_cost", "epistemic_share_carbon",
-        "cpex_per_ton_p16", "cpex_per_ton_median", "cpex_per_ton_p84",
-         "n_runs", "n_pairs_selected", "n_pairs_in_slice",
-    "per_run_slice_complete",
-        "high_eq_spend_pct", "high_eq_abatement_pct", "solve_time_s",
-        "cost_scenario",
+        'equity_floor_pct', 'status', 'n_retrofitted', 'n_high_equity',
+        'total_cost', 'total_abatement', 'cpex_per_ton',
+        'total_cost_aleatoric_std', 'total_cost_epistemic_std',
+        'total_abatement_aleatoric_std', 'total_abatement_epistemic_std',
+        'epistemic_share_cost', 'epistemic_share_carbon',
+        'cpex_per_ton_p16', 'cpex_per_ton_median', 'cpex_per_ton_p84',
+        'n_runs', 'n_pairs_selected', 'n_pairs_in_slice',
+        'per_run_slice_complete',
+        'high_eq_spend_pct', 'high_eq_abatement_pct', 'solve_time_s',
+        'cost_scenario',
     ]
     available_cols = [c for c in summary_cols if c in pareto_df.columns]
     pareto_df[available_cols].to_csv(
-        os.path.join(output_dir, 'pareto_summary.csv'), index=False
+        summary_csv(cfg.root, key.bucket, key.budget, key.loft),
+        index=False,
     )
 
-    with open(os.path.join(output_dir, 'pareto_full.json'), 'w') as f:
-        json.dump(all_stats, f, indent=2, default=str)
-    with open(os.path.join(output_dir, 'baseline_stats.json'), 'w') as f:
-        json.dump(baseline_stats, f, indent=2, default=str)
+    # ── Stage 1 plots ─────────────────────────────────────────────────────
+    plot_pareto_summary(
+        all_stats, baseline_stats, view_dir, key.budget,
+        bucket_label=key.bucket,
+    )
 
-    plot_pareto_summary(all_stats, baseline_stats, output_dir, budget,
-                        bucket_label=bucket_label)
-
+    # ── Console summary ───────────────────────────────────────────────────
     print(f"\n{'#'*60}")
-    print(f"[{bucket_label}] PARETO FRONT SUMMARY")
+    print(f"[{key.bucket}] PARETO FRONT SUMMARY")
     print(f"{'#'*60}")
     print(pareto_df[available_cols].to_string(index=False))
 
-    if baseline_stats.get("total_abatement"):
-        print(f"\n[{bucket_label}] Baseline: "
+    if baseline_stats.get('total_abatement'):
+        print(f"\n[{key.bucket}] Baseline: "
               f"{baseline_stats['total_abatement']:.1f} tCO2, "
               f"£{baseline_stats['cpex_per_ton']:,.0f}/t, "
               f"{baseline_stats['high_eq_spend_pct']:.1f}% high-eq spend")
-        if all_stats and all_stats[0].get("total_abatement"):
+        if all_stats and all_stats[0].get('total_abatement'):
             improvement = (
-                (all_stats[0]["total_abatement"] - baseline_stats["total_abatement"])
-                / baseline_stats["total_abatement"] * 100
+                (all_stats[0]['total_abatement']
+                 - baseline_stats['total_abatement'])
+                / baseline_stats['total_abatement'] * 100
             )
             print(f"  Improvement: +{improvement:.1f}% abatement vs baseline")
 
     if summary_logger:
-        summary_logger.info(f"Pareto sweep complete. Results in: {output_dir}")
+        summary_logger.info(
+            f"Pareto sweep complete. Data: {output_dir}, plots: {view_dir}"
+        )
 
     return pareto_df, all_stats, baseline_stats
-
 
 # ============================================================================
 # POST-PROCESSING (per bucket)
@@ -1818,16 +1716,197 @@ def run_post_processing(cfg: RunConfig) -> None:
 # ============================================================================
 # MAIN
 # ============================================================================
+from src.ParetoPaths import (
+    SliceKey,
+    bucket_data_dir,
+    slice_data_dir,
+    summary_csv,
+    selected_csv,
+    selected_dir,
+    baseline_csv,
+    baseline_summary_csv,
+    epc_summary_csv,
+    epc_selected_csv,
+    per_scenario_per_budget_dir,
+    slice_log_dir,
+)
+from src.ParetoManifest import (
+    new_manifest,
+    write_manifest,
+    read_manifest,
+    record_slice,
+    is_slice_recorded,
+    assert_compatible_with_cfg,
+    ManifestSchemaError,
+)
+
 
 def main() -> None:
     cfg = resolve_config()
+    _print_run_header(cfg)
 
+    manifest = _open_or_create_manifest(cfg)
+
+    if cfg.run_greedy_runs:
+        _run_all_slices(cfg, manifest)
+    else:
+        print('Set to skip runs (RUN_GREEDY_RUNS_YN=N).')
+
+    if len(cfg.cost_scenarios) >= 2:
+        run_comparison(cfg)
+    else:
+        print(f"\n[skip comparison] Only {len(cfg.cost_scenarios)} bucket(s) "
+              f"configured; nothing to compare.")
+
+    run_post_processing(cfg)
+
+    print("\n" + "=" * 80)
+    print("ALL ANALYSES COMPLETE!")
+    print("=" * 80)
+
+
+def _open_or_create_manifest(cfg: RunConfig):
+    """Resume an existing run or start a fresh one."""
+    try:
+        manifest = read_manifest(cfg.root)
+    except ManifestSchemaError as e:
+        print(f"\n[FATAL] {e}")
+        print("Run scripts/migrate_pareto_outputs.py to upgrade the run, "
+              "or delete the folder to start fresh.")
+        sys.exit(2)
+
+    if manifest is None:
+        manifest = new_manifest(cfg)
+        write_manifest(cfg.root, manifest)
+        print(f"\nStarted new run: {manifest.run_id}")
+    else:
+        assert_compatible_with_cfg(manifest, cfg)
+        print(f"\nResuming run: {manifest.run_id} "
+              f"({len(manifest.slices)} slices already recorded)")
+
+    return manifest
+
+
+def _run_all_slices(cfg: RunConfig, manifest) -> None:
+    """The main solve loop, one slice at a time."""
+    print("\nLoading personas...")
+    personas = load_personas().drop_duplicates()
+
+    # Outer loop is loft, then bucket — preserves cache locality on
+    # per_run_dataset, which is bucket-scoped and expensive to open.
+    for prob_loft in cfg.loft_probs:
+        for bucket in cfg.cost_scenarios:
+            if _bucket_loft_fully_recorded(cfg, manifest, bucket, prob_loft):
+                print(f"\n[SKIP] All budgets recorded for "
+                      f"loft={prob_loft}, bucket={bucket}.")
+                continue
+
+            df, df_buildings, sample_info, per_run_dataset = (
+                load_and_prepare_data(cfg, prob_loft, bucket, personas)
+            )
+            if df.empty:
+                print(f"[{bucket}] No data; skipping.")
+                continue
+
+            _greedy_sanity_print(df, bucket)
+
+            for budget in cfg.budgets:
+                key = SliceKey(bucket=bucket, budget=budget, loft=prob_loft)
+
+                if not cfg.force_rerun and is_slice_recorded(cfg.root, key):
+                    print(f"[SKIP] {key.slug} already in manifest")
+                    continue
+
+                _run_one_slice(
+                    cfg, key, df, df_buildings, per_run_dataset,
+                    sample_info=sample_info,
+                )
+
+            del df, df_buildings, per_run_dataset
+            gc.collect()
+
+
+def _bucket_loft_fully_recorded(
+    cfg: RunConfig, manifest, bucket: str, loft: float,
+) -> bool:
+    """Cheap pre-check: every budget at this (bucket, loft) is in manifest."""
+    if cfg.force_rerun or cfg.test_mode:
+        return False
+    return all(
+        SliceKey(bucket=bucket, budget=b, loft=loft).slug in manifest.slices
+        for b in cfg.budgets
+    )
+
+
+def _run_one_slice(
+    cfg: RunConfig,
+    key: SliceKey,
+    df: pd.DataFrame,
+    df_buildings: pd.DataFrame,
+    per_run_dataset,
+    sample_info: Optional[dict],
+) -> None:
+    """Solve one (bucket, budget, loft) slice and record it."""
+    output_dir = slice_data_dir(cfg.root, key.bucket, key.budget, key.loft)
+    log_dir = slice_log_dir(cfg.root, key.bucket, key.budget, key.loft)
+    view_dir = per_scenario_per_budget_dir(
+        cfg.root, key.bucket, key.budget, key.loft,
+    )
+    for d in (output_dir, log_dir, view_dir, selected_dir(
+            cfg.root, key.bucket, key.budget, key.loft)):
+        os.makedirs(d, exist_ok=True)
+
+    summary_logger, detail_logger = setup_loggers(
+        log_dir, key.budget, key.loft, bucket=key.bucket,
+    )
+    summary_logger.info(
+        f'[{key.bucket}] Starting Pareto: '
+        f'Budget £{key.budget:,}, Loft {key.loft}'
+    )
+    if cfg.test_mode and sample_info is not None:
+        summary_logger.info(f'TEST_MODE sample_info: {sample_info}')
+
+    _, all_stats, _ = run_pareto(
+        df_all_packages=df,
+        df_buildings=df_buildings,
+        per_run_dataset=per_run_dataset,
+        cfg=cfg,
+        key=key,
+        equity_floors=cfg.equity_floors,
+        high_equity_personas=DEFAULT_HIGH_EQUITY_PERSONAS,
+        view_dir=view_dir,
+        detail_logger=detail_logger,
+        summary_logger=summary_logger,
+    )
+    summary_logger.info("Pareto analysis complete!")
+    print(f"✓ [{key.bucket}] Slice complete: {output_dir}")
+
+    if cfg.epc_run:
+        _run_epc_fallback(
+            df, cfg, key,
+            detail_logger=detail_logger,
+            summary_logger=summary_logger,
+            per_run_dataset=per_run_dataset,
+        )
+
+    n_solved = sum(1 for s in all_stats if s.get('status') in ('Optimal', 'Not Solved'))
+    n_infeasible = len(all_stats) - n_solved
+    record_slice(
+        cfg.root, key,
+        n_equity_floors_solved=n_solved,
+        n_equity_floors_infeasible=n_infeasible,
+        epc_mode=cfg.epc_run,
+    )
+
+
+def _print_run_header(cfg: RunConfig) -> None:
     print("\n" + "=" * 80)
     print("PARETO KNAPSACK ANALYSIS — PER COST_SCENARIO")
     print(f"  Mode:                {'EPC' if cfg.epc_run else 'standard'}")
     print(f"  Cost scenarios:      {cfg.cost_scenarios}")
     print(f"  High-equity personas: {DEFAULT_HIGH_EQUITY_PERSONAS}")
-    print(f"  Budgets:             {[budget_label(b) + 'M' for b in cfg.budgets]}")
+    print(f"  Budgets:             "
+          f"{[budget_slug(b) for b in cfg.budgets]}")
     print(f"  Loft probs:          {cfg.loft_probs}")
     print(f"  Equity floors:       {cfg.equity_floors}")
     print(f"  Force rerun:         {cfg.force_rerun}")
@@ -1836,88 +1915,31 @@ def main() -> None:
              if cfg.test_mode else ''))
     print("=" * 80)
 
-    if cfg.run_greedy_runs:
-        print("\nLoading personas...")
-        personas = load_personas().drop_duplicates()
 
-        for prob_loft in cfg.loft_probs:
-            for bucket in cfg.cost_scenarios:
-                # Cheap early skip: all budgets done for this (loft, bucket)?
-                bucket_root = cfg.bucket_output_dir(bucket)
-                if not cfg.force_rerun and not cfg.test_mode:
-                    all_done = all(
-                        run_is_complete(
-                            os.path.join(
-                                bucket_root,
-                                f'budget_{budget_label(b)}M__loft_{prob_loft}__mip_{cfg.mip_gap}',
-                            ),
-                            cfg.equity_floors,
-                        )
-                        for b in cfg.budgets
-                    )
-                    if all_done:
-                        print(f"\n[SKIP] All budgets complete for "
-                              f"loft={prob_loft}, bucket={bucket}.")
-                        continue
-
-                df, df_buildings, sample_info, per_run_dataset = (
-                    load_and_prepare_data(cfg, prob_loft, bucket, personas)
-                )
-                if df.empty:
-                    print(f"[{bucket}] No data; skipping.")
-                    continue
-
-                # Diagnostic £1M greedy sanity print.
-                try:
-                    best = preselect_best_cpt(
-                        df, upn_col='upn', cost_col=COST_COL, carbon_col=CARBON_COL,
-                    )
-                except Exception:
-                    best = pd.DataFrame()
-                if not best.empty:
-                    best['_is_high_eq'] = best['meta_socio_persona'].isin(
-                        DEFAULT_HIGH_EQUITY_PERSONAS
-                    )
-                    best = best.sort_values(COST_COL)
-                    best['cumcost'] = best[COST_COL].cumsum()
-                    picked = best[best['cumcost'] <= 1_000_000]
-                    if not picked.empty and picked[COST_COL].sum() > 0:
-                        pct = (
-                            100 * picked.loc[picked['_is_high_eq'], COST_COL].sum()
-                            / picked[COST_COL].sum()
-                        )
-                        print(
-                            f"[{bucket}] Greedy £1M sanity: {len(picked)} bldgs, "
-                            f"{picked['_is_high_eq'].sum()} high-eq ({pct:.1f}% spend)"
-                        )
-
-                run_all_budgets(
-                    cfg, df, df_buildings,
-                    per_run_dataset=per_run_dataset,
-                    prob_loft=prob_loft, bucket=bucket,
-                    sample_info=sample_info, mip_gap=cfg.mip_gap,
-                )
-
-                # Free the bucket's data before moving to the next.
-                del df, df_buildings, per_run_dataset
-                gc.collect()
-    else:
-        print('Set to skip runs (RUN_GREEDY_RUNS_YN=N).')
-
-    # Cross-bucket comparison: only valid if at least 2 buckets were attempted.
-    if len(cfg.cost_scenarios) >= 2:
-        run_comparison(cfg)
-    else:
-        print(f"\n[skip comparison] Only {len(cfg.cost_scenarios)} bucket(s) "
-              f"configured; nothing to compare.")
-
-    # Per-bucket post-processing (existing visualisations).
-    run_post_processing(cfg)
-
-    print("\n" + "=" * 80)
-    print("ALL ANALYSES COMPLETE!")
-    print("=" * 80)
-
+def _greedy_sanity_print(df: pd.DataFrame, bucket: str) -> None:
+    """Diagnostic £1M greedy print. Side-effecting only, never raises."""
+    try:
+        best = preselect_best_cpt(
+            df, upn_col='upn', cost_col=COST_COL, carbon_col=CARBON_COL,
+        )
+    except Exception:
+        return
+    if best.empty:
+        return
+    best['_is_high_eq'] = best['meta_socio_persona'].isin(
+        DEFAULT_HIGH_EQUITY_PERSONAS
+    )
+    best = best.sort_values(COST_COL)
+    best['cumcost'] = best[COST_COL].cumsum()
+    picked = best[best['cumcost'] <= 1_000_000]
+    if picked.empty or picked[COST_COL].sum() <= 0:
+        return
+    pct = (
+        100 * picked.loc[picked['_is_high_eq'], COST_COL].sum()
+        / picked[COST_COL].sum()
+    )
+    print(f"[{bucket}] Greedy £1M sanity: {len(picked)} bldgs, "
+          f"{picked['_is_high_eq'].sum()} high-eq ({pct:.1f}% spend)")
 
 if __name__ == "__main__":
     main()
